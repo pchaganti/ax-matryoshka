@@ -8,6 +8,34 @@ interface ChatCompletionResponse {
   }>;
 }
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = MAX_RETRIES
+): Promise<Response> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, options);
+      return response;
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      if (attempt === retries) {
+        console.error(`Final fetch attempt failed: ${errMsg}`);
+        console.error(`URL: ${url}`);
+        throw error;
+      }
+      console.error(
+        `Fetch attempt ${attempt}/${retries} failed (${errMsg}), retrying in ${RETRY_DELAY_MS}ms...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
+  }
+  throw new Error("Unreachable");
+}
+
 export function createDeepSeekProvider(config: ProviderConfig): LLMProvider {
   return {
     name: "deepseek",
@@ -29,14 +57,17 @@ export function createDeepSeekProvider(config: ProviderConfig): LLMProvider {
         requestBody.response_format = { type: "json_object" };
       }
 
-      const response = await fetch(`${config.baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${config.apiKey}`,
-        },
-        body: JSON.stringify(requestBody),
-      });
+      const response = await fetchWithRetry(
+        `${config.baseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${config.apiKey}`,
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
 
       if (!response.ok) {
         throw new Error(

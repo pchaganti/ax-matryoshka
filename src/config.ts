@@ -44,6 +44,29 @@ export interface Config {
   rlm: RLMConfig;
 }
 
+/**
+ * Recursively resolve environment variables in config values.
+ * Supports ${VAR_NAME} syntax in string values.
+ */
+function resolveEnvVars(obj: unknown): unknown {
+  if (typeof obj === "string") {
+    return obj.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+      return process.env[varName] || "";
+    });
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(resolveEnvVars);
+  }
+  if (obj && typeof obj === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      result[key] = resolveEnvVars(value);
+    }
+    return result;
+  }
+  return obj;
+}
+
 const DEFAULT_CONFIG: Config = {
   llm: {
     provider: "ollama",
@@ -68,7 +91,8 @@ export async function loadConfig(configPath?: string): Promise<Config> {
 
   try {
     const content = await readFile(path, "utf-8");
-    const userConfig = JSON.parse(content) as Partial<Config>;
+    const rawConfig = JSON.parse(content) as Partial<Config>;
+    const userConfig = resolveEnvVars(rawConfig) as Partial<Config>;
 
     // Deep merge with defaults
     return {
