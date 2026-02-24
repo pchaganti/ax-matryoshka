@@ -310,12 +310,22 @@ export function evaluate(
     case "app": {
       // Evaluate the function
       const fn = evaluate(term.fn, tools, env, log, depth + 1);
-      if (!isClosure(fn)) {
-        throw new Error(`app: expected function, got ${typeof fn}`);
-      }
 
       // Evaluate the argument
       const arg = evaluate(term.arg, tools, env, log, depth + 1);
+
+      // Accept native functions (e.g., from classify)
+      if (typeof fn === "function") {
+        try {
+          return (fn as (arg: unknown) => unknown)(arg) as LCValue;
+        } catch (err) {
+          throw new Error(`app: native function threw: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      if (!isClosure(fn)) {
+        throw new Error(`app: expected function, got ${typeof fn}`);
+      }
 
       // Apply: extend the closure's environment with the argument
       const newEnv = new Map(fn.env);
@@ -389,6 +399,10 @@ export function formatValue(value: LCValue, indent: number = 0): string {
 
   if (isClosure(value)) {
     return `<function (${value.param}) => ...>`;
+  }
+
+  if (typeof value === "function") {
+    return `<function>`;
   }
 
   if (typeof value === "object") {

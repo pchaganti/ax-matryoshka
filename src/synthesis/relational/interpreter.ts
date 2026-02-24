@@ -270,7 +270,7 @@ export function exprToCode(expr: Expr): string {
       return `(${exprToCode(expr.left)} / ${exprToCode(expr.right)})`;
 
     case "concat":
-      return `(${exprToCode(expr.left)} + ${exprToCode(expr.right)})`;
+      return `(String(${exprToCode(expr.left)}) + String(${exprToCode(expr.right)}))`;
 
     case "match": {
       const escapedPattern = expr.pattern.replace(/\//g, "\\/").replace(/\n/g, "\\n").replace(/\r/g, "\\r");

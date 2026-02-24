@@ -416,6 +416,7 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`split: expected string, got ${typeof str}`);
       }
+      if (term.index < 0) return null;
       const parts = str.split(term.delim);
       return parts[term.index] ?? null;
     }
@@ -520,6 +521,7 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`extract: expected string, got ${typeof str}`);
       }
+      if (term.group < 0) return null;
       const extractValidation = validateRegex(term.pattern);
       if (!extractValidation.valid) {
         throw new Error(`extract: ${extractValidation.error}`);
@@ -792,10 +794,11 @@ function evaluatePredicate(
 ): boolean {
   // Simple pattern: (match var "pattern" 0)
   if (body.tag === "match") {
+    if (body.group < 0) return false;
     const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, depth + 1));
     const patternValidation = validateRegex(body.pattern);
     if (!patternValidation.valid) return false;
-    const regex = new RegExp(body.pattern, "i"); // Case-insensitive like grep
+    const regex = new RegExp(body.pattern);
     const result = str.match(regex);
     return result !== null && result[body.group] !== undefined;
   }
@@ -919,6 +922,7 @@ function evaluateWithBinding(
     }
 
     case "split": {
+      if (body.index < 0) return null;
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
         : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
@@ -1013,6 +1017,7 @@ function evaluateWithBinding(
     }
 
     case "extract": {
+      if (body.group < 0) return null;
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") return null;
       const extractPatternValidation = validateRegex(body.pattern);

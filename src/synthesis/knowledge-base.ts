@@ -243,7 +243,7 @@ export class KnowledgeBase {
     let lowestId: string | null = null;
     let lowestScore = Infinity;
     for (const [id, comp] of this.components) {
-      const score = comp.successCount * 2 + (comp.usageCount > 0 ? comp.successCount / comp.usageCount : 0);
+      const score = comp.usageCount * 2 + (comp.usageCount > 0 ? comp.successCount / comp.usageCount : 0);
       if (score < lowestScore) {
         lowestScore = score;
         lowestId = id;

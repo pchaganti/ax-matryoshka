@@ -50,7 +50,7 @@ export function take<A>(n: number | false, s: Stream<A>): A[] {
       result.push(s.head);
       s = s.tail;
       if (n !== false) --n;
-      thunkSteps = 0; // Reset on progress
+      // Don't reset thunkSteps — track total thunks across entire take()
     }
   }
   return result;
