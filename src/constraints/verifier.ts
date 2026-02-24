@@ -335,6 +335,11 @@ function isSafeInvariant(expr: string): boolean {
     return false;
   }
 
+  // Reject unicode escape sequences that could bypass keyword checks
+  if (/\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\}/.test(expr)) {
+    return false;
+  }
+
   // Only allow: result, numbers, strings, comparisons, typeof, length, basic operators, dot property access
   const safePattern =
     /^[\s\w.<>=!+\-*/%&|?:'"]+$/;

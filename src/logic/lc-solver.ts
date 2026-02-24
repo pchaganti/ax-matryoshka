@@ -392,7 +392,7 @@ function evaluate(
       if (!matchValidation.valid) {
         throw new Error(`match: ${matchValidation.error}`);
       }
-      const regex = new RegExp(term.pattern, "i"); // Case-insensitive like grep
+      const regex = new RegExp(term.pattern);
       const result = str.match(regex);
       return result ? (result[term.group] ?? null) : null;
     }
@@ -900,7 +900,8 @@ function evaluateWithBinding(
       if (!matchVal.valid) {
         throw new Error(`match: ${matchVal.error}`);
       }
-      const regex = new RegExp(body.pattern, "i"); // Case-insensitive like grep
+      if (body.group < 0) return null;
+      const regex = new RegExp(body.pattern);
       const result = str.match(regex);
       return result ? (result[body.group] ?? null) : null;
     }
@@ -1281,10 +1282,11 @@ function parseCurrency(str: string): number | null {
 
   let cleaned = str.trim();
 
-  // Handle negative: (1,234) or -1,234 or -$1,234
+  // Handle negative: (1,234) or -1,234 or -$1,234 or $-1,234
   const isNegative = cleaned.startsWith("(") && cleaned.endsWith(")") ||
                      cleaned.startsWith("-") ||
-                     /^-[\$€£¥₹₽₿]/.test(cleaned);
+                     /^-[\$€£¥₹₽₿]/.test(cleaned) ||
+                     /^[\$€£¥₹₽₿]-/.test(cleaned);
 
   // Remove currency symbols, parentheses, minus signs, and whitespace
   cleaned = cleaned.replace(/[\$€£¥₹₽₿\s\(\)\-]/g, "");

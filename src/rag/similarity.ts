@@ -39,6 +39,8 @@ export function inverseDocumentFrequency(
   documents: string[][]
 ): Map<string, number> {
   const docCount = documents.length;
+  if (docCount === 0) return new Map();
+
   const termDocCount = new Map<string, number>();
 
   // Count how many documents contain each term

@@ -645,8 +645,27 @@ export class SynthesisIntegrator {
       };
     }
 
+    // Filter out rules with invalid/dangerous regex patterns
+    const safeRules = rules.filter(rule => {
+      try {
+        if (rule.pattern.length > 500) return false;
+        // Check for ReDoS patterns (nested quantifiers)
+        if (/(\((?:[^()]*[+*])[^()]*\))[+*]|\(\?[^)]*[+*][^)]*\)[+*]/.test(rule.pattern)) return false;
+        new RegExp(rule.pattern);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    if (safeRules.length === 0) {
+      return {
+        success: false,
+        error: "No safe classifier rules could be synthesized",
+      };
+    }
+
     const code = `(s) => {
-      const rules = ${JSON.stringify(rules)};
+      const rules = ${JSON.stringify(safeRules)};
       for (const rule of rules) {
         try {
           if (new RegExp(rule.pattern).test(s)) {
@@ -658,7 +677,7 @@ export class SynthesisIntegrator {
     }`;
 
     const fn = (s: string) => {
-      for (const rule of rules) {
+      for (const rule of safeRules) {
         try {
           if (new RegExp(rule.pattern).test(s)) {
             return rule.output;

@@ -170,7 +170,11 @@ export function evaluate(
         let result: LCValue;
         if (typeof predicate === "function") {
           // Native function (e.g., from classify)
-          result = (predicate as (arg: unknown) => unknown)(item) as LCValue;
+          try {
+            result = (predicate as (arg: unknown) => unknown)(item) as LCValue;
+          } catch (err) {
+            throw new Error(`filter: native predicate threw: ${err instanceof Error ? err.message : String(err)}`);
+          }
         } else if (isClosure(predicate)) {
           const newEnv = new Map(predicate.env);
           newEnv.set(predicate.param, item);
@@ -205,7 +209,11 @@ export function evaluate(
         let result: LCValue;
         if (typeof transform === "function") {
           // Native function (e.g., from classify)
-          result = (transform as (arg: unknown) => unknown)(item) as LCValue;
+          try {
+            result = (transform as (arg: unknown) => unknown)(item) as LCValue;
+          } catch (err) {
+            throw new Error(`map: native transform threw: ${err instanceof Error ? err.message : String(err)}`);
+          }
         } else if (isClosure(transform)) {
           const newEnv = new Map(transform.env);
           newEnv.set(transform.param, item);
@@ -249,6 +257,7 @@ export function evaluate(
       if (typeof str !== "string") {
         throw new Error(`split: expected string, got ${typeof str}`);
       }
+      if (term.index < 0) return null;
       const parts = str.split(term.delim);
       return parts[term.index] ?? null;
     }

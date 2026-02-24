@@ -114,7 +114,10 @@ function tokenize(input: string): Token[] {
         kw += input[i];
         i++;
       }
-      tokens.push({ type: "keyword", value: kw });
+      if (kw.length > 0) {
+        tokens.push({ type: "keyword", value: kw });
+      }
+      // Skip lone ':' — no token produced
       continue;
     }
 
@@ -161,7 +164,9 @@ function tokenize(input: string): Token[] {
           i++;
         }
       }
-      i++; // skip closing quote
+      if (i < input.length) {
+        i++; // skip closing quote
+      }
       tokens.push({ type: "string", value: str });
       continue;
     }
@@ -173,7 +178,12 @@ function tokenize(input: string): Token[] {
         num = "-";
         i++;
       }
+      let hasDecimal = false;
       while (i < input.length && /[\d.]/.test(input[i])) {
+        if (input[i] === ".") {
+          if (hasDecimal) break; // Stop at second decimal point
+          hasDecimal = true;
+        }
         num += input[i];
         i++;
       }

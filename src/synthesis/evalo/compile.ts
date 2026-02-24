@@ -38,7 +38,8 @@ export function compile(extractor: Extractor): string {
       if (!replaceValidation.valid) return compile(extractor.str);
       const strCode = compile(extractor.str);
       const from = escapeRegexForLiteral(extractor.from);
-      const to = escapeStringForLiteral(extractor.to);
+      // Escape $ as $$ for replacement string to prevent backreference injection
+      const to = escapeStringForLiteral(extractor.to.replace(/\$/g, "$$$$"));
       return `(${strCode}).replace(/${from}/g, "${to}")`;
     }
 
