@@ -680,7 +680,7 @@ function parseList(state: ParserState): LCTerm | null {
           if (!input || input.tag !== "lit" || typeof input.value !== "string")
             break;
           const output = parseTerm(state);
-          if (!output || output.tag !== "lit") break;
+          if (!output || output.tag !== "lit" || output.value === null) break;
           examples.push({ input: input.value, output: output.value });
         }
       }

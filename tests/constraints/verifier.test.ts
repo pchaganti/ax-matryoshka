@@ -168,6 +168,15 @@ describe("verifyResult", () => {
       expect(result.valid).toBe(false);
       expect(result.errors[0]).toContain("maximum length");
     });
+
+    it("should reject ReDoS pattern as invalid", () => {
+      const constraint: SynthesisConstraint = {
+        output: { type: "string", pattern: "(a+)+" },
+      };
+      const result = verifyResult("aaa", constraint);
+      expect(result.valid).toBe(false);
+      expect(result.errors[0]).toContain("pattern");
+    });
   });
 
   describe("array constraints", () => {

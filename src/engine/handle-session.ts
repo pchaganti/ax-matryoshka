@@ -97,6 +97,10 @@ export class HandleSession {
       if (!this.initPromise) {
         this.initPromise = this.parserRegistry.init().then(() => {
           this.parserInitialized = true;
+        }).catch((err) => {
+          // Reset so the next call can retry
+          this.initPromise = null;
+          throw err;
         });
       }
       await this.initPromise;

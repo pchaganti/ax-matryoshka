@@ -635,8 +635,9 @@ Try again with proper formatting.`;
         codeExecuted = true;
         noCodeCount = 0; // Reset no-code counter on successful code extraction
 
-        // Check if code is being repeated
-        const isRepeatedCode = code.trim() === lastCode.trim();
+        // Check if code is being repeated (skip if either is empty)
+        const trimmedCode = code.trim();
+        const isRepeatedCode = trimmedCode.length > 0 && trimmedCode === lastCode.trim();
         if (isRepeatedCode) {
           log(`[Turn ${turn}] WARNING: Repeated code detected`);
           history.push({ role: "user", content: adapter.getRepeatedCodeFeedback(lastResultCount) });
@@ -734,7 +735,9 @@ Try again with proper formatting.`;
             const keys = [...solverBindings.keys()];
             const turnKeys = keys.filter(k => /^_\d+$/.test(k))
               .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
-            const toRemove = turnKeys.slice(0, turnKeys.length - (MAX_SOLVER_BINDINGS - (keys.length - turnKeys.length)));
+            const nonTurnCount = keys.length - turnKeys.length;
+            const maxTurnKeys = Math.max(1, MAX_SOLVER_BINDINGS - nonTurnCount);
+            const toRemove = turnKeys.slice(0, Math.max(0, turnKeys.length - maxTurnKeys));
             for (const key of toRemove) {
               solverBindings.delete(key);
             }

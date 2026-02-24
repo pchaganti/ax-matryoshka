@@ -170,7 +170,7 @@ function wrapWithNullCheck(term: LCTerm): LCTerm {
         tag: "if",
         cond: term,
         then: term,
-        else: { tag: "lit", value: null as unknown as string },
+        else: { tag: "lit", value: null },
       };
 
     case "parseInt":

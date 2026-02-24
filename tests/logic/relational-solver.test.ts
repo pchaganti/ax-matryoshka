@@ -265,5 +265,19 @@ describe("Relational Solver", () => {
       expect(result.apply("xyz456uvw")).toBe(456);
     });
   });
+
+  describe("regex validation in primitives", () => {
+    it("should return null for match with nested-quantifier regex (ReDoS)", () => {
+      const composition: Composition = { steps: [{ primitive: "match" as Primitive, args: { pattern: "(a+)+", group: 0 } }] };
+      const result = evaluateComposition(composition, "aaaaaaaaaaaaaaaaaa!");
+      expect(result).toBeNull();
+    });
+
+    it("should return null for replace with nested-quantifier regex (ReDoS)", () => {
+      const composition: Composition = { steps: [{ primitive: "replace" as Primitive, args: { from: "(a+)+", to: "x" } }] };
+      const result = evaluateComposition(composition, "aaaaaaaaaaaaaaaaaa!");
+      expect(result).toBeNull();
+    });
+  });
 });
 

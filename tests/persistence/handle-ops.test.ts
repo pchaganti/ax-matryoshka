@@ -230,6 +230,15 @@ describe("HandleOps", () => {
       // This might rarely fail but is acceptable for testing randomness
       expect(same).toBe(false);
     });
+
+    it("should not contain duplicates", () => {
+      const data = Array.from({ length: 50 }, (_, i) => ({ line: `Line ${i}`, lineNum: i }));
+      const handle = registry.store(data);
+
+      const sample = ops.sample(handle, 10);
+      const lineNums = sample.map((item: Record<string, unknown>) => item.lineNum);
+      expect(new Set(lineNums).size).toBe(10);
+    });
   });
 
   describe("describe", () => {

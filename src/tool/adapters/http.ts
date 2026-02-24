@@ -131,8 +131,12 @@ export class HttpAdapter {
    */
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.server = http.createServer(async (req, res) => {
-        await this.handleRequest(req, res);
+      this.server = http.createServer((req, res) => {
+        this.handleRequest(req, res).catch((err) => {
+          if (!res.headersSent) {
+            this.sendError(res, 500, err instanceof Error ? err.message : String(err));
+          }
+        });
       });
       this.server.requestTimeout = 30_000;  // 30s max per request
       this.server.headersTimeout = 10_000;  // 10s for headers
@@ -379,9 +383,12 @@ export class HttpAdapter {
     const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
     return new Promise((resolve, reject) => {
       let data = "";
+      let settled = false;
 
       req.on("data", (chunk: Buffer) => {
+        if (settled) return;
         if (Buffer.byteLength(data, "utf8") + chunk.length > MAX_BODY_SIZE) {
+          settled = true;
           req.destroy();
           reject(new Error("Request body too large"));
           return;
@@ -390,6 +397,8 @@ export class HttpAdapter {
       });
 
       req.on("end", () => {
+        if (settled) return;
+        settled = true;
         if (!data) {
           resolve({});
           return;
@@ -402,7 +411,11 @@ export class HttpAdapter {
         }
       });
 
-      req.on("error", reject);
+      req.on("error", (err) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      });
     });
   }
 

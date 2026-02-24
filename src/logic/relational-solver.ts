@@ -11,6 +11,8 @@
  * 3. Synthesis on failure (when built-ins don't work)
  */
 
+import { validateRegex } from "./lc-solver.js";
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -58,6 +60,8 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
     if (typeof input !== "string") return null;
     const pattern = args.pattern as string;
     const group = (args.group as number) ?? 0;
+    const validation = validateRegex(pattern);
+    if (!validation.valid) return null;
     try {
       const regex = new RegExp(pattern);
       const result = input.match(regex);
@@ -72,6 +76,8 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
     if (typeof input !== "string") return null;
     const from = args.from as string;
     const to = args.to as string;
+    const fromValidation = validateRegex(from);
+    if (!fromValidation.valid) return null;
     try {
       const regex = new RegExp(from, "g");
       return input.replace(regex, to);
@@ -464,9 +470,16 @@ function searchComposition(examples: Example[]): Composition | null {
     generators.push(generateNumberExtractionCandidates());
   }
 
-  // Search through all candidates
+  // Search through all candidates (with iteration limit to prevent runaway search)
+  const MAX_CANDIDATES = 10_000;
+  let candidatesChecked = 0;
+
   for (const generator of generators) {
     for (const candidate of generator) {
+      if (++candidatesChecked > MAX_CANDIDATES) {
+        return null;
+      }
+
       let allMatch = true;
 
       for (const { input, output } of examples) {

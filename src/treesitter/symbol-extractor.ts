@@ -117,14 +117,18 @@ export class SymbolExtractor {
   /**
    * Recursively walk the syntax tree and extract symbols
    */
+  private static readonly MAX_TREE_DEPTH = 200;
+
   private walkTree(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     node: any,
     language: SupportedLanguage,
     symbolMappings: Record<string, SymbolKind>,
     symbols: Symbol[],
-    parentId: number | null
+    parentId: number | null,
+    depth: number = 0
   ): void {
+    if (depth > SymbolExtractor.MAX_TREE_DEPTH) return;
     let currentParentId = parentId;
 
     // Special case: Python - handle classes and methods correctly
@@ -167,7 +171,7 @@ export class SymbolExtractor {
     for (let i = 0; i < node.childCount; i++) {
       const child = node.child(i);
       if (child) {
-        this.walkTree(child, language, symbolMappings, symbols, currentParentId);
+        this.walkTree(child, language, symbolMappings, symbols, currentParentId, depth + 1);
       }
     }
   }

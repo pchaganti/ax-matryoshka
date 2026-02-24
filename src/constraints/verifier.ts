@@ -10,6 +10,7 @@ import type {
   SynthesisConstraint,
   VerificationResult,
 } from "./types.js";
+import { validateRegex } from "../logic/lc-solver.js";
 
 /**
  * Verify that a result satisfies all constraints.
@@ -156,15 +157,20 @@ function verifyStringConstraint(
 ): void {
   // Pattern constraint
   if (constraint.pattern !== undefined) {
-    try {
-      const regex = new RegExp(constraint.pattern);
-      if (!regex.test(value)) {
-        errors.push(
-          `${path} does not match pattern /${constraint.pattern}/`
-        );
-      }
-    } catch {
+    const validation = validateRegex(constraint.pattern);
+    if (!validation.valid) {
       errors.push(`Invalid pattern: ${constraint.pattern}`);
+    } else {
+      try {
+        const regex = new RegExp(constraint.pattern);
+        if (!regex.test(value)) {
+          errors.push(
+            `${path} does not match pattern /${constraint.pattern}/`
+          );
+        }
+      } catch {
+        errors.push(`Invalid pattern: ${constraint.pattern}`);
+      }
     }
   }
 

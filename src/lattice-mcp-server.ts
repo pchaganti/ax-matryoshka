@@ -404,9 +404,22 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           closeSession("new document loaded");
         }
 
-        // Create new session
-        session = new HandleSession();
-        const stats = await session.loadFile(filePath);
+        // Create new session — use temp variable so `session` isn't
+        // left pointing at a half-initialised object if loadFile throws.
+        const newSession = new HandleSession();
+        let stats: { lineCount: number; size: number };
+        try {
+          stats = await newSession.loadFile(filePath);
+        } catch (loadErr) {
+          newSession.close();
+          return {
+            content: [{
+              type: "text",
+              text: `Error loading file: ${loadErr instanceof Error ? loadErr.message : String(loadErr)}`,
+            }],
+          };
+        }
+        session = newSession;
 
         // Start inactivity timer
         resetInactivityTimer();
