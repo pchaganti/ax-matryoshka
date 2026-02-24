@@ -256,7 +256,7 @@ export class EvolutionarySynthesizer {
     examples: Array<{ input: string; output: unknown }>
   ): boolean {
     try {
-      const fn = eval(code);
+      const fn = new Function("return " + code)();
       return examples.every((e) => {
         const result = fn(e.input);
         return this.deepEqual(result, e.output);

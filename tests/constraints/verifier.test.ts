@@ -362,4 +362,22 @@ describe("verifyInvariant", () => {
     expect(verifyInvariant(42, "process.exit(1)")).toBe(false);
     expect(verifyInvariant(42, "require('fs')")).toBe(false);
   });
+
+  it("should reject bracket access to dangerous properties", () => {
+    expect(verifyInvariant({}, 'result["constructor"]')).toBe(false);
+    expect(verifyInvariant({}, 'result["__proto__"]')).toBe(false);
+    expect(verifyInvariant({}, 'result["prototype"]')).toBe(false);
+  });
+
+  it("should reject function calls (parentheses)", () => {
+    expect(verifyInvariant("hello", "result.toString()")).toBe(false);
+    expect(verifyInvariant(42, "(function(){})()")).toBe(false);
+  });
+
+  it("should still allow valid comparison expressions", () => {
+    expect(verifyInvariant(42, "result > 0")).toBe(true);
+    expect(verifyInvariant("hello", "result.length > 3")).toBe(true);
+    expect(verifyInvariant(10, "result === 10")).toBe(true);
+    expect(verifyInvariant([1, 2], "result.length > 0")).toBe(true);
+  });
 });

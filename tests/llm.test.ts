@@ -68,6 +68,28 @@ describe("LLM Provider System", () => {
         )
       ).toThrow(/environment variable.*not set/i);
     });
+
+    it("should resolve embedded env vars like 'Bearer ${TOKEN}'", () => {
+      process.env.TEST_EMBEDDED_TOKEN = "my-secret-token";
+
+      const query = createLLMClient(
+        "deepseek",
+        { baseUrl: "https://api.deepseek.com", apiKey: "Bearer ${TEST_EMBEDDED_TOKEN}" },
+        { provider: "deepseek", model: "deepseek-coder" }
+      );
+      expect(typeof query).toBe("function");
+
+      delete process.env.TEST_EMBEDDED_TOKEN;
+    });
+
+    it("should pass through strings without ${} unchanged", () => {
+      const query = createLLMClient(
+        "deepseek",
+        { baseUrl: "https://api.deepseek.com", apiKey: "plain-api-key" },
+        { provider: "deepseek", model: "deepseek-coder" }
+      );
+      expect(typeof query).toBe("function");
+    });
   });
 
   describe("Ollama Provider", () => {

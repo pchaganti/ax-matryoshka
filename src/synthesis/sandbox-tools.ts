@@ -315,7 +315,8 @@ export async function createSandboxWithSynthesis(
     isFinite,
     encodeURIComponent,
     decodeURIComponent,
-    eval, // Needed for get_extractor_code tests
+    // Override eval to prevent arbitrary code execution in sandbox
+    eval: () => { throw new Error("eval is not allowed in sandbox"); },
 
     // Async iteration support
     Symbol,

@@ -303,9 +303,19 @@ function isSafeInvariant(expr: string): boolean {
     }
   }
 
-  // Only allow: result, numbers, strings, comparisons, typeof, length, basic operators
+  // Reject function calls - any parentheses indicate function invocation
+  if (/\(/.test(expr)) {
+    return false;
+  }
+
+  // Reject bracket notation access to dangerous properties
+  if (/\[["']/.test(expr)) {
+    return false;
+  }
+
+  // Only allow: result, numbers, strings, comparisons, typeof, length, basic operators, dot property access
   const safePattern =
-    /^[\s\w.[\]()'"<>=!+\-*/%&|?:]+$/;
+    /^[\s\w.<>=!+\-*/%&|?:'"]+$/;
 
   return safePattern.test(expr);
 }

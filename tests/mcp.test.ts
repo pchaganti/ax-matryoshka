@@ -230,6 +230,30 @@ describe("MCP Server", () => {
     });
   });
 
+  describe("session eviction", () => {
+    it("should evict oldest session when exceeding max sessions", async () => {
+      const { createMCPServer } = await import("../src/mcp-server.js");
+      const server = createMCPServer();
+
+      // Create many sessions to exceed limit (default MAX_ENGINE_SESSIONS = 20)
+      for (let i = 0; i < 25; i++) {
+        await server.callTool("nucleus_execute", {
+          command: '(grep "test")',
+          filePath: "./test-fixtures/small.txt",
+          sessionId: `session-${i}`,
+        });
+      }
+
+      // The server should not throw - eviction should have occurred
+      const result = await server.callTool("nucleus_execute", {
+        command: '(grep "test")',
+        filePath: "./test-fixtures/small.txt",
+        sessionId: "session-new",
+      });
+      expect(result.content[0].text).toContain("results");
+    });
+  });
+
   describe("nucleus_commands tool", () => {
     it("should return command reference", async () => {
       const { createMCPServer } = await import("../src/mcp-server.js");

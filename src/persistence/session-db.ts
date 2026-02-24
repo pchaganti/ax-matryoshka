@@ -276,6 +276,16 @@ export class SessionDB {
   }
 
   /**
+   * List all handle names
+   */
+  listHandles(): string[] {
+    if (!this.db) return [];
+    const stmt = this.db.prepare("SELECT handle FROM handles ORDER BY handle");
+    const rows = stmt.all() as Array<{ handle: string }>;
+    return rows.map((r) => r.handle);
+  }
+
+  /**
    * Delete a handle and its data
    */
   deleteHandle(handle: string): void {

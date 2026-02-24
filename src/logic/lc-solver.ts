@@ -34,6 +34,31 @@ export interface SolverTools {
 export type Bindings = Map<string, unknown>;
 
 /**
+ * Validate a regex pattern for safety (ReDoS protection)
+ */
+export function validateRegex(pattern: string): { valid: boolean; error?: string } {
+  // Reject excessively long patterns
+  if (pattern.length > 500) {
+    return { valid: false, error: `Regex pattern too long (${pattern.length} chars, max 500)` };
+  }
+
+  // Reject nested quantifiers that cause catastrophic backtracking
+  // Patterns like (a+)+, (a*)+, (a+)*, (a{1,})+, etc.
+  if (/(\((?:[^()]*[+*])[^()]*\))[+*]|\(\?[^)]*[+*][^)]*\)[+*]/.test(pattern)) {
+    return { valid: false, error: "Regex contains nested quantifiers which may cause catastrophic backtracking" };
+  }
+
+  // Verify the pattern is a valid regex
+  try {
+    new RegExp(pattern);
+  } catch (err) {
+    return { valid: false, error: `Invalid regex: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  return { valid: true };
+}
+
+/**
  * Module-level synthesis integrator for caching across calls
  */
 const synthesisIntegrator = new SynthesisIntegrator();
@@ -122,6 +147,12 @@ function evaluate(
       if (specialChars.test(pattern)) {
         pattern = "\\" + pattern;
         log(`[Solver] Auto-escaped special regex char: "${term.pattern}" -> "${pattern}"`);
+      }
+
+      // Validate regex for safety (ReDoS protection)
+      const regexValidation = validateRegex(pattern);
+      if (!regexValidation.valid) {
+        throw new Error(`Invalid regex pattern: ${regexValidation.error}`);
       }
 
       log(`[Solver] Executing grep("${pattern}")`);

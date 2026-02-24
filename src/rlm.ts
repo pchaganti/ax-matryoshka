@@ -9,7 +9,6 @@
 import { readFile } from "node:fs/promises";
 import { createSandboxWithSynthesis, type SandboxWithSynthesis } from "./synthesis/sandbox-tools.js";
 import { SynthesisCoordinator } from "./synthesis/coordinator.js";
-import { collectExamplesFromResult, extractGrepResults } from "./synthesis/example-collector.js";
 import { createToolRegistry, getToolInterfaces } from "./tools.js";
 import type { LLMQueryFn } from "./llm/types.js";
 import type { ModelAdapter, FinalVarMarker, RAGHints } from "./adapters/types.js";
@@ -133,92 +132,6 @@ function createSolverTools(context: string): SolverTools {
 
 // Re-export types for backwards compatibility
 export type { FinalVarMarker } from "./adapters/types.js";
-
-/**
- * Analyze grep results and automatically synthesize extractors
- * Returns synthesized code to inject into feedback, or null if no synthesis needed
- */
-function synthesizeFromGrepResults(
-  logs: string[],
-  code: string,
-  coordinator: SynthesisCoordinator,
-  verbose: boolean
-): string | null {
-  // Only process if this looks like a grep call
-  if (!code.includes("grep(")) {
-    return null;
-  }
-
-  // Try to parse grep results from logs
-  const grepResults = extractGrepResults(logs);
-  if (grepResults.length === 0) {
-    return null;
-  }
-
-  // Look for currency values in the grep results
-  const currencyExamples: Array<{ input: string; output: number }> = [];
-  const currencyPattern = /\$[\d,]+/;
-
-  for (const gr of grepResults) {
-    const match = gr.line.match(currencyPattern);
-    if (match) {
-      const rawValue = match[0];
-      const numericValue = parseFloat(rawValue.replace(/[$,]/g, ""));
-      if (!isNaN(numericValue)) {
-        currencyExamples.push({ input: rawValue, output: numericValue });
-      }
-    }
-  }
-
-  if (currencyExamples.length < 2) {
-    return null; // Need at least 2 examples for synthesis
-  }
-
-  // Collect examples for the coordinator
-  collectExamplesFromResult({ result: null, logs }, code, coordinator);
-
-  // Synthesize an extractor from the examples
-  const synthesisResult = coordinator.synthesize({
-    type: "extractor",
-    description: "currency_extractor",
-    positiveExamples: currencyExamples.map(e => e.input),
-    expectedOutputs: currencyExamples.map(e => e.output),
-  });
-
-  if (!synthesisResult.success) {
-    return null;
-  }
-
-  if (verbose) {
-    console.log(`[Synthesis] Automatically synthesized extractor from ${currencyExamples.length} examples`);
-  }
-
-  // Generate code that uses the synthesized extractor
-  const synthesizedCode = `
-## SYNTHESIZED EXTRACTOR (use this instead of writing your own regex!)
-
-I detected currency values in the grep results and synthesized an extractor for you.
-Use this code to extract and sum the values:
-
-\`\`\`javascript
-// Synthesized extractor from examples: ${currencyExamples.slice(0, 3).map(e => e.input).join(", ")}
-let total = 0;
-for (const hit of hits) {
-  // Extract currency value from each line
-  const match = hit.line.match(/\\$([\\d,]+)/);
-  if (match) {
-    const value = parseFloat(match[1].replace(/,/g, ""));
-    total += value;
-    console.log(hit.line, "->", value);
-  }
-}
-console.log("Total:", total);
-\`\`\`
-
-Use THIS code in your next turn. Do NOT hardcode values or make up data.`;
-
-  return synthesizedCode;
-}
 
 /**
  * Generate classifier guidance from grep output
@@ -787,7 +700,6 @@ Try again with proper formatting.`;
           log(`[Turn ${turn}] Available bindings: ${[...solverBindings.keys()].join(", ")}`);
         }
 
-        const solverTools = createSolverTools(documentContent);
         const solverResult = solveTerm(lcResult.term, solverTools, solverBindings);
 
         // Convert solver result to sandbox-compatible result format
@@ -931,12 +843,6 @@ Try again with proper formatting.`;
           const resultStr = JSON.stringify(result.result, null, 2);
           log(`[Turn ${turn}] Result: ${resultStr}`);
           feedback += `Result: ${truncate(resultStr)}\n`;
-        }
-
-        // Automatically synthesize extractors from grep results
-        const synthesizedCode = synthesizeFromGrepResults(result.logs, code, coordinator, verbose);
-        if (synthesizedCode) {
-          feedback += `\n${synthesizedCode}`;
         }
 
         // Generate classifier guidance for search results

@@ -118,22 +118,7 @@ export class HandleRegistry {
    * List all active handles
    */
   listHandles(): string[] {
-    // Get handles from database
-    // We need to query the handles table
-    const handles: string[] = [];
-    let counter = 1;
-    // Check each potential handle up to a reasonable limit
-    while (counter <= 1000) {
-      const handle = `$res${counter}`;
-      const meta = this.db.getHandleMetadata(handle);
-      if (meta) {
-        handles.push(handle);
-      }
-      counter++;
-      // Stop early if we've gone 10 handles without finding one
-      if (counter > handles.length + 10) break;
-    }
-    return handles;
+    return this.db.listHandles();
   }
 
   /**

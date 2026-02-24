@@ -168,6 +168,43 @@ describe("HandleRegistry", () => {
       expect(handles).toContain("$res3");
     });
 
+    it("should find handles after gaps from deletion", () => {
+      registry.store([{ a: 1 }]);  // $res1
+      registry.store([{ b: 2 }]);  // $res2
+      registry.store([{ c: 3 }]);  // $res3
+      registry.store([{ d: 4 }]);  // $res4
+      registry.store([{ e: 5 }]);  // $res5
+
+      // Delete handle 3, creating a gap
+      registry.delete("$res3");
+
+      const handles = registry.listHandles();
+      expect(handles).toHaveLength(4);
+      expect(handles).toContain("$res1");
+      expect(handles).toContain("$res2");
+      expect(handles).toContain("$res4");
+      expect(handles).toContain("$res5");
+      expect(handles).not.toContain("$res3");
+    });
+
+    it("should find handles after many deletions at start", () => {
+      // Create 15 handles
+      for (let i = 0; i < 15; i++) {
+        registry.store([{ val: i }]);
+      }
+
+      // Delete first 12
+      for (let i = 1; i <= 12; i++) {
+        registry.delete(`$res${i}`);
+      }
+
+      const handles = registry.listHandles();
+      expect(handles).toHaveLength(3);
+      expect(handles).toContain("$res13");
+      expect(handles).toContain("$res14");
+      expect(handles).toContain("$res15");
+    });
+
     it("should get handle count info", () => {
       const data = Array.from({ length: 100 }, (_, i) => ({ line: `Line ${i}`, lineNum: i }));
       const handle = registry.store(data);

@@ -124,6 +124,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
   let llmClient: LLMQueryFn | undefined = options.llmClient;
 
   // Session-based engine cache for stateful Nucleus execution
+  const MAX_ENGINE_SESSIONS = 20;
   const engineSessions = new Map<string, NucleusEngine>();
 
   const ensureLLMClient = async (): Promise<LLMQueryFn> => {
@@ -151,7 +152,18 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
 
     let engine = engineSessions.get(key);
     if (engine && engine.isLoaded()) {
+      // Move to end for LRU ordering (most recently accessed = last)
+      engineSessions.delete(key);
+      engineSessions.set(key, engine);
       return engine;
+    }
+
+    // Evict oldest session if at capacity
+    if (engineSessions.size >= MAX_ENGINE_SESSIONS) {
+      const oldestKey = engineSessions.keys().next().value;
+      if (oldestKey !== undefined) {
+        engineSessions.delete(oldestKey);
+      }
     }
 
     engine = new NucleusEngine();
@@ -286,7 +298,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
     async start(): Promise<void> {
       // This method starts the actual MCP server with stdio transport
       const server = new Server(
-        { name: "rlm", version: "1.0.0" },
+        { name: "rlm", version: getVersion() },
         { capabilities: { tools: {} } }
       );
 

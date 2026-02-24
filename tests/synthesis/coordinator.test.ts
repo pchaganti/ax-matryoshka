@@ -183,9 +183,25 @@ describe("SynthesisCoordinator", () => {
       expect(result.success).toBe(true);
       expect(result.extractorCode).toBeDefined();
 
-      // Code should be evaluable
-      const fn = eval(result.extractorCode!);
+      // Code should be compilable with new Function (not eval)
+      const fn = new Function("return " + result.extractorCode!)();
       expect(fn("789")).toBe(789);
+    });
+
+    it("should compile synthesized extractor code via new Function (not eval)", () => {
+      const result = coordinator.synthesize({
+        type: "extractor",
+        description: "number extraction",
+        positiveExamples: ["$1,000", "$2,500"],
+        expectedOutputs: [1000, 2500],
+      });
+
+      if (result.success && result.extractorCode) {
+        // Verify the code can be compiled with new Function
+        expect(() => new Function("return " + result.extractorCode!)()).not.toThrow();
+        const fn = new Function("return " + result.extractorCode!)();
+        expect(typeof fn).toBe("function");
+      }
     });
 
     it("should return failure when no extractor pattern found", () => {

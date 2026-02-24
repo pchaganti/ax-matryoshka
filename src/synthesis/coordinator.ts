@@ -364,7 +364,7 @@ export class SynthesisCoordinator {
     if (solutions.length > 0) {
       const code = solutions[0];
       try {
-        const fn = eval(code);
+        const fn = new Function("return " + code)();
         return {
           success: true,
           synthesisTimeMs: Date.now() - startTime,
@@ -422,7 +422,7 @@ export class SynthesisCoordinator {
         if (testProgram(program, relationalExamples)) {
           const code = `(input) => ${exprToCode(program)}`;
           try {
-            const fn = eval(code);
+            const fn = new Function("return " + code)();
             return {
               name: "minikanren_synthesized",
               description: "Synthesized via miniKanren relational search",

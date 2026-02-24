@@ -237,6 +237,31 @@ describe("NucleusEngine", () => {
     });
   });
 
+  describe("regex validation (ReDoS protection)", () => {
+    it("should reject catastrophic backtracking patterns", () => {
+      const result = engine.execute('(grep "(a+)+$")');
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/regex|pattern|nested/i);
+    });
+
+    it("should reject excessively long patterns", () => {
+      const longPattern = "a".repeat(501);
+      const result = engine.execute(`(grep "${longPattern}")`);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/regex|pattern|long/i);
+    });
+
+    it("should accept normal patterns", () => {
+      const result = engine.execute('(grep "ERROR|WARN")');
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept digit patterns", () => {
+      const result = engine.execute('(grep "\\\\d+")');
+      expect(result.success).toBe(true);
+    });
+  });
+
   describe("error handling", () => {
     it("should return error for invalid syntax", () => {
       const result = engine.execute('(grep "unclosed');

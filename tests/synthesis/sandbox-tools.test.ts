@@ -195,14 +195,14 @@ describe("Sandbox Synthesis Tools", () => {
       expect(result.logs[0]).toBe("string");
     });
 
-    it("should return evaluable code", async () => {
+    it("should return compilable code (via new Function, not eval)", async () => {
       const result = await sandbox.execute(`
         const code = get_extractor_code([
           { input: '123', output: 123 },
           { input: '456', output: 456 }
         ]);
-        // Evaluate the code to get a function
-        const fn = eval(code);
+        // Compile the code to get a function using new Function
+        const fn = new Function("return " + code)();
         const result = fn('789');
         console.log(result);
       `);
@@ -265,6 +265,22 @@ describe("Sandbox Synthesis Tools", () => {
 
       // The synthesis should have been tracked
       expect(coordinator.getSynthesisCount()).toBeGreaterThan(0);
+    });
+  });
+
+  describe("sandbox security", () => {
+    it("should NOT expose eval in sandbox context", async () => {
+      const result = await sandbox.execute(`
+        try {
+          const r = eval("1+1");
+          console.log("eval accessible: " + r);
+        } catch (e) {
+          console.log("eval blocked: " + e.message);
+        }
+      `);
+
+      // eval should not be accessible - either throws or is not a function
+      expect(result.logs[0]).toMatch(/eval blocked|eval is not/);
     });
   });
 

@@ -543,7 +543,7 @@ async function main() {
   const server = new Server(
     {
       name: "lattice",
-      version: "1.0.0",
+      version: getVersion(),
     },
     {
       capabilities: {

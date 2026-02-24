@@ -32,17 +32,15 @@ export function getAvailableProviders(): string[] {
 function resolveEnvVar(value: string | undefined): string | undefined {
   if (!value) return value;
 
-  if (value.startsWith("${") && value.endsWith("}")) {
-    const envVar = value.slice(2, -1);
-    const resolved = process.env[envVar];
+  return value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+    const resolved = process.env[varName];
     if (!resolved) {
       throw new Error(
-        `Environment variable ${envVar} not set`
+        `Environment variable ${varName} not set`
       );
     }
     return resolved;
-  }
-  return value;
+  });
 }
 
 /**
