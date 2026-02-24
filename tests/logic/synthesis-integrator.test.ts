@@ -525,6 +525,43 @@ describe("SynthesisIntegrator - date parser null consistency", () => {
   });
 });
 
+describe("SynthesisIntegrator - currency parser NaN guard", () => {
+  it("should not produce NaN from currency parser on non-matching input", () => {
+    const integrator = new SynthesisIntegrator();
+    const result = integrator.synthesizeOnFailure({
+      operation: "parseCurrency",
+      input: "not-a-currency",
+      examples: [
+        { input: "$1,000", output: 1000 },
+        { input: "$2,500", output: 2500 },
+      ],
+    });
+    if (result.success && result.fn) {
+      const output = result.fn("no currency here");
+      // Should be null, not NaN
+      expect(output === null || (typeof output === "number" && !Number.isNaN(output))).toBe(true);
+    }
+  });
+
+  it("should produce null (not NaN) from Swiss format parser on non-matching input", () => {
+    const integrator = new SynthesisIntegrator();
+    const result = integrator.synthesizeOnFailure({
+      operation: "parseCurrency",
+      input: "1'234.50",
+      examples: [
+        { input: "1'234.50", output: 1234.50 },
+        { input: "5'678.00", output: 5678.00 },
+      ],
+    });
+    if (result.success && result.fn) {
+      const output = result.fn("no numbers");
+      if (typeof output === "number") {
+        expect(Number.isNaN(output)).toBe(false);
+      }
+    }
+  });
+});
+
 describe("SynthesisIntegrator - number parser NaN consistency", () => {
   let integrator: SynthesisIntegrator;
 

@@ -179,6 +179,9 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
     const usMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (usMatch && formatHint === "US") {
       const [, mm, dd, yyyy] = usMatch;
+      const month = parseInt(mm, 10);
+      const day = parseInt(dd, 10);
+      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
       return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
     }
   }
@@ -188,6 +191,9 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
     const euMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (euMatch) {
       const [, dd, mm, yyyy] = euMatch;
+      const month = parseInt(mm, 10);
+      const day = parseInt(dd, 10);
+      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
       return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
     }
   }
@@ -197,7 +203,8 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
   if (naturalMatch) {
     const [, monthName, day, year] = naturalMatch;
     const month = MONTHS[monthName.toLowerCase()];
-    if (month) {
+    const dayNum = parseInt(day, 10);
+    if (month && dayNum >= 1 && dayNum <= 31) {
       return `${year}-${month}-${day.padStart(2, "0")}`;
     }
   }
@@ -207,7 +214,8 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
   if (dmyMatch) {
     const [, day, monthName, year] = dmyMatch;
     const month = MONTHS[monthName.toLowerCase()];
-    if (month) {
+    const dayNum = parseInt(day, 10);
+    if (month && dayNum >= 1 && dayNum <= 31) {
       return `${year}-${month}-${day.padStart(2, "0")}`;
     }
   }
@@ -226,20 +234,21 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
   return null;
 }
 
-function parseCurrencyImpl(str: string): number | null {
+function parseCurrencyImpl(str: string, depth: number = 0): number | null {
+  if (depth > 10) return null; // Recursion depth limit
   const trimmed = str.trim();
 
   // Handle negative in parentheses: ($1,234)
   const negParenMatch = trimmed.match(/^\(([^)]+)\)$/);
   if (negParenMatch) {
-    const inner = parseCurrencyImpl(negParenMatch[1]);
+    const inner = parseCurrencyImpl(negParenMatch[1], depth + 1);
     return inner !== null ? -inner : null;
   }
 
   // Handle negative with minus: -$1,234
   const negMinusMatch = trimmed.match(/^-(.+)$/);
   if (negMinusMatch) {
-    const inner = parseCurrencyImpl(negMinusMatch[1]);
+    const inner = parseCurrencyImpl(negMinusMatch[1], depth + 1);
     return inner !== null ? -inner : null;
   }
 

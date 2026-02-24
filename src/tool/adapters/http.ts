@@ -388,29 +388,32 @@ export class HttpAdapter {
   private readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
     const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
     return new Promise((resolve, reject) => {
-      let data = "";
+      const chunks: Buffer[] = [];
+      let totalBytes = 0;
       let settled = false;
 
       req.on("data", (chunk: Buffer) => {
         if (settled) return;
-        if (Buffer.byteLength(data, "utf8") + chunk.length > MAX_BODY_SIZE) {
+        totalBytes += chunk.length;
+        if (totalBytes > MAX_BODY_SIZE) {
           settled = true;
           req.destroy();
           reject(new Error("Request body too large"));
           return;
         }
-        data += chunk.toString("utf8");
+        chunks.push(chunk);
       });
 
       req.on("end", () => {
         if (settled) return;
         settled = true;
-        if (!data) {
+        if (chunks.length === 0) {
           resolve({});
           return;
         }
 
         try {
+          const data = Buffer.concat(chunks).toString("utf8");
           resolve(JSON.parse(data));
         } catch {
           reject(new Error("Invalid JSON body"));
@@ -560,18 +563,17 @@ Examples:
     }
   }
 
+  const adapter = startHttpAdapter({ port, host, cors, timeoutSeconds });
+
   // Handle shutdown gracefully
-  process.on("SIGINT", () => {
-    console.log("\n[Lattice] Shutting down...");
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", () => {
-    console.log("[Lattice] Terminating...");
-    process.exit(0);
-  });
-
-  startHttpAdapter({ port, host, cors, timeoutSeconds }).catch((err) => {
+  adapter.then((a) => {
+    const shutdown = () => {
+      console.log("\n[Lattice] Shutting down...");
+      a.stop().then(() => process.exit(0)).catch(() => process.exit(1));
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  }).catch((err) => {
     console.error("Fatal error:", err);
     process.exit(1);
   });

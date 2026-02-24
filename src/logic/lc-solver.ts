@@ -639,7 +639,7 @@ function evaluate(
       const arg = evaluate(term.arg, tools, bindings, log, depth + 1);
       // Substitute arg for param in body and evaluate
       // For simplicity, we evaluate directly here
-      return evaluateWithBinding(closure.body, closure.param, arg, tools, bindings, log);
+      return evaluateWithBinding(closure.body, closure.param, arg, tools, bindings, log, depth + 1);
     }
 
     case "constrained":
@@ -807,7 +807,7 @@ function evaluatePredicate(
   }
 
   // For complex predicates, evaluate and check truthiness
-  const result = evaluateWithBinding(body, param, value, tools, bindings, log);
+  const result = evaluateWithBinding(body, param, value, tools, bindings, log, 0);
   return Boolean(result);
 }
 
@@ -822,7 +822,7 @@ function evaluateTransform(
   bindings: Bindings,
   log: (msg: string) => void
 ): unknown {
-  return evaluateWithBinding(body, param, value, tools, bindings, log);
+  return evaluateWithBinding(body, param, value, tools, bindings, log, 0);
 }
 
 /**
@@ -855,7 +855,10 @@ function evaluateReduceFn(
   // Single param - bind it to the item, use existing bindings for acc
   const newBindings = new Map(bindings);
   newBindings.set(param, item);
-  newBindings.set("acc", acc); // Convention: acc is available
+  // Only set "acc" if it won't collide with the lambda parameter name
+  if (param !== "acc") {
+    newBindings.set("acc", acc);
+  }
   return evaluate(body, tools, newBindings, log, 0);
 }
 
@@ -868,8 +871,12 @@ function evaluateWithBinding(
   value: unknown,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): unknown {
+  if (depth > 1000) {
+    throw new Error("evaluateWithBinding: maximum recursion depth exceeded");
+  }
   // Substitute variables and evaluate
   switch (body.tag) {
     case "var":
@@ -882,7 +889,7 @@ function evaluateWithBinding(
     case "match": {
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
-        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log));
+        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
       const matchVal = validateRegex(body.pattern);
       if (!matchVal.valid) {
         throw new Error(`match: ${matchVal.error}`);
@@ -895,7 +902,7 @@ function evaluateWithBinding(
     case "replace": {
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
-        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log));
+        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
       const replaceVal = validateRegex(body.from);
       if (!replaceVal.valid) {
         throw new Error(`replace: ${replaceVal.error}`);
@@ -906,26 +913,26 @@ function evaluateWithBinding(
     case "split": {
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
-        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log));
+        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
       const parts = str.split(body.delim);
       return parts[body.index] ?? null;
     }
 
     case "parseInt": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const intResult = parseInt(String(str), 10);
       return isNaN(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const floatResult = parseFloat(String(str));
       return isNaN(floatResult) ? null : floatResult;
     }
 
     case "add": {
-      const left = evaluateWithBinding(body.left, param, value, tools, bindings, log);
-      const right = evaluateWithBinding(body.right, param, value, tools, bindings, log);
+      const left = evaluateWithBinding(body.left, param, value, tools, bindings, log, depth + 1);
+      const right = evaluateWithBinding(body.right, param, value, tools, bindings, log, depth + 1);
       if (typeof left !== "number" || typeof right !== "number") {
         throw new Error(`add: expected numbers, got ${typeof left} and ${typeof right}`);
       }
@@ -933,7 +940,7 @@ function evaluateWithBinding(
     }
 
     case "parseDate": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strValue = String(str);
 
       // If examples are provided, prefer synthesis for consistency
@@ -953,7 +960,7 @@ function evaluateWithBinding(
     }
 
     case "parseCurrency": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strValue = String(str);
 
       // If examples are provided, prefer synthesis for consistency
@@ -973,7 +980,7 @@ function evaluateWithBinding(
     }
 
     case "parseNumber": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strValue = String(str);
 
       // If examples are provided, prefer synthesis for consistency
@@ -993,12 +1000,12 @@ function evaluateWithBinding(
     }
 
     case "coerce": {
-      const termValue = evaluateWithBinding(body.term, param, value, tools, bindings, log);
+      const termValue = evaluateWithBinding(body.term, param, value, tools, bindings, log, depth + 1);
       return coerceValue(termValue, body.targetType);
     }
 
     case "extract": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log) as string;
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") return null;
       const extractPatternValidation = validateRegex(body.pattern);
       if (!extractPatternValidation.valid) return null;
@@ -1038,7 +1045,7 @@ function evaluateWithBinding(
     }
 
     case "predicate": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       // Handle grep result objects - extract the line property
       const strValue =
         typeof str === "object" && str !== null && "line" in str

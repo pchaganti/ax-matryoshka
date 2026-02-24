@@ -276,7 +276,7 @@ export class SynthesisIntegrator {
     const hasEuFormat = inputs.some((i) => /\d\.\d{3},\d{2}/.test(i)); // 1.234,56
 
     let code: string;
-    let fn: (input: string) => number;
+    let fn: (input: string) => number | null;
 
     // Detect apostrophe format (Swiss: 1'234.50)
     const hasApostrophe = inputs.some((i) => i.includes("'"));
@@ -285,50 +285,59 @@ export class SynthesisIntegrator {
       // Swiss format: 1'234.50
       code = `(s) => {
         const cleaned = s.replace(/[^0-9.]/g, '');
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s.replace(/[^0-9.]/g, "");
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) ? null : r;
       };
     } else if (hasEuFormat || (hasEuroSymbol && inputs.some((i) => i.includes(",")))) {
       // EU format: 1.234,56€
       code = `(s) => {
         const cleaned = s.replace(/[€$¥£\\s]/g, '').replace(/\\./g, '').replace(',', '.');
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s
           .replace(/[€$¥£\s]/g, "")
           .replace(/\./g, "")
           .replace(",", ".");
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) ? null : r;
       };
     } else if (hasYenSymbol) {
       // Yen format: ¥123,456 (no decimals typically)
       code = `(s) => {
         const cleaned = s.replace(/[¥,\\s]/g, '');
-        return parseInt(cleaned, 10);
+        const r = parseInt(cleaned, 10);
+        return isNaN(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s.replace(/[¥,\s]/g, "");
-        return parseInt(cleaned, 10);
+        const r = parseInt(cleaned, 10);
+        return isNaN(r) ? null : r;
       };
     } else {
       // US/Default format: $1,234.56
       code = `(s) => {
         const cleaned = s.replace(/[$€¥£,\\s]/g, '');
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s.replace(/[$€¥£,\s]/g, "");
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) ? null : r;
       };
     }
 
     // Verify against examples
     const allMatch = examples.every((e) => {
       const result = fn(e.input);
+      if (result === null) return false;
       const expected = e.output as number;
       return Math.abs(result - expected) < 0.01;
     });

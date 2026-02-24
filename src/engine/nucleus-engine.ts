@@ -175,8 +175,9 @@ export class NucleusEngine {
    * Load a document from a string
    */
   loadContent(content: string): void {
-    this.context = content;
-    this.solverTools = createSolverTools(content);
+    const trimmed = content.trim();
+    this.context = trimmed.length > 0 ? content : "";
+    this.solverTools = trimmed.length > 0 ? createSolverTools(content) : null;
     this.bindings.clear();
     this.turnCounter = 0;
 

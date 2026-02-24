@@ -269,16 +269,16 @@ export function exprToCode(expr: Expr): string {
       return `(${exprToCode(expr.left)} + ${exprToCode(expr.right)})`;
 
     case "match":
-      return `${exprToCode(expr.str)}.match(/${expr.pattern.replace(/\//g, "\\/")}/)?.[${expr.group}]`;
+      return `((_s) => _s == null ? null : _s.match(/${expr.pattern.replace(/\//g, "\\/")}/)?.[${expr.group}])(${exprToCode(expr.str)})`;
 
     case "replace":
-      return `${exprToCode(expr.str)}.replace(/${expr.pattern.replace(/\//g, "\\/")}/g, ${JSON.stringify(expr.replacement)})`;
+      return `((_s) => _s == null ? null : _s.replace(/${expr.pattern.replace(/\//g, "\\/")}/g, ${JSON.stringify(expr.replacement)}))(${exprToCode(expr.str)})`;
 
     case "parseInt":
-      return `parseInt(${exprToCode(expr.str)}, 10)`;
+      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) ? null : _r; })(${exprToCode(expr.str)})`;
 
     case "parseFloat":
-      return `parseFloat(${exprToCode(expr.str)})`;
+      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) ? null : _r; })(${exprToCode(expr.str)})`;
 
     case "if":
       return `(${exprToCode(expr.cond)} ? ${exprToCode(expr.then)} : ${exprToCode(expr.else)})`;

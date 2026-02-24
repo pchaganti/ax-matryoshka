@@ -162,7 +162,8 @@ export class EvolutionarySynthesizer {
         `(s) => {
         const m = s.match(/${this.escapeRegexInString(pattern)}/);
         if (!m) return null;
-        return parseFloat((m[1] || m[0]).replace(/[,$]/g, ''));
+        const r = parseFloat((m[1] || m[0]).replace(/[,$]/g, ''));
+        return isNaN(r) ? null : r;
       }`
       );
 
@@ -170,14 +171,15 @@ export class EvolutionarySynthesizer {
         `(s) => {
         const m = s.match(/${this.escapeRegexInString(pattern)}/);
         if (!m) return null;
-        return parseInt((m[1] || m[0]).replace(/[,$]/g, ''), 10);
+        const r = parseInt((m[1] || m[0]).replace(/[,$]/g, ''), 10);
+        return isNaN(r) ? null : r;
       }`
       );
 
-      // Direct parseInt for simple numbers
-      strategies.push(`(s) => parseInt(s.replace(/[^\\d.-]/g, ''), 10)`);
+      // Direct parseInt for simple numbers (with NaN guard)
+      strategies.push(`(s) => { const r = parseInt(s.replace(/[^\\d.-]/g, ''), 10); return isNaN(r) ? null : r; }`);
 
-      strategies.push(`(s) => parseFloat(s.replace(/[^\\d.-]/g, ''))`);
+      strategies.push(`(s) => { const r = parseFloat(s.replace(/[^\\d.-]/g, '')); return isNaN(r) ? null : r; }`);
     } else if (typeof sampleOutput === "string") {
       strategies.push(
         `(s) => {
@@ -219,7 +221,7 @@ export class EvolutionarySynthesizer {
       outputs.every((o) => typeof o === "number") &&
       inputs.every((i) => /^\d+$/.test(i))
     ) {
-      return "(s) => parseInt(s, 10)";
+      return "(s) => { const r = parseInt(s, 10); return isNaN(r) ? null : r; }";
     }
 
     // Check for currency pattern
@@ -227,7 +229,7 @@ export class EvolutionarySynthesizer {
       outputs.every((o) => typeof o === "number") &&
       inputs.every((i) => /^\$[\d,]+$/.test(i))
     ) {
-      return '(s) => parseInt(s.replace(/[$,]/g, ""), 10)';
+      return '(s) => { const r = parseInt(s.replace(/[$,]/g, ""), 10); return isNaN(r) ? null : r; }';
     }
 
     // Check for key:value pattern

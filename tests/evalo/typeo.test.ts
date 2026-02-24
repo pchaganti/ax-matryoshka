@@ -8,8 +8,8 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { inferType, canProduceType } from "../../src/synthesis/evalo/typeo.js";
-import type { Extractor, Type } from "../../src/synthesis/evalo/types.js";
+import { inferType, canProduceType, possibleTypes } from "../../src/synthesis/evalo/typeo.js";
+import type { Extractor } from "../../src/synthesis/evalo/types.js";
 
 describe("inferType", () => {
   describe("base cases", () => {
@@ -151,6 +151,52 @@ describe("inferType", () => {
       };
       expect(inferType(e)).toBe("number");
     });
+  });
+});
+
+describe("possibleTypes - null-producing operations", () => {
+  it("should include null for parseInt (can return null on NaN)", () => {
+    const e: Extractor = { tag: "parseInt", str: { tag: "input" } };
+    const types = possibleTypes(e);
+    expect(types).toContain("null");
+  });
+
+  it("should include null for parseFloat (can return null on NaN)", () => {
+    const e: Extractor = { tag: "parseFloat", str: { tag: "input" } };
+    const types = possibleTypes(e);
+    expect(types).toContain("null");
+  });
+
+  it("should include null for add (can return null on non-numeric)", () => {
+    const e: Extractor = {
+      tag: "add",
+      left: { tag: "input" },
+      right: { tag: "lit", value: 1 },
+    };
+    const types = possibleTypes(e);
+    expect(types).toContain("null");
+  });
+
+  it("should include null for replace (str may be null)", () => {
+    const e: Extractor = {
+      tag: "replace",
+      str: { tag: "match", str: { tag: "input" }, pattern: "x", group: 0 },
+      from: "a",
+      to: "b",
+    };
+    const types = possibleTypes(e);
+    expect(types).toContain("null");
+  });
+
+  it("should include null for slice (str may be null)", () => {
+    const e: Extractor = {
+      tag: "slice",
+      str: { tag: "match", str: { tag: "input" }, pattern: "x", group: 0 },
+      start: 0,
+      end: 5,
+    };
+    const types = possibleTypes(e);
+    expect(types).toContain("null");
   });
 });
 

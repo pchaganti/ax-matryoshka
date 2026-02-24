@@ -33,32 +33,6 @@ const DANGEROUS_PATTERNS = [
   /\bBuffer\b/,
 ];
 
-// Whitelist of allowed operations
-const ALLOWED_PATTERNS = [
-  /^item\./,                           // Property access
-  /===?/,                              // Equality
-  /!==?/,                              // Inequality
-  /[<>]=?/,                            // Comparison
-  /&&|\|\|/,                           // Logical operators
-  /!/,                                 // Negation
-  /\?\.?/,                             // Optional chaining
-  /\.includes\s*\(/,                   // String/Array methods
-  /\.startsWith\s*\(/,
-  /\.endsWith\s*\(/,
-  /\.test\s*\(/,                       // Regex test
-  /\.match\s*\(/,                      // Regex match
-  /\.toLowerCase\s*\(/,
-  /\.toUpperCase\s*\(/,
-  /\.trim\s*\(/,
-  /\.length\b/,
-  /\/.*\/[gimsuy]*\.test/,            // Regex literals
-  /\d+/,                               // Numbers
-  /['"][^'"]*['"]/,                    // String literals
-  /true|false|null|undefined/,         // Boolean/null literals
-  /\(\s*\)/,                           // Empty parens
-  /\[\d+\]/,                           // Array indexing
-];
-
 export type PredicateFn = (item: unknown) => boolean;
 export type TransformFn = (item: unknown) => unknown;
 

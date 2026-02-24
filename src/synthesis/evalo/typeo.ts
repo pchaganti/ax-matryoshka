@@ -131,8 +131,20 @@ export function possibleTypes(extractor: Extractor): Type[] {
   switch (extractor.tag) {
     case "match":
     case "split":
+    case "parseInt":
+    case "parseFloat":
+    case "add":
       if (!types.includes("null")) {
         types.push("null");
+      }
+      break;
+    case "replace":
+    case "slice":
+      // These can return null if their input (e.g., from match) is null
+      if (extractor.str && possibleTypes(extractor.str).includes("null")) {
+        if (!types.includes("null")) {
+          types.push("null");
+        }
       }
       break;
   }

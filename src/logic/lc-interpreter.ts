@@ -170,7 +170,7 @@ export function evaluate(
         const newEnv = new Map(predicate.env);
         newEnv.set(predicate.param, item);
         const result = evaluate(predicate.body, tools, newEnv, log, depth + 1);
-        if (result === true) {
+        if (result) {
           results.push(item);
         }
       }

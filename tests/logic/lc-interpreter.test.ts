@@ -133,6 +133,24 @@ describe("LC Interpreter - ReDoS protection", () => {
     expect((result as unknown[]).length).toBe(0);
   });
 
+  it("should use truthy check (not === true) in filter predicate", () => {
+    // A predicate that returns a truthy non-boolean value (like a string) should keep the item
+    const collection = { tag: "lit" as const, value: ["hello", "", "world", ""] };
+    const predicate = {
+      tag: "lambda" as const,
+      param: "x",
+      body: { tag: "var" as const, name: "x" },
+    };
+    const term = {
+      tag: "filter" as const,
+      collection,
+      predicate,
+    };
+    const result = evaluate(term as any, tools, env, log);
+    // "hello" and "world" are truthy, "" is falsy
+    expect(result).toEqual(["hello", "world"]);
+  });
+
   it("should cap log array at maximum entries", async () => {
     const { interpret } = await import("../../src/logic/lc-interpreter.js");
     // Create a map term that generates many log entries

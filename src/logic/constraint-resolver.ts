@@ -80,6 +80,21 @@ export function resolveConstraints(term: LCTerm): ResolvedTerm {
       case "classify":
         return t;
 
+      case "add":
+        return { ...t, left: resolve(t.left), right: resolve(t.right) };
+
+      case "extract":
+        return { ...t, str: resolve(t.str) };
+
+      case "reduce":
+        return { ...t, collection: resolve(t.collection), init: resolve(t.init), fn: resolve(t.fn) };
+
+      case "filter":
+        return { ...t, collection: resolve(t.collection), predicate: resolve(t.predicate) };
+
+      case "map":
+        return { ...t, collection: resolve(t.collection), transform: resolve(t.transform) };
+
       case "app":
         return { ...t, fn: resolve(t.fn), arg: resolve(t.arg) };
 
@@ -210,6 +225,21 @@ export function hasConstraints(term: LCTerm): boolean {
         hasConstraints(term.else)
       );
 
+    case "add":
+      return hasConstraints(term.left) || hasConstraints(term.right);
+
+    case "extract":
+      return hasConstraints(term.str);
+
+    case "reduce":
+      return hasConstraints(term.collection) || hasConstraints(term.init) || hasConstraints(term.fn);
+
+    case "filter":
+      return hasConstraints(term.collection) || hasConstraints(term.predicate);
+
+    case "map":
+      return hasConstraints(term.collection) || hasConstraints(term.transform);
+
     case "app":
       return hasConstraints(term.fn) || hasConstraints(term.arg);
 
@@ -247,6 +277,31 @@ export function extractConstraints(term: LCTerm): ConstraintOp[] {
         extract(t.cond);
         extract(t.then);
         extract(t.else);
+        break;
+
+      case "add":
+        extract(t.left);
+        extract(t.right);
+        break;
+
+      case "extract":
+        extract(t.str);
+        break;
+
+      case "reduce":
+        extract(t.collection);
+        extract(t.init);
+        extract(t.fn);
+        break;
+
+      case "filter":
+        extract(t.collection);
+        extract(t.predicate);
+        break;
+
+      case "map":
+        extract(t.collection);
+        extract(t.transform);
         break;
 
       case "app":

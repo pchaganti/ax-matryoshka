@@ -399,6 +399,22 @@ describe("ReDoS protection in grep", () => {
   });
 });
 
+describe("loadContent empty string edge case", () => {
+  it("should treat empty string as not loaded", () => {
+    const engine = new NucleusEngine();
+    engine.loadContent("");
+    // Empty document should not be considered "loaded"
+    expect(engine.isLoaded()).toBe(false);
+  });
+
+  it("should treat whitespace-only string as not loaded", () => {
+    const engine = new NucleusEngine();
+    engine.loadContent("   \n\n  ");
+    // Whitespace-only document should not be considered "loaded"
+    expect(engine.isLoaded()).toBe(false);
+  });
+});
+
 describe("dispose", () => {
   it("should clear content and state after dispose", () => {
     const engine = createEngineFromContent("some content here");
