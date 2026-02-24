@@ -251,6 +251,10 @@ export function exprToCode(expr: Expr): string {
       return typeof expr.value === "string" ? JSON.stringify(expr.value) : String(expr.value);
 
     case "var":
+      // Sanitize variable names to prevent code injection
+      if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(expr.name)) {
+        return "undefined";
+      }
       return expr.name;
 
     case "add":
@@ -268,11 +272,15 @@ export function exprToCode(expr: Expr): string {
     case "concat":
       return `(${exprToCode(expr.left)} + ${exprToCode(expr.right)})`;
 
-    case "match":
-      return `((_s) => _s == null ? null : _s.match(/${expr.pattern.replace(/\//g, "\\/")}/)?.[${expr.group}])(${exprToCode(expr.str)})`;
+    case "match": {
+      const escapedPattern = expr.pattern.replace(/\//g, "\\/").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+      return `((_s) => _s == null ? null : _s.match(/${escapedPattern}/)?.[${expr.group}])(${exprToCode(expr.str)})`;
+    }
 
-    case "replace":
-      return `((_s) => _s == null ? null : _s.replace(/${expr.pattern.replace(/\//g, "\\/")}/g, ${JSON.stringify(expr.replacement)}))(${exprToCode(expr.str)})`;
+    case "replace": {
+      const escapedReplacePattern = expr.pattern.replace(/\//g, "\\/").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+      return `((_s) => _s == null ? null : _s.replace(/${escapedReplacePattern}/g, ${JSON.stringify(expr.replacement)}))(${exprToCode(expr.str)})`;
+    }
 
     case "parseInt":
       return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) ? null : _r; })(${exprToCode(expr.str)})`;

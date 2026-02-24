@@ -565,7 +565,7 @@ export async function runRLM(
   const pruneHistory = () => {
     while (history.length > MAX_HISTORY_ENTRIES) {
       // Remove the third entry (index 2), preserving system prompt and initial user message
-      history.splice(2, 1);
+      history.splice(2, 2);
     }
   };
 

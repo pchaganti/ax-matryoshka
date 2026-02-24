@@ -94,8 +94,14 @@ export class LatticeTool {
    */
   async loadAsync(filePath: string): Promise<LatticeResponse> {
     // Reject paths with directory traversal
+    if (filePath.includes("..")) {
+      return {
+        success: false,
+        error: `Invalid path: directory traversal not allowed`,
+      };
+    }
     const resolved = path.resolve(filePath);
-    if (resolved !== path.normalize(resolved) || filePath.includes("..")) {
+    if (resolved !== path.normalize(filePath) && !path.isAbsolute(filePath)) {
       return {
         success: false,
         error: `Invalid path: directory traversal not allowed`,

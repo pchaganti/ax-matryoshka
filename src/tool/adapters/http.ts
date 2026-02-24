@@ -553,11 +553,21 @@ Examples:
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--port" && args[i + 1]) {
-      port = parseInt(args[++i], 10);
+      const parsed = parseInt(args[++i], 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
+        console.error(`Invalid port: ${args[i]}. Must be 1-65535.`);
+        process.exit(1);
+      }
+      port = parsed;
     } else if (args[i] === "--host" && args[i + 1]) {
       host = args[++i];
     } else if (args[i] === "--timeout" && args[i + 1]) {
-      timeoutSeconds = parseInt(args[++i], 10);
+      const parsed = parseInt(args[++i], 10);
+      if (isNaN(parsed) || parsed < 1) {
+        console.error(`Invalid timeout: ${args[i]}. Must be a positive number.`);
+        process.exit(1);
+      }
+      timeoutSeconds = parsed;
     } else if (args[i] === "--no-cors") {
       cors = false;
     }

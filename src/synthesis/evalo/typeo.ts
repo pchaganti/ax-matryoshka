@@ -98,16 +98,26 @@ export function canProduceType(extractor: Extractor, targetType: Type): boolean 
   }
 
   // Special case: extractors that return string/number can also return null
-  // (e.g., match returns null on no match)
+  // (e.g., match returns null on no match, parseInt/parseFloat on NaN)
   if (targetType === "null") {
     // Operations that can return null:
     // - match (no match)
     // - split (index out of bounds)
+    // - parseInt/parseFloat (NaN → null)
+    // - add (non-numeric operands → null)
+    // - replace/slice (str may be null from upstream)
     switch (extractor.tag) {
       case "match":
       case "split":
+      case "parseInt":
+      case "parseFloat":
+      case "add":
         return true;
       default:
+        // Check if any child extractor can produce null (propagation)
+        if ("str" in extractor && extractor.str) {
+          return canProduceType(extractor.str as Extractor, "null");
+        }
         return false;
     }
   }

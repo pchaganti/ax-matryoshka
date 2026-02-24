@@ -63,8 +63,11 @@ export function interpret(
 ): InterpretResult {
   const logs: string[] = [];
   const MAX_LOG_ENTRIES = 10000;
+  const MAX_LOG_MSG_LENGTH = 2000;
   const log = (msg: string) => {
-    if (logs.length < MAX_LOG_ENTRIES) logs.push(msg);
+    if (logs.length < MAX_LOG_ENTRIES) {
+      logs.push(msg.length > MAX_LOG_MSG_LENGTH ? msg.slice(0, MAX_LOG_MSG_LENGTH) + "..." : msg);
+    }
   };
 
   try {
@@ -156,20 +159,25 @@ export function evaluate(
         throw new Error(`filter: expected array, got ${typeof collection}`);
       }
 
-      // Evaluate the predicate (should be a closure or lambda)
+      // Evaluate the predicate (should be a closure, lambda, or native function)
       const predicate = evaluate(term.predicate, tools, env, log, depth + 1);
-      if (!isClosure(predicate)) {
-        throw new Error(`filter: predicate must be a function`);
-      }
 
       log(`Filtering ${collection.length} items`);
 
       // Apply predicate to each element
       const results: LCValue[] = [];
       for (const item of collection) {
-        const newEnv = new Map(predicate.env);
-        newEnv.set(predicate.param, item);
-        const result = evaluate(predicate.body, tools, newEnv, log, depth + 1);
+        let result: LCValue;
+        if (typeof predicate === "function") {
+          // Native function (e.g., from classify)
+          result = (predicate as (arg: unknown) => unknown)(item) as LCValue;
+        } else if (isClosure(predicate)) {
+          const newEnv = new Map(predicate.env);
+          newEnv.set(predicate.param, item);
+          result = evaluate(predicate.body, tools, newEnv, log, depth + 1);
+        } else {
+          throw new Error(`filter: predicate must be a function`);
+        }
         if (result) {
           results.push(item);
         }
@@ -186,20 +194,25 @@ export function evaluate(
         throw new Error(`map: expected array, got ${typeof collection}`);
       }
 
-      // Evaluate the transform function
+      // Evaluate the transform function (closure or native function)
       const transform = evaluate(term.transform, tools, env, log, depth + 1);
-      if (!isClosure(transform)) {
-        throw new Error(`map: transform must be a function`);
-      }
 
       log(`Mapping over ${collection.length} items`);
 
       // Apply transform to each element
       const results: LCValue[] = [];
       for (const item of collection) {
-        const newEnv = new Map(transform.env);
-        newEnv.set(transform.param, item);
-        const result = evaluate(transform.body, tools, newEnv, log, depth + 1);
+        let result: LCValue;
+        if (typeof transform === "function") {
+          // Native function (e.g., from classify)
+          result = (transform as (arg: unknown) => unknown)(item) as LCValue;
+        } else if (isClosure(transform)) {
+          const newEnv = new Map(transform.env);
+          newEnv.set(transform.param, item);
+          result = evaluate(transform.body, tools, newEnv, log, depth + 1);
+        } else {
+          throw new Error(`map: transform must be a function`);
+        }
         results.push(result);
       }
 

@@ -560,7 +560,8 @@ function buildQuarterMapper(examples: Example[]): ((input: string) => string) | 
     // Infer month from quarter if not in our examples
     let month = quarterToMonth[quarter];
     if (!month) {
-      const q = parseInt(quarter);
+      const q = parseInt(quarter, 10);
+      if (isNaN(q) || q < 1 || q > 4) return input;
       month = String((q - 1) * 3 + 1).padStart(2, "0");
     }
 
@@ -641,8 +642,12 @@ export function composeToMatch(
     generateStringExtractionCandidates(),
   ];
 
+  const MAX_CANDIDATES = 10000;
+  let candidateCount = 0;
+
   for (const generator of generators) {
     for (const candidate of generator) {
+      if (++candidateCount > MAX_CANDIDATES) break;
       if (!isAllowed(candidate)) continue;
 
       let allMatch = true;
@@ -663,6 +668,7 @@ export function composeToMatch(
         return candidate;
       }
     }
+    if (candidateCount > MAX_CANDIDATES) break;
   }
 
   return null;

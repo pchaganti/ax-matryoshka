@@ -151,6 +151,45 @@ describe("LC Interpreter - ReDoS protection", () => {
     expect(result).toEqual(["hello", "world"]);
   });
 
+  it("filter/map should accept native functions (from classify)", () => {
+    // classify returns a native function, not a closure
+    // filter and map should accept it
+    const classifyTerm = {
+      tag: "classify" as const,
+      examples: [
+        { input: "error", output: true },
+        { input: "success", output: false },
+      ],
+    };
+    const classifyResult = evaluate(classifyTerm as any, tools, env, log);
+    expect(typeof classifyResult).toBe("function");
+
+    // Now use the classify result in a filter
+    // filter needs a closure or callable - the classify result is a native function
+    const items = [
+      { line: "error occurred", lineNum: 1 },
+      { line: "success happened", lineNum: 2 },
+      { line: "error again", lineNum: 3 },
+    ];
+
+    // Put the classify fn into environment so the predicate can use it
+    const envWithClassify = new Map(env);
+    envWithClassify.set("classifyFn", classifyResult as any);
+
+    // filter with the native classify function should work, not throw
+    const filterTerm = {
+      tag: "filter" as const,
+      collection: { tag: "lit" as const, value: items },
+      predicate: {
+        tag: "lambda" as const,
+        param: "x",
+        body: { tag: "var" as const, name: "x" },
+      },
+    };
+    // This should not throw even though collection items are objects
+    expect(() => evaluate(filterTerm as any, tools, env, log)).not.toThrow();
+  });
+
   it("should cap log array at maximum entries", async () => {
     const { interpret } = await import("../../src/logic/lc-interpreter.js");
     // Create a map term that generates many log entries

@@ -245,7 +245,7 @@ function evaluate(
           ? (item as { line: string }).line
           : String(item ?? "");
 
-        const matches = evaluatePredicate(predBody, predLambda.param, itemValue, tools, bindings, log);
+        const matches = evaluatePredicate(predBody, predLambda.param, itemValue, tools, bindings, log, depth + 1);
         if (matches) {
           results.push(item);
         }
@@ -281,7 +281,8 @@ function evaluate(
           itemValue,
           tools,
           bindings,
-          log
+          log,
+          depth + 1
         );
         results.push(value);
       }
@@ -345,7 +346,7 @@ function evaluate(
       let acc = init;
       for (const item of collection) {
         // Evaluate lambda with acc and item bound
-        acc = evaluateReduceFn(term.fn, acc, item, tools, bindings, log);
+        acc = evaluateReduceFn(term.fn, acc, item, tools, bindings, log, depth + 1);
       }
       return acc;
     }
@@ -784,11 +785,12 @@ function evaluatePredicate(
   value: string,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): boolean {
   // Simple pattern: (match var "pattern" 0)
   if (body.tag === "match") {
-    const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, 0));
+    const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, depth + 1));
     const patternValidation = validateRegex(body.pattern);
     if (!patternValidation.valid) return false;
     const regex = new RegExp(body.pattern, "i"); // Case-insensitive like grep
@@ -807,7 +809,7 @@ function evaluatePredicate(
   }
 
   // For complex predicates, evaluate and check truthiness
-  const result = evaluateWithBinding(body, param, value, tools, bindings, log, 0);
+  const result = evaluateWithBinding(body, param, value, tools, bindings, log, depth + 1);
   return Boolean(result);
 }
 
@@ -820,9 +822,10 @@ function evaluateTransform(
   value: string,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): unknown {
-  return evaluateWithBinding(body, param, value, tools, bindings, log, 0);
+  return evaluateWithBinding(body, param, value, tools, bindings, log, depth + 1);
 }
 
 /**
@@ -834,7 +837,8 @@ function evaluateReduceFn(
   item: unknown,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): unknown {
   // For now, assume a simple two-parameter lambda pattern
   // The lambda body references the accumulator and current item
@@ -849,7 +853,7 @@ function evaluateReduceFn(
     const newBindings = new Map(bindings);
     newBindings.set(param, acc);
     newBindings.set(itemParam, item);
-    return evaluate(innerBody, tools, newBindings, log, 0);
+    return evaluate(innerBody, tools, newBindings, log, depth + 1);
   }
 
   // Single param - bind it to the item, use existing bindings for acc
@@ -859,7 +863,7 @@ function evaluateReduceFn(
   if (param !== "acc") {
     newBindings.set("acc", acc);
   }
-  return evaluate(body, tools, newBindings, log, 0);
+  return evaluate(body, tools, newBindings, log, depth + 1);
 }
 
 /**
@@ -1069,7 +1073,7 @@ function evaluateWithBinding(
       // For unhandled cases, create a temporary binding and evaluate
       const newBindings = new Map(bindings);
       newBindings.set(param, value);
-      return evaluate(body, tools, newBindings, log, 0);
+      return evaluate(body, tools, newBindings, log, depth + 1);
   }
 }
 
@@ -1252,9 +1256,9 @@ function parseDate(str: string, formatHint?: string): string | null {
   if (!looksNumeric) {
     const jsDate = new Date(cleaned);
     if (!isNaN(jsDate.getTime())) {
-      const year = jsDate.getFullYear();
-      const month = String(jsDate.getMonth() + 1).padStart(2, "0");
-      const day = String(jsDate.getDate()).padStart(2, "0");
+      const year = jsDate.getUTCFullYear();
+      const month = String(jsDate.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(jsDate.getUTCDate()).padStart(2, "0");
       return `${year}-${month}-${day}`;
     }
   }

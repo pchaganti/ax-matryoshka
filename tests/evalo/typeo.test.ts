@@ -216,6 +216,25 @@ describe("canProduceType", () => {
     expect(canProduceType(e, "unknown")).toBe(true);
   });
 
+  it("should return true for parseInt producing null", () => {
+    const e: Extractor = { tag: "parseInt", str: { tag: "input" } };
+    expect(canProduceType(e, "null")).toBe(true);
+  });
+
+  it("should return true for parseFloat producing null", () => {
+    const e: Extractor = { tag: "parseFloat", str: { tag: "input" } };
+    expect(canProduceType(e, "null")).toBe(true);
+  });
+
+  it("should return true for add producing null", () => {
+    const e: Extractor = {
+      tag: "add",
+      left: { tag: "input" },
+      right: { tag: "lit", value: 1 },
+    };
+    expect(canProduceType(e, "null")).toBe(true);
+  });
+
   it("should handle nullable types", () => {
     const e: Extractor = {
       tag: "match",
