@@ -27,6 +27,10 @@ const DANGEROUS_PATTERNS = [
   /\bReflect\b/,
   /\bProxy\b/,
   /\bSymbol\b/,
+  /\bAtomics\b/,
+  /\bSharedArrayBuffer\b/,
+  /\bWebAssembly\b/,
+  /\bBuffer\b/,
 ];
 
 // Whitelist of allowed operations

@@ -115,10 +115,10 @@ function extractFinalAnswer(
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[1]);
-      // Check for common answer field names
-      if (parsed.summary) return parsed.summary;
-      if (parsed.response) return parsed.response;
-      if (parsed.answer) return parsed.answer;
+      // Check for common answer field names (must be strings)
+      if (typeof parsed.summary === "string") return parsed.summary;
+      if (typeof parsed.response === "string") return parsed.response;
+      if (typeof parsed.answer === "string") return parsed.answer;
       // Check for any field that looks like a final value (case-insensitive)
       const valueFields = ['total', 'result', 'value', 'totalsales', 'total_sales', 'count', 'sum', 'answer', 'totals'];
       const keys = Object.keys(parsed);

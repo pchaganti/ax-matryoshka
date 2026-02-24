@@ -313,6 +313,10 @@ function isSafeInvariant(expr: string): boolean {
     /\bvalueOf\b/,
     /\btoString\b/,
     /\bhasOwnProperty\b/,
+    /\bAtomics\b/,
+    /\bSharedArrayBuffer\b/,
+    /\bWebAssembly\b/,
+    /\bBuffer\b/,
   ];
 
   for (const pattern of dangerous) {
@@ -335,5 +339,10 @@ function isSafeInvariant(expr: string): boolean {
   const safePattern =
     /^[\s\w.<>=!+\-*/%&|?:'"]+$/;
 
-  return safePattern.test(expr);
+  if (!safePattern.test(expr)) return false;
+
+  // Reject assignment operators (= not preceded by !, <, >, or another =)
+  if (/(?<![!=<>])=(?!=)/.test(expr)) return false;
+
+  return true;
 }

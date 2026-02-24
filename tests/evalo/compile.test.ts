@@ -256,4 +256,40 @@ describe("compileToFunction", () => {
       expect(fn("abc")).toBe(null);
     });
   });
+
+  describe("NaN guard parity with interpreter", () => {
+    it("should return null (not NaN) for parseInt of non-numeric string", () => {
+      const e: Extractor = {
+        tag: "parseInt",
+        str: { tag: "input" },
+      };
+      const fn = compileToFunction(e);
+      const result = fn("hello");
+      expect(result).toBeNull();
+    });
+
+    it("should return null (not NaN) for parseFloat of non-numeric string", () => {
+      const e: Extractor = {
+        tag: "parseFloat",
+        str: { tag: "input" },
+      };
+      const fn = compileToFunction(e);
+      const result = fn("hello");
+      expect(result).toBeNull();
+    });
+
+    it("should return null for add with non-numeric operands", () => {
+      const e: Extractor = {
+        tag: "add",
+        left: {
+          tag: "parseInt",
+          str: { tag: "input" },
+        },
+        right: { tag: "lit", value: 5 },
+      };
+      const fn = compileToFunction(e);
+      const result = fn("hello");
+      expect(result).toBeNull();
+    });
+  });
 });

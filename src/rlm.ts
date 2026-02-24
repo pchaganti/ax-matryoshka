@@ -554,11 +554,20 @@ export async function runRLM(
     log(`[RLM] Output constraint: ${constraint.output.type}`);
   }
 
-  // Build conversation history
+  // Build conversation history with sliding window to prevent unbounded growth
+  const MAX_HISTORY_ENTRIES = 40;
   const history: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
     { role: "system", content: systemPrompt },
     { role: "user", content: userMessage },
   ];
+
+  // Prune old history entries while keeping the system prompt and initial user message
+  const pruneHistory = () => {
+    while (history.length > MAX_HISTORY_ENTRIES) {
+      // Remove the third entry (index 2), preserving system prompt and initial user message
+      history.splice(2, 1);
+    }
+  };
 
   // Track whether code has been executed (to detect hallucination risk)
   let codeExecuted = false;
@@ -593,6 +602,7 @@ export async function runRLM(
         return `Error: LLM returned empty response at turn ${turn}`;
       }
       history.push({ role: "assistant", content: response });
+      pruneHistory();
 
       // Extract and execute code FIRST (before checking final answer)
       // This ensures if response has both code and final marker, code runs first

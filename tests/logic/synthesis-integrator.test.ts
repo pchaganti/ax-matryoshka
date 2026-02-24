@@ -524,3 +524,27 @@ describe("SynthesisIntegrator - date parser null consistency", () => {
     }
   });
 });
+
+describe("SynthesisIntegrator - number parser NaN consistency", () => {
+  let integrator: SynthesisIntegrator;
+
+  beforeEach(() => {
+    integrator = new SynthesisIntegrator();
+  });
+
+  it("should return null (not NaN) from number parser when no match", () => {
+    const result = integrator.synthesizeOnFailure({
+      operation: "parseNumber",
+      input: "no-numbers-here",
+      examples: [
+        { input: "$1,000", output: 1000 },
+        { input: "$2,500", output: 2500 },
+      ],
+    });
+    if (result.success && result.fn) {
+      const output = result.fn("no-numbers-here");
+      // Should be null, not NaN
+      expect(output).not.toBeNaN();
+    }
+  });
+});

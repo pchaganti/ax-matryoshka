@@ -294,4 +294,37 @@ Line 5: Final line`;
       expect(h3).toBe("$res3");
     });
   });
+
+  describe("foreign key cascade", () => {
+    it("should cascade delete handle_data when handle is deleted", () => {
+      db.loadDocument("test");
+      const handle = db.createHandle([1, 2, 3]);
+      expect(db.getHandleData(handle)).toHaveLength(3);
+      db.deleteHandle(handle);
+      // After delete, data should be gone too (cascade)
+      expect(db.getHandleData(handle)).toHaveLength(0);
+    });
+  });
+
+  describe("null value preservation in handles", () => {
+    it("should preserve null values in handle data", () => {
+      db.loadDocument("test");
+      const handle = db.createHandle([1, null, 3]);
+      const data = db.getHandleData(handle);
+      expect(data).toHaveLength(3);
+      expect(data[0]).toBe(1);
+      expect(data[1]).toBeNull();
+      expect(data[2]).toBe(3);
+    });
+
+    it("should preserve null values in handle data slice", () => {
+      db.loadDocument("test");
+      const handle = db.createHandle([null, 2, null]);
+      const data = db.getHandleDataSlice(handle, 10);
+      expect(data).toHaveLength(3);
+      expect(data[0]).toBeNull();
+      expect(data[1]).toBe(2);
+      expect(data[2]).toBeNull();
+    });
+  });
 });

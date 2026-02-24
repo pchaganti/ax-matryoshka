@@ -217,4 +217,22 @@ describe("PredicateCompiler", () => {
       expect(() => compiler.compile("item.constructor === Array")).toThrow(/constructor/i);
     });
   });
+
+  describe("extended blocklist", () => {
+    it("should reject Atomics", () => {
+      expect(() => compiler.compile("Atomics.wait()")).toThrow();
+    });
+
+    it("should reject SharedArrayBuffer", () => {
+      expect(() => compiler.compile("new SharedArrayBuffer(8)")).toThrow();
+    });
+
+    it("should reject WebAssembly", () => {
+      expect(() => compiler.compile("WebAssembly.compile()")).toThrow();
+    });
+
+    it("should reject Buffer", () => {
+      expect(() => compiler.compile("Buffer.alloc(100)")).toThrow();
+    });
+  });
 });

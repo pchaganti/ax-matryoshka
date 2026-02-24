@@ -463,7 +463,7 @@ export class SynthesisIntegrator {
     const hasCommas = inputs.some((i) => /\d,\d{3}/.test(i));
 
     let code: string;
-    let fn: (input: string) => number;
+    let fn: (input: string) => number | null;
 
     if (hasPercent) {
       code = `(s) => {
@@ -472,7 +472,7 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const match = s.match(/([\d.]+)%/);
-        return match ? parseFloat(match[1]) : NaN;
+        return match ? parseFloat(match[1]) : null;
       };
     } else if (hasCommas) {
       code = `(s) => {
@@ -481,7 +481,7 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const match = s.match(/([\d,]+)/);
-        return match ? parseInt(match[1].replace(/,/g, ""), 10) : NaN;
+        return match ? parseInt(match[1].replace(/,/g, ""), 10) : null;
       };
     } else {
       code = `(s) => {
@@ -490,13 +490,14 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const match = s.match(/([\d.]+)/);
-        return match ? parseFloat(match[1]) : NaN;
+        return match ? parseFloat(match[1]) : null;
       };
     }
 
     // Verify against examples
     const allMatch = examples.every((e) => {
       const result = fn(e.input);
+      if (result === null) return false;
       const expected = e.output as number;
       return Math.abs(result - expected) < 0.01;
     });

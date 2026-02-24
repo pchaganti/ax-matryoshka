@@ -30,6 +30,7 @@ export class SessionDB {
   constructor() {
     // Create in-memory database
     this.db = new Database(":memory:");
+    this.db.pragma("foreign_keys = ON");
     this.initSchema();
   }
 
@@ -269,6 +270,7 @@ export class SessionDB {
    */
   getHandleDataSlice(handle: string, limit: number): unknown[] {
     if (!this.db) return [];
+    const PARSE_FAILURE = Symbol("parse_failure");
     const stmt = this.db.prepare(`
       SELECT data FROM handle_data
       WHERE handle = ?
@@ -281,9 +283,9 @@ export class SessionDB {
         return JSON.parse(r.data);
       } catch (e) {
         console.warn(`[SessionDB] Failed to parse handle data: ${e instanceof Error ? e.message : String(e)}`);
-        return null;
+        return PARSE_FAILURE;
       }
-    }).filter((item) => item !== null);
+    }).filter((item) => item !== PARSE_FAILURE);
   }
 
   /**
@@ -291,6 +293,7 @@ export class SessionDB {
    */
   getHandleData(handle: string): unknown[] {
     if (!this.db) return [];
+    const PARSE_FAILURE = Symbol("parse_failure");
     const stmt = this.db.prepare(`
       SELECT data FROM handle_data
       WHERE handle = ?
@@ -302,9 +305,9 @@ export class SessionDB {
         return JSON.parse(r.data);
       } catch (e) {
         console.warn(`[SessionDB] Failed to parse handle data: ${e instanceof Error ? e.message : String(e)}`);
-        return null;
+        return PARSE_FAILURE;
       }
-    }).filter((item) => item !== null);
+    }).filter((item) => item !== PARSE_FAILURE);
   }
 
   /**

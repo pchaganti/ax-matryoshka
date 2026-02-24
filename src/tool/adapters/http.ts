@@ -96,6 +96,12 @@ export class HttpAdapter {
         `Duration: ${Math.round(duration / 1000)}s | ` +
         `Queries: ${this.session.queryCount}`
       );
+      // Dispose engine resources to free memory
+      try {
+        this.session.tool.getEngine().dispose();
+      } catch {
+        // Ignore dispose errors during cleanup
+      }
       this.session = null;
     }
 

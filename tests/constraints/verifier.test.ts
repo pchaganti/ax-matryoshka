@@ -413,4 +413,31 @@ describe("verifyInvariant", () => {
   it("should reject invariant containing 'hasOwnProperty'", () => {
     expect(verifyInvariant({}, "result.hasOwnProperty")).toBe(false);
   });
+
+  it("should reject assignment expressions", () => {
+    expect(verifyInvariant(42, "result = 0")).toBe(false);
+  });
+
+  it("should reject Atomics in invariant", () => {
+    expect(verifyInvariant({}, "Atomics")).toBe(false);
+  });
+
+  it("should reject SharedArrayBuffer in invariant", () => {
+    expect(verifyInvariant({}, "SharedArrayBuffer")).toBe(false);
+  });
+
+  it("should reject WebAssembly in invariant", () => {
+    expect(verifyInvariant({}, "WebAssembly")).toBe(false);
+  });
+
+  it("should reject Buffer in invariant", () => {
+    expect(verifyInvariant({}, "Buffer")).toBe(false);
+  });
+
+  it("should still allow comparison operators", () => {
+    expect(verifyInvariant(42, "result === 42")).toBe(true);
+    expect(verifyInvariant(42, "result !== 0")).toBe(true);
+    expect(verifyInvariant(42, "result >= 42")).toBe(true);
+    expect(verifyInvariant(42, "result <= 42")).toBe(true);
+  });
 });

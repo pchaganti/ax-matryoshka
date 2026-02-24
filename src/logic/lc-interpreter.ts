@@ -62,12 +62,15 @@ export function interpret(
   env: Environment = new Map()
 ): InterpretResult {
   const logs: string[] = [];
-  const log = (msg: string) => logs.push(msg);
+  const MAX_LOG_ENTRIES = 10000;
+  const log = (msg: string) => {
+    if (logs.length < MAX_LOG_ENTRIES) logs.push(msg);
+  };
 
   try {
     // Resolve constraints first
     const resolved = resolveConstraints(term);
-    const value = evaluate(resolved.term, tools, env, log);
+    const value = evaluate(resolved.term, tools, env, log, 0);
     return { success: true, value, logs };
   } catch (err) {
     return {
@@ -79,6 +82,8 @@ export function interpret(
   }
 }
 
+const MAX_EVAL_DEPTH = 1000;
+
 /**
  * Core evaluation function
  */
@@ -86,8 +91,12 @@ export function evaluate(
   term: LCTerm,
   tools: SandboxTools,
   env: Environment,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): LCValue {
+  if (depth > MAX_EVAL_DEPTH) {
+    throw new Error(`Maximum evaluation depth (${MAX_EVAL_DEPTH}) exceeded`);
+  }
   switch (term.tag) {
     case "lit":
       return term.value as LCValue;
@@ -109,6 +118,11 @@ export function evaluate(
 
     case "grep": {
       log(`Searching for pattern: "${term.pattern}"`);
+      const grepValidation = validateRegex(term.pattern);
+      if (!grepValidation.valid) {
+        log(`Invalid grep pattern: ${grepValidation.error}`);
+        return [] as LCValue;
+      }
       const results = tools.grep(term.pattern);
       log(`Found ${results.length} matches`);
       if (results.length > 0) {
@@ -137,13 +151,13 @@ export function evaluate(
 
     case "filter": {
       // Evaluate the collection
-      const collection = evaluate(term.collection, tools, env, log);
+      const collection = evaluate(term.collection, tools, env, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`filter: expected array, got ${typeof collection}`);
       }
 
       // Evaluate the predicate (should be a closure or lambda)
-      const predicate = evaluate(term.predicate, tools, env, log);
+      const predicate = evaluate(term.predicate, tools, env, log, depth + 1);
       if (!isClosure(predicate)) {
         throw new Error(`filter: predicate must be a function`);
       }
@@ -155,7 +169,7 @@ export function evaluate(
       for (const item of collection) {
         const newEnv = new Map(predicate.env);
         newEnv.set(predicate.param, item);
-        const result = evaluate(predicate.body, tools, newEnv, log);
+        const result = evaluate(predicate.body, tools, newEnv, log, depth + 1);
         if (result === true) {
           results.push(item);
         }
@@ -167,13 +181,13 @@ export function evaluate(
 
     case "map": {
       // Evaluate the collection
-      const collection = evaluate(term.collection, tools, env, log);
+      const collection = evaluate(term.collection, tools, env, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`map: expected array, got ${typeof collection}`);
       }
 
       // Evaluate the transform function
-      const transform = evaluate(term.transform, tools, env, log);
+      const transform = evaluate(term.transform, tools, env, log, depth + 1);
       if (!isClosure(transform)) {
         throw new Error(`map: transform must be a function`);
       }
@@ -185,7 +199,7 @@ export function evaluate(
       for (const item of collection) {
         const newEnv = new Map(transform.env);
         newEnv.set(transform.param, item);
-        const result = evaluate(transform.body, tools, newEnv, log);
+        const result = evaluate(transform.body, tools, newEnv, log, depth + 1);
         results.push(result);
       }
 
@@ -194,7 +208,7 @@ export function evaluate(
 
     case "match": {
       if (term.group < 0) return null;
-      const str = evaluate(term.str, tools, env, log);
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
       }
@@ -206,7 +220,7 @@ export function evaluate(
     }
 
     case "replace": {
-      const str = evaluate(term.str, tools, env, log);
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") {
         throw new Error(`replace: expected string, got ${typeof str}`);
       }
@@ -216,7 +230,7 @@ export function evaluate(
     }
 
     case "split": {
-      const str = evaluate(term.str, tools, env, log);
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") {
         throw new Error(`split: expected string, got ${typeof str}`);
       }
@@ -225,7 +239,7 @@ export function evaluate(
     }
 
     case "parseInt": {
-      const str = evaluate(term.str, tools, env, log);
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string" && typeof str !== "number") {
         throw new Error(`parseInt: expected string or number, got ${typeof str}`);
       }
@@ -234,7 +248,7 @@ export function evaluate(
     }
 
     case "parseFloat": {
-      const str = evaluate(term.str, tools, env, log);
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string" && typeof str !== "number") {
         throw new Error(`parseFloat: expected string or number, got ${typeof str}`);
       }
@@ -243,8 +257,8 @@ export function evaluate(
     }
 
     case "add": {
-      const left = evaluate(term.left, tools, env, log);
-      const right = evaluate(term.right, tools, env, log);
+      const left = evaluate(term.left, tools, env, log, depth + 1);
+      const right = evaluate(term.right, tools, env, log, depth + 1);
       if (typeof left !== "number" || typeof right !== "number") {
         throw new Error(`add: expected numbers`);
       }
@@ -252,11 +266,11 @@ export function evaluate(
     }
 
     case "if": {
-      const cond = evaluate(term.cond, tools, env, log);
+      const cond = evaluate(term.cond, tools, env, log, depth + 1);
       if (cond) {
-        return evaluate(term.then, tools, env, log);
+        return evaluate(term.then, tools, env, log, depth + 1);
       } else {
-        return evaluate(term.else, tools, env, log);
+        return evaluate(term.else, tools, env, log, depth + 1);
       }
     }
 
@@ -271,20 +285,20 @@ export function evaluate(
 
     case "app": {
       // Evaluate the function
-      const fn = evaluate(term.fn, tools, env, log);
+      const fn = evaluate(term.fn, tools, env, log, depth + 1);
       if (!isClosure(fn)) {
         throw new Error(`app: expected function, got ${typeof fn}`);
       }
 
       // Evaluate the argument
-      const arg = evaluate(term.arg, tools, env, log);
+      const arg = evaluate(term.arg, tools, env, log, depth + 1);
 
       // Apply: extend the closure's environment with the argument
       const newEnv = new Map(fn.env);
       newEnv.set(fn.param, arg);
 
       // Evaluate the body in the extended environment
-      return evaluate(fn.body, tools, newEnv, log);
+      return evaluate(fn.body, tools, newEnv, log, depth + 1);
     }
 
     case "classify": {
@@ -307,7 +321,7 @@ export function evaluate(
 
     case "constrained":
       // Constraints should be resolved before evaluation
-      return evaluate(term.term, tools, env, log);
+      return evaluate(term.term, tools, env, log, depth + 1);
 
     default:
       throw new Error(`Unknown term tag: ${(term as LCTerm).tag}`);

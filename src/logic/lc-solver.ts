@@ -371,6 +371,8 @@ function evaluate(
       log(`[Solver] Found pattern: ${pattern}`);
 
       // Return a classifier function with case-insensitive matching
+      const classifyValidation = validateRegex(pattern);
+      if (!classifyValidation.valid) return null;
       const regex = new RegExp(pattern, "i");
       return (line: string) => regex.test(line);
     }
@@ -998,6 +1000,8 @@ function evaluateWithBinding(
     case "extract": {
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log) as string;
       if (typeof str !== "string") return null;
+      const extractPatternValidation = validateRegex(body.pattern);
+      if (!extractPatternValidation.valid) return null;
       const regex = new RegExp(body.pattern, "i");
       const result = str.match(regex);
       let extracted = result ? (result[body.group] ?? null) : null;

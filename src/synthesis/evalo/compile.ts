@@ -50,18 +50,18 @@ export function compile(extractor: Extractor): string {
 
     case "parseInt": {
       const strCode = compile(extractor.str);
-      return `parseInt(${strCode}, 10)`;
+      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) ? null : _r; })(${strCode})`;
     }
 
     case "parseFloat": {
       const strCode = compile(extractor.str);
-      return `parseFloat(${strCode})`;
+      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) ? null : _r; })(${strCode})`;
     }
 
     case "add": {
       const leftCode = compile(extractor.left);
       const rightCode = compile(extractor.right);
-      return `(${leftCode}) + (${rightCode})`;
+      return `((_l, _r) => (typeof _l !== "number" || typeof _r !== "number" || isNaN(_l) || isNaN(_r)) ? null : _l + _r)(${leftCode}, ${rightCode})`;
     }
 
     case "if": {

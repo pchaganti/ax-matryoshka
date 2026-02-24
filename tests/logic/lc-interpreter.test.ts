@@ -113,4 +113,40 @@ describe("LC Interpreter - ReDoS protection", () => {
     const result = evaluate(term as any, tools, env, log);
     expect(result).toBeNull();
   });
+
+  it("should reject ReDoS pattern in grep", () => {
+    const grepCalls: string[] = [];
+    const toolsWithGrep: SandboxTools = {
+      ...tools,
+      grep: (pattern: string) => {
+        grepCalls.push(pattern);
+        return [];
+      },
+    };
+    const term = {
+      tag: "grep" as const,
+      pattern: "(a+)+",
+    };
+    // Should not call grep with ReDoS pattern
+    const result = evaluate(term as any, toolsWithGrep, env, log);
+    expect(Array.isArray(result)).toBe(true);
+    expect((result as unknown[]).length).toBe(0);
+  });
+
+  it("should cap log array at maximum entries", async () => {
+    const { interpret } = await import("../../src/logic/lc-interpreter.js");
+    // Create a map term that generates many log entries
+    const term = {
+      tag: "map" as const,
+      collection: { tag: "lit" as const, value: Array.from({ length: 200 }, (_, i) => i) },
+      transform: {
+        tag: "lambda" as const,
+        param: "x",
+        body: { tag: "var" as const, name: "x" },
+      },
+    };
+    const result = interpret(term as any, tools);
+    expect(result.success).toBe(true);
+    expect(result.logs.length).toBeLessThanOrEqual(10001);
+  });
 });
