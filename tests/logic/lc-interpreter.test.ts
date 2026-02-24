@@ -87,4 +87,30 @@ describe("LC Interpreter - ReDoS protection", () => {
     expect(predicate("warning issued")).toBe(true);
     expect(predicate("just some text")).toBe(false);
   });
+
+  it("should classify grep result objects using .line property", () => {
+    const term = {
+      tag: "classify" as const,
+      examples: [
+        { input: "error", output: true },
+        { input: "success", output: false },
+      ],
+    };
+    const result = evaluate(term as any, tools, env, log);
+    const predicate = result as unknown as (input: unknown) => boolean;
+    // Object with .line property should match against .line, not "[object Object]"
+    expect(predicate({ line: "error occurred", lineNum: 1 })).toBe(true);
+    expect(predicate({ line: "success done", lineNum: 2 })).toBe(false);
+  });
+
+  it("should return null for match with negative group index", () => {
+    const term = {
+      tag: "match" as const,
+      str: { tag: "lit" as const, value: "hello world" },
+      pattern: "(\\w+)",
+      group: -1,
+    };
+    const result = evaluate(term as any, tools, env, log);
+    expect(result).toBeNull();
+  });
 });

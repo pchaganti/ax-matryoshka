@@ -84,7 +84,7 @@ describe("PredicateCompiler", () => {
     it("should convert string contains to SQL LIKE", () => {
       const result = compiler.toSQLCondition("item.line.includes('Error')");
       expect(result).not.toBeNull();
-      expect(result!.sql).toBe("json_extract(data, '$.line') LIKE ?");
+      expect(result!.sql).toBe("json_extract(data, '$.line') LIKE ? ESCAPE '\\'");
       expect(result!.params).toEqual(["%Error%"]);
     });
 
@@ -188,6 +188,23 @@ describe("PredicateCompiler", () => {
       // "123" is matched by \w+ but is not a valid identifier
       const result = compiler.toSQLCondition("item.123 === 'test'");
       expect(result).toBeNull();
+    });
+  });
+
+  describe("SQL LIKE wildcard escaping", () => {
+    it("should escape % wildcard in LIKE value", () => {
+      const result = compiler.toSQLCondition("item.line.includes('100%')");
+      expect(result).not.toBeNull();
+      // The param should have escaped % so it matches literal "100%"
+      expect(result!.params[0]).not.toBe("%100%%");
+      expect(result!.params[0]).toContain("100");
+    });
+
+    it("should escape _ wildcard in LIKE value", () => {
+      const result = compiler.toSQLCondition("item.line.includes('foo_bar')");
+      expect(result).not.toBeNull();
+      // The _ should be escaped so it matches literal underscore
+      expect(result!.params[0]).toContain("foo");
     });
   });
 

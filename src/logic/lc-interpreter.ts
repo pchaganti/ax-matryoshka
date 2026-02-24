@@ -193,6 +193,7 @@ export function evaluate(
     }
 
     case "match": {
+      if (term.group < 0) return null;
       const str = evaluate(term.str, tools, env, log);
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
@@ -296,7 +297,10 @@ export function evaluate(
 
       // Return a function that checks if input matches any true example substring
       return (input: unknown) => {
-        const str = String(input);
+        // Extract string from grep result objects that have .line property
+        const str = typeof input === "object" && input !== null && "line" in input
+          ? String((input as { line: unknown }).line)
+          : String(input);
         return trueExamples.some(ex => str.includes(ex));
       };
     }

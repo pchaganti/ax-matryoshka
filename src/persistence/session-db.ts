@@ -279,7 +279,8 @@ export class SessionDB {
     return rows.map((r) => {
       try {
         return JSON.parse(r.data);
-      } catch {
+      } catch (e) {
+        console.warn(`[SessionDB] Failed to parse handle data: ${e instanceof Error ? e.message : String(e)}`);
         return null;
       }
     }).filter((item) => item !== null);
@@ -299,7 +300,8 @@ export class SessionDB {
     return rows.map((r) => {
       try {
         return JSON.parse(r.data);
-      } catch {
+      } catch (e) {
+        console.warn(`[SessionDB] Failed to parse handle data: ${e instanceof Error ? e.message : String(e)}`);
         return null;
       }
     }).filter((item) => item !== null);

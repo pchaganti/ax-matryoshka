@@ -269,10 +269,10 @@ export function exprToCode(expr: Expr): string {
       return `(${exprToCode(expr.left)} + ${exprToCode(expr.right)})`;
 
     case "match":
-      return `${exprToCode(expr.str)}.match(/${expr.pattern}/)?.[${expr.group}]`;
+      return `${exprToCode(expr.str)}.match(/${expr.pattern.replace(/\//g, "\\/")}/)?.[${expr.group}]`;
 
     case "replace":
-      return `${exprToCode(expr.str)}.replace(/${expr.pattern}/g, ${JSON.stringify(expr.replacement)})`;
+      return `${exprToCode(expr.str)}.replace(/${expr.pattern.replace(/\//g, "\\/")}/g, ${JSON.stringify(expr.replacement)})`;
 
     case "parseInt":
       return `parseInt(${exprToCode(expr.str)}, 10)`;

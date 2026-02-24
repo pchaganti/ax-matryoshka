@@ -145,7 +145,9 @@ export class PredicateCompiler {
     if (includesMatch) {
       const [, field, value] = includesMatch;
       if (!this.isValidFieldName(field)) return null;
-      return { sql: `json_extract(data, '$.${field}') LIKE ?`, params: [`%${value}%`] };
+      // Escape SQL LIKE wildcards in the value to match literally
+      const escapedValue = value.replace(/%/g, "\\%").replace(/_/g, "\\_");
+      return { sql: `json_extract(data, '$.${field}') LIKE ? ESCAPE '\\'`, params: [`%${escapedValue}%`] };
     }
 
     // Numeric comparison: item.field > 100

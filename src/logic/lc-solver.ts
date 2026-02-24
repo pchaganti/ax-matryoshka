@@ -91,8 +91,11 @@ export function solve(
 ): SolveResult {
   const logs: string[] = [];
   const MAX_LOG_ENTRIES = 10000;
+  const MAX_LOG_MSG_LENGTH = 2000;
   const log = (msg: string) => {
-    if (logs.length < MAX_LOG_ENTRIES) logs.push(msg);
+    if (logs.length < MAX_LOG_ENTRIES) {
+      logs.push(msg.length > MAX_LOG_MSG_LENGTH ? msg.slice(0, MAX_LOG_MSG_LENGTH) + "..." : msg);
+    }
   };
 
   // Log available bindings
@@ -381,6 +384,7 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
       }
+      if (term.group < 0) return null;
       const matchValidation = validateRegex(term.pattern);
       if (!matchValidation.valid) {
         throw new Error(`match: ${matchValidation.error}`);
@@ -1137,11 +1141,23 @@ function extractCommonSubstrings(examples: string[]): string[] {
 // ============================================================================
 
 /**
+ * Returns the number of days in a given month (1-indexed), accounting for leap years.
+ */
+function daysInMonth(month: number, year: number): number {
+  const days = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month === 2 && (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0))) {
+    return 29;
+  }
+  return days[month] ?? 31;
+}
+
+/**
  * Parse a date string into ISO format (YYYY-MM-DD)
  * Handles various formats: ISO, US (MM/DD/YYYY), EU (DD/MM/YYYY), natural language
  */
 function parseDate(str: string, formatHint?: string): string | null {
   if (!str || typeof str !== "string") return null;
+  if (str.length > MAX_PARSE_INPUT_LENGTH) return null;
 
   const cleaned = str.trim();
 
@@ -1149,7 +1165,11 @@ function parseDate(str: string, formatHint?: string): string | null {
   const isoMatch = cleaned.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
   if (isoMatch) {
     const [, year, month, day] = isoMatch;
-    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    const m = parseInt(month, 10);
+    const d = parseInt(day, 10);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(year, 10))) {
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
   }
 
   // US format: MM/DD/YYYY, MM-DD-YYYY
@@ -1159,8 +1179,8 @@ function parseDate(str: string, formatHint?: string): string | null {
       const [, month, day, year] = usMatch;
       const m = parseInt(month, 10);
       const d = parseInt(day, 10);
-      // Validate US format (month <= 12)
-      if (m <= 12 && d <= 31) {
+      // Validate US format (month 1-12, day within month's max)
+      if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(year, 10))) {
         return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
       }
     }
@@ -1171,7 +1191,11 @@ function parseDate(str: string, formatHint?: string): string | null {
     const euMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
     if (euMatch) {
       const [, day, month, year] = euMatch;
-      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      const m = parseInt(month, 10);
+      const d = parseInt(day, 10);
+      if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(year, 10))) {
+        return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      }
     }
   }
 
@@ -1209,13 +1233,18 @@ function parseDate(str: string, formatHint?: string): string | null {
     }
   }
 
-  // Try JavaScript Date parsing as fallback
-  const jsDate = new Date(cleaned);
-  if (!isNaN(jsDate.getTime())) {
-    const year = jsDate.getFullYear();
-    const month = String(jsDate.getMonth() + 1).padStart(2, "0");
-    const day = String(jsDate.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+  // Try JavaScript Date parsing as fallback, but only for non-numeric formats
+  // to avoid JS Date silently normalizing invalid dates (e.g., Feb 31 → Mar 3)
+  const looksNumeric = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(cleaned)
+    || /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(cleaned);
+  if (!looksNumeric) {
+    const jsDate = new Date(cleaned);
+    if (!isNaN(jsDate.getTime())) {
+      const year = jsDate.getFullYear();
+      const month = String(jsDate.getMonth() + 1).padStart(2, "0");
+      const day = String(jsDate.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
   }
 
   return null;

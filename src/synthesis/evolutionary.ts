@@ -245,7 +245,7 @@ export class EvolutionarySynthesizer {
    * Escape special characters for use inside a regex string in code
    */
   private escapeRegexInString(pattern: string): string {
-    return pattern.replace(/\\/g, "\\\\");
+    return pattern.replace(/\\/g, "\\\\").replace(/\//g, "\\/").replace(/`/g, "\\`").replace(/\$/g, "\\$");
   }
 
   /**

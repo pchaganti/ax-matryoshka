@@ -722,10 +722,14 @@ Try again with proper formatting.`;
           solverBindings.set(`_${turn}`, solverResult.value);
 
           if (Array.isArray(solverResult.value)) {
-            // Array result - update RESULTS and track count
-            solverBindings.set("RESULTS", solverResult.value);
+            // Array result - update RESULTS and track count, cap size to prevent memory exhaustion
+            const MAX_RESULTS_SIZE = 100000;
+            const cappedValue = solverResult.value.length > MAX_RESULTS_SIZE
+              ? solverResult.value.slice(0, MAX_RESULTS_SIZE)
+              : solverResult.value;
+            solverBindings.set("RESULTS", cappedValue);
             previousResultCount = lastResultCount;
-            lastResultCount = solverResult.value.length;
+            lastResultCount = cappedValue.length;
             log(`[Turn ${turn}] Bound result to RESULTS and _${turn}`);
           } else {
             // Scalar result - only bind to _N, preserve RESULTS

@@ -412,4 +412,42 @@ type ID = string | number;
       expect(result.value).toBe(8);
     });
   });
+
+  describe("negative group index guard", () => {
+    it("should return null for negative group index in match", () => {
+      const term = {
+        tag: "match" as const,
+        str: { tag: "lit" as const, value: "hello world" },
+        pattern: "(\\w+)",
+        group: -1,
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
+    });
+  });
+
+  describe("parseDate input length limit", () => {
+    it("should return null for excessively long date string", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "A".repeat(500) },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
+    });
+  });
+
+  describe("parseDate month/day validation", () => {
+    it("should reject Feb 31 as invalid date", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "02/31/2024" },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
+    });
+  });
 });
