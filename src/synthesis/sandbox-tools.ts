@@ -293,7 +293,11 @@ export async function createSandboxWithSynthesis(
         );
       }
 
-      return llmQueryFn(prompt, queryOptions);
+      const result = await llmQueryFn(prompt, queryOptions);
+      if (disposed) {
+        throw new Error("Sandbox was disposed during LLM query");
+      }
+      return result;
     },
 
     // Safe built-ins

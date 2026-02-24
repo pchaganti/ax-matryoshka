@@ -76,6 +76,44 @@ describe("Config", () => {
     });
   });
 
+  describe("env var name validation", () => {
+    it("should reject __proto__ as env var name", async () => {
+      const configPath = path.join(tempDir, "config.json");
+      fs.writeFileSync(configPath, JSON.stringify({
+        llm: { provider: "test" },
+        providers: {
+          test: { baseUrl: "${__proto__}" }
+        }
+      }));
+
+      await expect(loadConfig(configPath)).rejects.toThrow("Invalid environment variable name");
+    });
+
+    it("should reject constructor as env var name", async () => {
+      const configPath = path.join(tempDir, "config.json");
+      fs.writeFileSync(configPath, JSON.stringify({
+        llm: { provider: "test" },
+        providers: {
+          test: { baseUrl: "${constructor}" }
+        }
+      }));
+
+      await expect(loadConfig(configPath)).rejects.toThrow("Invalid environment variable name");
+    });
+
+    it("should reject env var names with spaces", async () => {
+      const configPath = path.join(tempDir, "config.json");
+      fs.writeFileSync(configPath, JSON.stringify({
+        llm: { provider: "test" },
+        providers: {
+          test: { baseUrl: "${foo bar}" }
+        }
+      }));
+
+      await expect(loadConfig(configPath)).rejects.toThrow("Invalid environment variable name");
+    });
+  });
+
   describe("numeric env var coercion", () => {
     it("should coerce numeric string env vars to numbers", async () => {
       const originalEnv = process.env.TEST_NUM_CTX;

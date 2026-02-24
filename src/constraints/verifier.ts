@@ -306,6 +306,13 @@ function isSafeInvariant(expr: string): boolean {
     /\bReflect\b/,
     /\bWeakRef\b/,
     /\bFinalizationRegistry\b/,
+    /\bthis\b/,
+    /\bglobal\b/,
+    /\bwindow\b/,
+    /\bself\b/,
+    /\bvalueOf\b/,
+    /\btoString\b/,
+    /\bhasOwnProperty\b/,
   ];
 
   for (const pattern of dangerous) {

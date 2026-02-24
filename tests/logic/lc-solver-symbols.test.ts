@@ -388,4 +388,28 @@ type ID = string | number;
       expect(result.error).toContain("Empty");
     });
   });
+
+  describe("add type validation", () => {
+    it("should throw when adding non-numeric operands", () => {
+      const term = {
+        tag: "add" as const,
+        left: { tag: "lit" as const, value: "hello" },
+        right: { tag: "lit" as const, value: 5 },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/expected numbers/i);
+    });
+
+    it("should succeed with valid numeric operands", () => {
+      const term = {
+        tag: "add" as const,
+        left: { tag: "lit" as const, value: 3 },
+        right: { tag: "lit" as const, value: 5 },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(8);
+    });
+  });
 });

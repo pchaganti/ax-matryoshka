@@ -266,7 +266,7 @@ Error: ${failure.error}
       parts.push(`
 **Failed Code:**
 \`\`\`javascript
-${failure.code.slice(0, 200)}${failure.code.length > 200 ? "..." : ""}
+${failure.code.slice(0, 200).replace(/`/g, "\\`")}${failure.code.length > 200 ? "..." : ""}
 \`\`\`
 **Error:** ${failure.error}
 

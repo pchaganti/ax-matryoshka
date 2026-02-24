@@ -188,7 +188,7 @@ function extractCode(response: string): string | null {
   }
 
   // Try to find inline JSON object
-  const inlineJson = response.match(/\{[^}]+\}/);
+  const inlineJson = response.match(/\{(?:[^{}]|\{[^{}]*\})*\}/);
   if (inlineJson) {
     try {
       const parsed = JSON.parse(inlineJson[0]);

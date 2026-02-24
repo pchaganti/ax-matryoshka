@@ -389,4 +389,28 @@ describe("verifyInvariant", () => {
     expect(verifyInvariant(10, "result === 10")).toBe(true);
     expect(verifyInvariant([1, 2], "result.length > 0")).toBe(true);
   });
+
+  it("should reject invariant containing 'this'", () => {
+    expect(verifyInvariant({}, "this.constructor")).toBe(false);
+  });
+
+  it("should reject invariant containing 'global'", () => {
+    expect(verifyInvariant({}, "global.process")).toBe(false);
+  });
+
+  it("should reject invariant containing 'window'", () => {
+    expect(verifyInvariant({}, "window.location")).toBe(false);
+  });
+
+  it("should reject invariant containing 'self'", () => {
+    expect(verifyInvariant({}, "self.postMessage")).toBe(false);
+  });
+
+  it("should reject invariant containing 'valueOf'", () => {
+    expect(verifyInvariant({}, "result.valueOf")).toBe(false);
+  });
+
+  it("should reject invariant containing 'hasOwnProperty'", () => {
+    expect(verifyInvariant({}, "result.hasOwnProperty")).toBe(false);
+  });
 });

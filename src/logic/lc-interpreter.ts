@@ -29,7 +29,8 @@ export type LCValue =
   | string
   | LCValue[]
   | { [key: string]: LCValue }
-  | LCClosure;
+  | LCClosure
+  | ((input: unknown) => LCValue | boolean);
 
 // A closure captures a lambda's environment
 export interface LCClosure {
@@ -227,7 +228,8 @@ export function evaluate(
       if (typeof str !== "string" && typeof str !== "number") {
         throw new Error(`parseInt: expected string or number, got ${typeof str}`);
       }
-      return parseInt(String(str), 10);
+      const intResult = parseInt(String(str), 10);
+      return isNaN(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
@@ -235,7 +237,8 @@ export function evaluate(
       if (typeof str !== "string" && typeof str !== "number") {
         throw new Error(`parseFloat: expected string or number, got ${typeof str}`);
       }
-      return parseFloat(String(str));
+      const floatResult = parseFloat(String(str));
+      return isNaN(floatResult) ? null : floatResult;
     }
 
     case "add": {
@@ -287,27 +290,14 @@ export function evaluate(
       // Classify builds a predicate function from examples
       log(`Building classifier from ${term.examples.length} examples`);
 
-      // For now, return a simple classifier function
-      // In the future, this could use the miniKanren synthesizer
       const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input);
-      const falseExamples = term.examples.filter(e => e.output === false).map(e => e.input);
 
       log(`  True examples: ${trueExamples.length}`);
-      log(`  False examples: ${falseExamples.length}`);
 
-      // Create a simple matching classifier
-      // This is where the solver would synthesize a more sophisticated function
-      return {
-        tag: "closure",
-        param: "line",
-        body: {
-          tag: "var",
-          name: "__classify_check__",
-        } as LCTerm,
-        env: new Map([
-          ["__true_patterns__", trueExamples],
-          ["__false_patterns__", falseExamples],
-        ] as [string, LCValue][]),
+      // Return a function that checks if input matches any true example substring
+      return (input: unknown) => {
+        const str = String(input);
+        return trueExamples.some(ex => str.includes(ex));
       };
     }
 

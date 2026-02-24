@@ -90,7 +90,10 @@ export function solve(
   bindings: Bindings = new Map()
 ): SolveResult {
   const logs: string[] = [];
-  const log = (msg: string) => logs.push(msg);
+  const MAX_LOG_ENTRIES = 10000;
+  const log = (msg: string) => {
+    if (logs.length < MAX_LOG_ENTRIES) logs.push(msg);
+  };
 
   // Log available bindings
   if (bindings.size > 0) {
@@ -600,8 +603,11 @@ function evaluate(
     }
 
     case "add": {
-      const left = evaluate(term.left, tools, bindings, log, depth + 1) as number;
-      const right = evaluate(term.right, tools, bindings, log, depth + 1) as number;
+      const left = evaluate(term.left, tools, bindings, log, depth + 1);
+      const right = evaluate(term.right, tools, bindings, log, depth + 1);
+      if (typeof left !== "number" || typeof right !== "number") {
+        throw new Error(`add: expected numbers, got ${typeof left} and ${typeof right}`);
+      }
       return left + right;
     }
 
@@ -776,6 +782,8 @@ function evaluatePredicate(
   // Simple pattern: (match var "pattern" 0)
   if (body.tag === "match") {
     const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, 0));
+    const patternValidation = validateRegex(body.pattern);
+    if (!patternValidation.valid) return false;
     const regex = new RegExp(body.pattern, "i"); // Case-insensitive like grep
     const result = str.match(regex);
     return result !== null && result[body.group] !== undefined;
@@ -898,17 +906,22 @@ function evaluateWithBinding(
 
     case "parseInt": {
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
-      return parseInt(String(str), 10);
+      const intResult = parseInt(String(str), 10);
+      return isNaN(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
-      return parseFloat(String(str));
+      const floatResult = parseFloat(String(str));
+      return isNaN(floatResult) ? null : floatResult;
     }
 
     case "add": {
-      const left = evaluateWithBinding(body.left, param, value, tools, bindings, log) as number;
-      const right = evaluateWithBinding(body.right, param, value, tools, bindings, log) as number;
+      const left = evaluateWithBinding(body.left, param, value, tools, bindings, log);
+      const right = evaluateWithBinding(body.right, param, value, tools, bindings, log);
+      if (typeof left !== "number" || typeof right !== "number") {
+        throw new Error(`add: expected numbers, got ${typeof left} and ${typeof right}`);
+      }
       return left + right;
     }
 

@@ -369,6 +369,9 @@ export class SynthesisCoordinator {
       const code = solutions[0];
       try {
         const fn = new Function("return " + code)();
+        if (typeof fn !== "function") {
+          throw new Error("Synthesized code did not produce a function");
+        }
         return {
           success: true,
           synthesisTimeMs: Date.now() - startTime,

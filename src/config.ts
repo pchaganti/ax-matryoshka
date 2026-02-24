@@ -50,7 +50,11 @@ export interface Config {
  */
 function resolveEnvVars(obj: unknown): unknown {
   if (typeof obj === "string") {
-    return obj.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+    const DANGEROUS_VAR_NAMES = ["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"];
+    return obj.replace(/\$\{([^}]+)\}/g, (_, varName: string) => {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(varName) || DANGEROUS_VAR_NAMES.includes(varName)) {
+        throw new Error(`Invalid environment variable name: ${varName}`);
+      }
       const resolved = process.env[varName];
       if (resolved === undefined) {
         throw new Error(`Environment variable ${varName} not set (referenced in config)`);
