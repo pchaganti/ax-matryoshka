@@ -198,7 +198,9 @@ export class SynthesisIntegrator {
 
     // Try partial match
     for (const [cacheKey, fn] of this.fnCache.entries()) {
-      if (cacheKey.startsWith(key) || key.startsWith(cacheKey.split(":")[0])) {
+      const cachePrefix = cacheKey.split(":")[0];
+      const keyPrefix = key.split(":")[0];
+      if (cachePrefix === keyPrefix) {
         return fn;
       }
     }
@@ -360,7 +362,7 @@ export class SynthesisIntegrator {
     const hasDash = inputs.some((i) => i.includes("-"));
 
     let code: string;
-    let fn: (input: string) => string;
+    let fn: (input: string) => unknown;
 
     if (hasMonthName) {
       // DD-Mon-YYYY format
@@ -374,7 +376,7 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const match = s.match(/(\d{1,2})[-\s]?(\w{3,})[-\s]?(\d{4})/i);
-        if (!match) return "";
+        if (!match) return null;
         const [_, day, month, year] = match;
         const monthNum = MONTH_NAMES[month.toLowerCase()] || "01";
         return `${year}-${monthNum}-${day.padStart(2, "0")}`;
@@ -393,7 +395,7 @@ export class SynthesisIntegrator {
         }`;
         fn = (s: string) => {
           const match = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2})(?!\d)/);
-          if (!match) return "";
+          if (!match) return null;
           const [_, day, month, shortYear] = match;
           const year = parseInt(shortYear, 10) > 50 ? "19" + shortYear : "20" + shortYear;
           return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
@@ -408,7 +410,7 @@ export class SynthesisIntegrator {
         }`;
         fn = (s: string) => {
           const match = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-          if (!match) return "";
+          if (!match) return null;
           const [_, day, month, year] = match;
           return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
         };

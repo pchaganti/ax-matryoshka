@@ -11,7 +11,7 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseLC } from "../logic/lc-parser.js";
 import { inferType, typeToString } from "../logic/type-inference.js";
-import { solve as solveTerm, type SolverTools, type Bindings } from "../logic/lc-solver.js";
+import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } from "../logic/lc-solver.js";
 
 /**
  * Result of executing a Nucleus command
@@ -84,6 +84,8 @@ function createSolverTools(context: string): SolverTools {
 
     grep: (pattern: string) => {
       const MAX_GREP_MATCHES = 10000;
+      const validation = validateRegex(pattern);
+      if (!validation.valid) return [];
       const flags = "gmi";
       const regex = new RegExp(pattern, flags);
       const results: Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }> = [];
@@ -344,6 +346,13 @@ export class NucleusEngine {
     if (this.verbose) {
       console.log("[Engine] State reset");
     }
+  }
+
+  dispose(): void {
+    this.bindings.clear();
+    this.turnCounter = 0;
+    this.context = "";
+    this.solverTools = null;
   }
 
   /**

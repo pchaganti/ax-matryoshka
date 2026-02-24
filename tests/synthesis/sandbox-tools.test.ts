@@ -364,4 +364,25 @@ describe("Sandbox with synthesis - backward compatibility", () => {
       bigSandbox.dispose();
     }
   });
+
+  it("should return empty array for ReDoS pattern in grep", async () => {
+    const sandbox = await createSandboxWithSynthesis(
+      "aaaaaaaaaa test data",
+      async () => "mock",
+      new SynthesisCoordinator(),
+      {}
+    );
+
+    try {
+      const result = await sandbox.execute(`
+        const matches = grep('(a+)+');
+        console.log(JSON.stringify(matches));
+      `);
+
+      expect(result.error).toBeUndefined();
+      expect(result.logs[0]).toBe("[]");
+    } finally {
+      sandbox.dispose();
+    }
+  });
 });

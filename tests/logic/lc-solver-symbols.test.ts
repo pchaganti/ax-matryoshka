@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { solve, type SolverTools, type Bindings } from "../../src/logic/lc-solver.js";
+import { solve, validateRegex, type SolverTools, type Bindings } from "../../src/logic/lc-solver.js";
 import { parse } from "../../src/logic/lc-parser.js";
 import { SessionDB } from "../../src/persistence/session-db.js";
 import type { Symbol } from "../../src/treesitter/types.js";
@@ -378,6 +378,14 @@ type ID = string | number;
       const result = solve(term as any, tools, bindings);
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/backtracking|invalid regex|extract:/i);
+    });
+  });
+
+  describe("empty regex validation", () => {
+    it("should reject empty regex pattern", () => {
+      const result = validateRegex("");
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("Empty");
     });
   });
 });

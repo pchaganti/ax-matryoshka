@@ -243,7 +243,7 @@ export class KnowledgeBase {
     let lowestId: string | null = null;
     let lowestScore = Infinity;
     for (const [id, comp] of this.components) {
-      const score = comp.usageCount + comp.successCount;
+      const score = comp.successCount * 2 + (comp.usageCount > 0 ? comp.successCount / comp.usageCount : 0);
       if (score < lowestScore) {
         lowestScore = score;
         lowestId = id;
@@ -310,7 +310,7 @@ export class KnowledgeBase {
     );
     const union = new Set([...exampleChars, ...componentChars]);
 
-    return intersection.size / union.size;
+    return union.size === 0 ? 0 : intersection.size / union.size;
   }
 
   /**

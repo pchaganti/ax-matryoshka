@@ -389,3 +389,25 @@ describe("Factory functions", () => {
     expect(engine.isLoaded()).toBe(true);
   });
 });
+
+describe("ReDoS protection in grep", () => {
+  it("should reject ReDoS pattern (a+)+", () => {
+    const engine = createEngineFromContent("aaaaaaaaaaaa test data");
+    const result = engine.execute('(grep "(a+)+")');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/regex|backtracking/i);
+  });
+});
+
+describe("dispose", () => {
+  it("should clear content and state after dispose", () => {
+    const engine = createEngineFromContent("some content here");
+    expect(engine.isLoaded()).toBe(true);
+    expect(engine.getContent()).toBe("some content here");
+
+    engine.dispose();
+
+    expect(engine.getContent()).toBe("");
+    expect(engine.getStats()).toBeNull();
+  });
+});

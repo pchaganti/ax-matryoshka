@@ -106,10 +106,11 @@ export class SymbolExtractor {
     }
 
     // Walk the tree and extract symbols
-    this.walkTree(tree.rootNode, language, symbolMappings, symbols, null);
-
-    // Free native tree-sitter memory
-    tree.delete?.();
+    try {
+      this.walkTree(tree.rootNode, language, symbolMappings, symbols, null);
+    } finally {
+      tree.delete?.();
+    }
 
     return symbols;
   }

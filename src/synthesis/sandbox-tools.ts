@@ -350,6 +350,9 @@ export async function createSandboxWithSynthesis(
      */
     var MAX_GREP_RESULTS = 10000;
     function grep(pattern, flags) {
+      if (pattern.length > 500) return [];
+      if (/(\\((?:[^()]*[+*])[^()]*\\))[+*]/.test(pattern)) return [];
+      try { new RegExp(pattern); } catch(e) { return []; }
       let f = flags || '';
       if (!f.includes('g')) f += 'g';
       if (!f.includes('m')) f += 'm';

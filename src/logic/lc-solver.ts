@@ -37,6 +37,11 @@ export type Bindings = Map<string, unknown>;
  * Validate a regex pattern for safety (ReDoS protection)
  */
 export function validateRegex(pattern: string): { valid: boolean; error?: string } {
+  // Reject empty patterns
+  if (!pattern) {
+    return { valid: false, error: "Empty regex pattern" };
+  }
+
   // Reject excessively long patterns
   if (pattern.length > 500) {
     return { valid: false, error: `Regex pattern too long (${pattern.length} chars, max 500)` };
@@ -149,8 +154,12 @@ function evaluate(
       // Smart escaping: if pattern contains special regex chars that look like
       // they should be literal (e.g., "$" for currency, "." alone), escape them
       let pattern = term.pattern;
-      const specialChars = /^[\$\.\^\*\+\?\[\]\(\)\{\}\|\\]$/;
-      if (specialChars.test(pattern)) {
+
+      // Empty pattern means "match all lines" — convert to wildcard
+      if (!pattern) {
+        pattern = "^";
+        log(`[Solver] Empty grep pattern -> "^" (match all lines)`);
+      } else if (/^[\$\.\^\*\+\?\[\]\(\)\{\}\|\\]$/.test(pattern)) {
         pattern = "\\" + pattern;
         log(`[Solver] Auto-escaped special regex char: "${term.pattern}" -> "${pattern}"`);
       }

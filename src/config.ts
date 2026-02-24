@@ -90,13 +90,31 @@ const DEFAULT_CONFIG: Config = {
   },
 };
 
+function coerceConfigTypes(obj: unknown): unknown {
+  if (typeof obj === "string") {
+    if (/^-?\d+(\.\d+)?$/.test(obj) && obj === String(Number(obj))) return Number(obj);
+    if (obj === "true") return true;
+    if (obj === "false") return false;
+    return obj;
+  }
+  if (Array.isArray(obj)) return obj.map(coerceConfigTypes);
+  if (obj && typeof obj === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      result[k] = coerceConfigTypes(v);
+    }
+    return result;
+  }
+  return obj;
+}
+
 export async function loadConfig(configPath?: string): Promise<Config> {
   const path = configPath || resolve(process.cwd(), "config.json");
 
   try {
     const content = await readFile(path, "utf-8");
     const rawConfig = JSON.parse(content) as Partial<Config>;
-    const userConfig = resolveEnvVars(rawConfig) as Partial<Config>;
+    const userConfig = coerceConfigTypes(resolveEnvVars(rawConfig)) as Partial<Config>;
 
     // Deep merge with defaults
     return {

@@ -224,8 +224,8 @@ export class SessionDB {
   createHandle(data: unknown[]): string {
     if (!this.db) throw new Error("Database not open");
 
-    this.handleCounter++;
-    const handle = `$res${this.handleCounter}`;
+    const nextId = this.handleCounter + 1;
+    const handle = `$res${nextId}`;
     const now = Date.now();
 
     // Insert handle metadata
@@ -247,6 +247,7 @@ export class SessionDB {
     });
 
     insertAll(data);
+    this.handleCounter = nextId;
     return handle;
   }
 

@@ -281,4 +281,17 @@ Line 5: Final line`;
       expect(lines).toEqual([]);
     });
   });
+
+  describe("handle counter sequential numbering", () => {
+    it("should produce sequential handle numbers", () => {
+      db.loadDocument("test content");
+      const h1 = db.createHandle(["a", "b"]);
+      const h2 = db.createHandle(["c", "d"]);
+      const h3 = db.createHandle(["e", "f"]);
+
+      expect(h1).toBe("$res1");
+      expect(h2).toBe("$res2");
+      expect(h3).toBe("$res3");
+    });
+  });
 });

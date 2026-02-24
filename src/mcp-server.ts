@@ -182,7 +182,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
         const oldEngine = engineSessions.get(oldestKey);
         engineSessions.delete(oldestKey);
         engineMtimes.delete(oldestKey);
-        oldEngine?.reset();
+        oldEngine?.dispose();
       }
     }
 

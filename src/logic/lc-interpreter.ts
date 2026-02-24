@@ -10,6 +10,7 @@
 
 import type { LCTerm } from "./types.js";
 import { resolveConstraints } from "./constraint-resolver.js";
+import { validateRegex } from "./lc-solver.js";
 
 // Type for sandbox tools interface
 export interface SandboxTools {
@@ -80,7 +81,7 @@ export function interpret(
 /**
  * Core evaluation function
  */
-function evaluate(
+export function evaluate(
   term: LCTerm,
   tools: SandboxTools,
   env: Environment,
@@ -195,6 +196,8 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
       }
+      const matchValidation = validateRegex(term.pattern);
+      if (!matchValidation.valid) return null;
       const regex = new RegExp(term.pattern);
       const result = str.match(regex);
       return result ? (result[term.group] ?? null) : null;
@@ -205,6 +208,8 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`replace: expected string, got ${typeof str}`);
       }
+      const replaceValidation = validateRegex(term.from);
+      if (!replaceValidation.valid) return str;
       return str.replace(new RegExp(term.from, "g"), term.to);
     }
 

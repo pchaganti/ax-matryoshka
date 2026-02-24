@@ -21,7 +21,7 @@ const DANGEROUS_PATTERNS = [
   /\bsetTimeout\b/,
   /\bsetInterval\b/,
   /\b__proto__\b/,
-  /\bconstructor\s*\(/,
+  /\bconstructor\b/,
   /\bprototype\b/,
   /\bthis\b/,
   /\bReflect\b/,

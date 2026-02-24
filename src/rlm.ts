@@ -20,7 +20,7 @@ import { analyzeExecution, getEncouragement } from "./feedback/execution-feedbac
 import { parse as parseLC } from "./logic/lc-parser.js";
 import { isClassifyTerm, validateClassifyExamples } from "./logic/lc-compiler.js";
 import { inferType, typeToString } from "./logic/type-inference.js";
-import { solve as solveTerm, type SolverTools, type Bindings } from "./logic/lc-solver.js";
+import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } from "./logic/lc-solver.js";
 
 /**
  * Create SolverTools from document content
@@ -82,6 +82,8 @@ function createSolverTools(context: string): SolverTools {
 
     grep: (pattern: string) => {
       const MAX_GREP_MATCHES = 10000;
+      const validation = validateRegex(pattern);
+      if (!validation.valid) return [];
       const flags = "gmi";
       const regex = new RegExp(pattern, flags);
       const results: Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }> = [];

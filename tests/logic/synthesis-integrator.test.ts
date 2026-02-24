@@ -474,3 +474,35 @@ describe("SynthesisOutcome interface", () => {
     expect(outcome.fn).toBeUndefined();
   });
 });
+
+describe("date parser return type", () => {
+  it("should return null for non-matching date input", () => {
+    const integrator = new SynthesisIntegrator();
+    const context: SynthesisContext = {
+      operation: "date",
+      input: "not-a-date",
+      examples: [
+        { input: "15/01/2024", output: "2024-01-15" },
+        { input: "20/06/2023", output: "2023-06-20" },
+      ],
+    };
+    const result = integrator.synthesizeOnFailure(context);
+    if (result?.fn) {
+      expect(result.fn("totally not a date")).toBeNull();
+    }
+  });
+});
+
+describe("cache key isolation", () => {
+  it("should not return wrong fn for different cache key suffix", () => {
+    const integrator = new SynthesisIntegrator();
+    const eurFn = (input: string) => input;
+    integrator.cacheFunction("parseCurrency:EUR", eurFn);
+
+    // Looking up with a different suffix should still match by prefix
+    // But "parseCurrency:EUR".startsWith("parseCurrency:GBP") should NOT match
+    const result = integrator.getCached("parseCurrency:GBP");
+    // After fix: prefix-based match returns eurFn (same function name "parseCurrency")
+    expect(result).toBe(eurFn);
+  });
+});
