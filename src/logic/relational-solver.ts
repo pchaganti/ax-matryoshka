@@ -524,7 +524,7 @@ function searchComposition(examples: Example[]): Composition | null {
  */
 function buildQuarterMapper(examples: Example[]): ((input: string) => string) | null {
   // Check if this looks like quarter mapping
-  const quarterRegex = /Q(\d)-(\d+)/;
+  const quarterRegex = /Q([1-4])-(\d{4})/;
 
   // Build mapping from quarter to month
   const quarterToMonth: Record<string, string> = {};

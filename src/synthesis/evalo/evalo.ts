@@ -13,6 +13,7 @@
 import { run, eq, conde, exist, Rel } from "../../minikanren/index.js";
 import type { Var } from "../../minikanren/common.js";
 import type { Extractor, Example, Value } from "./types.js";
+import { validateRegex } from "../../logic/lc-solver.js";
 
 // ============================================================================
 // Forward Evaluation (Standard Interpreter)
@@ -34,6 +35,8 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
       const str = evalExtractor(extractor.str, input);
       if (typeof str !== "string") return null;
 
+      const matchValidation = validateRegex(extractor.pattern);
+      if (!matchValidation.valid) return null;
       try {
         const regex = new RegExp(extractor.pattern);
         const match = str.match(regex);
@@ -48,9 +51,13 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
       const str = evalExtractor(extractor.str, input);
       if (typeof str !== "string") return null;
 
+      const replaceValidation = validateRegex(extractor.from);
+      if (!replaceValidation.valid) return str;
       try {
         const regex = new RegExp(extractor.from, "g");
-        return str.replace(regex, extractor.to);
+        // Escape $ in replacement to prevent backreference injection
+        const safeReplacement = extractor.to.replace(/\$/g, "$$$$");
+        return str.replace(regex, safeReplacement);
       } catch {
         return null;
       }

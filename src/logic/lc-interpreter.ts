@@ -239,7 +239,9 @@ export function evaluate(
       }
       const replaceValidation = validateRegex(term.from);
       if (!replaceValidation.valid) return str;
-      return str.replace(new RegExp(term.from, "g"), term.to);
+      // Escape $ in replacement to prevent backreference injection ($1, $&, etc.)
+      const safeReplacement = term.to.replace(/\$/g, "$$$$");
+      return str.replace(new RegExp(term.from, "g"), safeReplacement);
     }
 
     case "split": {
@@ -357,7 +359,9 @@ function isClosure(value: LCValue): value is LCClosure {
  * Pretty-print an LC value for display
  */
 export function formatValue(value: LCValue, indent: number = 0): string {
-  const pad = "  ".repeat(indent);
+  const MAX_FORMAT_DEPTH = 20;
+  if (indent > MAX_FORMAT_DEPTH) return "...";
+  const pad = "  ".repeat(Math.min(indent, MAX_FORMAT_DEPTH));
 
   if (value === null) return "null";
   if (typeof value === "boolean") return String(value);

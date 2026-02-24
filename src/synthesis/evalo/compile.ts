@@ -7,6 +7,7 @@
  */
 
 import type { Extractor, Value } from "./types.js";
+import { validateRegex } from "../../logic/lc-solver.js";
 
 /**
  * Compile an extractor to JavaScript code
@@ -25,12 +26,16 @@ export function compile(extractor: Extractor): string {
       return String(extractor.value);
 
     case "match": {
+      const matchValidation = validateRegex(extractor.pattern);
+      if (!matchValidation.valid) return "null";
       const strCode = compile(extractor.str);
       const pattern = escapeRegexForLiteral(extractor.pattern);
       return `(${strCode}).match(/${pattern}/)?.[${extractor.group}] ?? null`;
     }
 
     case "replace": {
+      const replaceValidation = validateRegex(extractor.from);
+      if (!replaceValidation.valid) return compile(extractor.str);
       const strCode = compile(extractor.str);
       const from = escapeRegexForLiteral(extractor.from);
       const to = escapeStringForLiteral(extractor.to);

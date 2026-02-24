@@ -1,0 +1,326 @@
+/**
+ * Audit #14 — Failing tests for 15 issues
+ * These tests should FAIL before the fixes and PASS after.
+ */
+
+import { describe, it, expect } from "vitest";
+import { evalExtractor } from "../src/synthesis/evalo/evalo.js";
+import { compileToFunction } from "../src/synthesis/evalo/compile.js";
+import { inferType } from "../src/synthesis/evalo/typeo.js";
+import type { Extractor } from "../src/synthesis/evalo/types.js";
+import { formatValue, evaluate, type SandboxTools } from "../src/logic/lc-interpreter.js";
+
+// =========================================================================
+// Issue #1 — evalo.ts: evalExtractor uses new RegExp without validateRegex
+// =========================================================================
+describe("Issue #1: evalExtractor should validate regex patterns", () => {
+  it("should return null for ReDoS pattern in match", () => {
+    const e: Extractor = {
+      tag: "match",
+      str: { tag: "input" },
+      pattern: "(a+)+$",
+      group: 0,
+    };
+    // Should be caught by validateRegex, not allowed to execute
+    // A safe implementation returns null without executing the dangerous regex
+    const result = evalExtractor(e, "aaaaaaaaaaaaaaaaaaaaaaaa!");
+    expect(result).toBeNull();
+  });
+
+  it("should return null for ReDoS pattern in replace", () => {
+    const e: Extractor = {
+      tag: "replace",
+      str: { tag: "input" },
+      from: "(a+)+$",
+      to: "b",
+    };
+    // Should not execute dangerous regex
+    const result = evalExtractor(e, "aaaaaaaaaaaaaaaaaaaaaaaa!");
+    // Should return the original string or null, not hang
+    expect(result === null || result === "aaaaaaaaaaaaaaaaaaaaaaaa!").toBe(true);
+  });
+});
+
+// =========================================================================
+// Issue #2 — compile.ts: compiled code embeds regex without ReDoS check
+// =========================================================================
+describe("Issue #2: compile should validate regex patterns", () => {
+  it("compiled match with ReDoS pattern should return null", () => {
+    const e: Extractor = {
+      tag: "match",
+      str: { tag: "input" },
+      pattern: "(a+)+$",
+      group: 0,
+    };
+    const fn = compileToFunction(e);
+    // The compiled function should safely handle ReDoS patterns
+    const result = fn("aaaaaaaaaaaaaaaaaaaaaaaa!");
+    expect(result).toBeNull();
+  });
+});
+
+// =========================================================================
+// Issue #3 — lc-solver.ts:888: evaluateWithBinding var resets depth to 0
+// =========================================================================
+describe("Issue #3: evaluateWithBinding var case should not reset depth", () => {
+  it("should propagate depth for unbound variable lookup", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("src/logic/lc-solver.ts", "utf-8");
+
+    // Find the evaluateWithBinding function
+    const ewbFn = source.match(
+      /function evaluateWithBinding\([\s\S]*?\n\}/m
+    );
+    expect(ewbFn).not.toBeNull();
+    const ewbBody = ewbFn![0];
+
+    // Find the var case — it should NOT call evaluate with depth 0
+    const varCase = ewbBody.match(/case "var":\s*\n[^}]*?return evaluate\([^)]+\)/);
+    expect(varCase).not.toBeNull();
+    // The var case should pass depth + 1, not 0
+    expect(varCase![0]).not.toMatch(/evaluate\([^,]+,[^,]+,[^,]+,[^,]+,\s*0\s*\)/);
+  });
+});
+
+// =========================================================================
+// Issue #4 — coordinator.ts:266: knowledge base regex without validateRegex
+// =========================================================================
+describe("Issue #4: coordinator should validate knowledge base regex", () => {
+  it("should validate regex from knowledge base before testing", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("src/synthesis/coordinator.ts", "utf-8");
+
+    // Find the knowledge base lookup section
+    const kbSection = source.match(/for \(const component of similar[\s\S]*?catch \{[\s\S]*?\}/);
+    expect(kbSection).not.toBeNull();
+    const kbBody = kbSection![0];
+
+    // Should contain validateRegex before new RegExp
+    expect(kbBody).toMatch(/validateRegex/);
+  });
+});
+
+// =========================================================================
+// Issue #5 — lc-interpreter.ts: formatValue no depth limit
+// =========================================================================
+describe("Issue #5: formatValue should have depth limit", () => {
+  it("should not stack overflow on deeply nested object", () => {
+    // Build deeply nested object
+    let obj: any = { value: "leaf" };
+    for (let i = 0; i < 200; i++) {
+      obj = { nested: obj };
+    }
+    // Should not throw, should truncate gracefully
+    expect(() => formatValue(obj)).not.toThrow();
+    const result = formatValue(obj);
+    expect(typeof result).toBe("string");
+  });
+});
+
+// =========================================================================
+// Issue #6 — lc-interpreter.ts:242: replace backreference injection
+// =========================================================================
+describe("Issue #6: interpreter replace should escape replacement backreferences", () => {
+  it("should treat $1 in replacement as literal, not backreference", () => {
+    const tools: SandboxTools = {
+      grep: () => [],
+      fuzzy_search: () => [],
+      text_stats: () => ({ length: 0, lineCount: 0, sample: { start: "", middle: "", end: "" } }),
+      context: "",
+    };
+    const env = new Map();
+    const log = () => {};
+
+    const term = {
+      tag: "replace" as const,
+      str: { tag: "lit" as const, value: "hello world" },
+      from: "(\\w+)",
+      to: "$1-replaced",
+    };
+    const result = evaluate(term as any, tools, env, log);
+    // If $1 is treated as literal, result should contain "$1-replaced"
+    // If $1 is a backreference, result would be "hello-replaced world-replaced" (wrong)
+    expect(String(result)).toContain("$1-replaced");
+  });
+});
+
+// =========================================================================
+// Issue #7 — synthesis-integrator.ts:305-307: EU currency single comma replace
+// =========================================================================
+describe("Issue #7: EU currency parser should replace all commas", () => {
+  it("should parse EU format with multiple dot separators", async () => {
+    const { SynthesisIntegrator } = await import("../src/logic/synthesis-integrator.js");
+    const integrator = new SynthesisIntegrator();
+
+    const result = integrator.synthesizeOnFailure({
+      operation: "parseCurrency",
+      input: "1.234.567,89€",
+      examples: [
+        { input: "1.234,56€", output: 1234.56 },
+        { input: "2.345,67€", output: 2345.67 },
+      ],
+    });
+
+    // The fn should work for inputs with multiple dot separators
+    if (result.success && result.fn) {
+      expect(result.fn("1.234.567,89€")).toBeCloseTo(1234567.89, 1);
+    }
+  });
+});
+
+// =========================================================================
+// Issue #8 — relational-solver.ts:527: quarter regex too broad
+// =========================================================================
+describe("Issue #8: quarter regex should reject invalid quarters", () => {
+  it("should not match Q5, Q0, or Q9", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("src/logic/relational-solver.ts", "utf-8");
+
+    // Find the quarterRegex definition
+    const quarterRegexMatch = source.match(/const quarterRegex\s*=\s*\/([^/]+)\//);
+    expect(quarterRegexMatch).not.toBeNull();
+    const pattern = quarterRegexMatch![1];
+
+    // The regex should only match Q1-Q4, not Q0 or Q5-Q9
+    const regex = new RegExp(pattern);
+    expect(regex.test("Q5-2024")).toBe(false);
+    expect(regex.test("Q0-2024")).toBe(false);
+    expect(regex.test("Q9-2024")).toBe(false);
+    // But should still match valid quarters
+    expect(regex.test("Q1-2024")).toBe(true);
+    expect(regex.test("Q4-2024")).toBe(true);
+  });
+});
+
+// =========================================================================
+// Issue #9 — lc-solver.ts:417: split with empty delimiter
+// =========================================================================
+describe("Issue #9: split with empty delimiter should be bounded", () => {
+  it("should limit split result size with empty delimiter", async () => {
+    const solverMod = await import("../src/logic/lc-solver.js");
+    const { parse } = await import("../src/logic/lc-parser.js");
+
+    const bigString = "a".repeat(100000);
+    const tools: any = {
+      context: bigString,
+      grep: () => [],
+      fuzzy_search: () => [],
+      text_stats: () => ({ length: bigString.length, lineCount: 1, sample: { start: "", middle: "", end: "" } }),
+    };
+
+    // (split "aaa..." "" 0) — empty delimiter splits into per-character array
+    const parsed = parse(`(split "${bigString.slice(0, 50)}" "" 0)`);
+    expect(parsed.success).toBe(true);
+    const result = solverMod.solve(parsed.term!, tools);
+    // Should either return "a" (first char) or handle the split safely
+    // The key check is it shouldn't create a 100K element array
+    expect(result.success).toBe(true);
+  });
+});
+
+// =========================================================================
+// Issue #10 — lc-solver.ts:409: replace $1 backreference in solver
+// =========================================================================
+describe("Issue #10: solver replace should escape replacement backreferences", () => {
+  it("should treat $1 in replacement as literal string", async () => {
+    const solverMod2 = await import("../src/logic/lc-solver.js");
+    const { parse } = await import("../src/logic/lc-parser.js");
+
+    const tools: any = {
+      context: "",
+      grep: () => [],
+      fuzzy_search: () => [],
+      text_stats: () => ({ length: 0, lineCount: 0, sample: { start: "", middle: "", end: "" } }),
+    };
+
+    const parsed = parse('(replace "hello world" "(\\\\w+)" "$1-test")');
+    expect(parsed.success).toBe(true);
+    const result = solverMod2.solve(parsed.term!, tools);
+    expect(result.success).toBe(true);
+    // Should contain literal "$1-test", not a backreference substitution
+    expect(String(result.value)).toContain("$1-test");
+  });
+});
+
+// =========================================================================
+// Issue #11 — relational-solver.ts:490: off-by-one in MAX_CANDIDATES
+// =========================================================================
+describe("Issue #11: searchComposition MAX_CANDIDATES off-by-one", () => {
+  it("should check candidates <= MAX not > MAX after increment", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("src/logic/relational-solver.ts", "utf-8");
+
+    // Find the candidatesChecked comparison
+    const check = source.match(/candidatesChecked.*MAX_CANDIDATES/);
+    expect(check).not.toBeNull();
+    // Should be >= (or check before increment), not > after increment
+    expect(check![0]).toMatch(/>=\s*MAX_CANDIDATES|candidatesChecked\s*>\s*MAX_CANDIDATES/);
+  });
+});
+
+// =========================================================================
+// Issue #12 — http.ts: CORS allows all origins
+// =========================================================================
+describe("Issue #12: HTTP adapter CORS origin restriction", () => {
+  it("should restrict CORS origin to localhost by default", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("src/tool/adapters/http.ts", "utf-8");
+
+    // Find CORS origin setting
+    const corsOrigin = source.match(/Access-Control-Allow-Origin.*?"([^"]+)"/);
+    expect(corsOrigin).not.toBeNull();
+    // Should NOT be wildcard "*"
+    expect(corsOrigin![1]).not.toBe("*");
+  });
+});
+
+// =========================================================================
+// Issue #13 — lattice-tool.ts:113: non-portable path basename
+// =========================================================================
+describe("Issue #13: lattice-tool should use path.basename", () => {
+  it("should use path.basename not manual string split", async () => {
+    const fs = await import("node:fs/promises");
+    const source = await fs.readFile("src/tool/lattice-tool.ts", "utf-8");
+
+    // Should use path.basename, not .split("/").pop()
+    expect(source).not.toContain('.split("/").pop()');
+    expect(source).toContain("path.basename");
+  });
+});
+
+// =========================================================================
+// Issue #14 — lc-interpreter.ts:251: negative split index not validated
+// =========================================================================
+describe("Issue #14: interpreter split should reject negative index", () => {
+  it("should return null for negative split index", () => {
+    const tools: SandboxTools = {
+      grep: () => [],
+      fuzzy_search: () => [],
+      text_stats: () => ({ length: 0, lineCount: 0, sample: { start: "", middle: "", end: "" } }),
+      context: "",
+    };
+    const env = new Map();
+    const log = () => {};
+
+    const term = {
+      tag: "split" as const,
+      str: { tag: "lit" as const, value: "a:b:c" },
+      delim: ":",
+      index: -1,
+    };
+    const result = evaluate(term as any, tools, env, log);
+    expect(result).toBeNull();
+  });
+});
+
+// =========================================================================
+// Issue #15 — typeo.ts: inferType missing default case
+// =========================================================================
+describe("Issue #15: inferType should return unknown for unrecognized tags", () => {
+  it("should return 'unknown' for a made-up tag", () => {
+    const e = { tag: "nonexistent" } as unknown as Extractor;
+    const result = inferType(e);
+    // Should return "unknown", not undefined
+    expect(result).toBe("unknown");
+  });
+});

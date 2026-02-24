@@ -123,6 +123,10 @@ export class SynthesisCoordinator {
    */
   validateRegex(pattern: string): boolean {
     try {
+      // Check for ReDoS patterns (nested quantifiers)
+      const redosPattern = /(\((?:[^()]*[+*])[^()]*\))[+*]|\(\?[^)]*[+*][^)]*\)[+*]/;
+      if (redosPattern.test(pattern)) return false;
+      if (pattern.length > 500) return false;
       new RegExp(pattern);
       return true;
     } catch {
@@ -262,6 +266,7 @@ export class SynthesisCoordinator {
 
     for (const component of similar.slice(0, 3)) {
       if (component.pattern) {
+        if (!this.validateRegex(component.pattern)) continue;
         try {
           const regex = new RegExp(component.pattern);
           const allMatch = request.positiveExamples.every((p) => regex.test(p));

@@ -69,6 +69,9 @@ export function inferType(extractor: Extractor): Type {
       // Different types - return unknown
       return "unknown";
     }
+
+    default:
+      return "unknown";
   }
 }
 

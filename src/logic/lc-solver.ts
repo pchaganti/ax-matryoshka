@@ -406,7 +406,9 @@ function evaluate(
       if (!replaceValidation.valid) {
         throw new Error(`replace: ${replaceValidation.error}`);
       }
-      return str.replace(new RegExp(term.from, "g"), term.to);
+      // Escape $ in replacement to prevent backreference injection ($1, $&, etc.)
+      const safeReplacement = term.to.replace(/\$/g, "$$$$");
+      return str.replace(new RegExp(term.from, "g"), safeReplacement);
     }
 
     case "split": {
@@ -885,7 +887,7 @@ function evaluateWithBinding(
   switch (body.tag) {
     case "var":
       if (body.name === param) return value;
-      return evaluate(body, tools, bindings, log, 0);
+      return evaluate(body, tools, bindings, log, depth + 1);
 
     case "lit":
       return body.value;
@@ -911,7 +913,8 @@ function evaluateWithBinding(
       if (!replaceVal.valid) {
         throw new Error(`replace: ${replaceVal.error}`);
       }
-      return str.replace(new RegExp(body.from, "g"), body.to);
+      const safeReplacement = body.to.replace(/\$/g, "$$$$");
+      return str.replace(new RegExp(body.from, "g"), safeReplacement);
     }
 
     case "split": {

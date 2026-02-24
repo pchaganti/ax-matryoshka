@@ -110,7 +110,7 @@ export class LatticeTool {
     try {
       await this.engine.loadFile(filePath);
       this.documentPath = filePath;
-      this.documentName = filePath.split("/").pop() || filePath;
+      this.documentName = path.basename(filePath);
 
       const stats = this.engine.getStats();
       return {
