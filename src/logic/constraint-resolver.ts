@@ -165,13 +165,10 @@ function wrapWithNullCheck(term: LCTerm): LCTerm {
   switch (term.tag) {
     case "match":
     case "split":
-      // These can return null, wrap in conditional
-      return {
-        tag: "if",
-        cond: term,
-        then: term,
-        else: { tag: "lit", value: null },
-      };
+      // These can return null - return the term as-is since the evaluator
+      // already handles null returns via ?? null. Wrapping in if(term, term, null)
+      // would evaluate the operation twice unnecessarily.
+      return term;
 
     case "parseInt":
     case "parseFloat":

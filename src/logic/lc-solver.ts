@@ -629,14 +629,15 @@ function evaluate(
       return { _type: "closure", param: term.param, body: term.body };
 
     case "app": {
-      const fn = evaluate(term.fn, tools, bindings, log, depth + 1) as { _type: "closure"; param: string; body: LCTerm };
-      if (!fn || fn._type !== "closure") {
+      const fn = evaluate(term.fn, tools, bindings, log, depth + 1);
+      if (!fn || typeof fn !== "object" || (fn as { _type?: string })._type !== "closure") {
         throw new Error(`app: expected closure, got ${typeof fn}`);
       }
+      const closure = fn as { _type: "closure"; param: string; body: LCTerm };
       const arg = evaluate(term.arg, tools, bindings, log, depth + 1);
       // Substitute arg for param in body and evaluate
       // For simplicity, we evaluate directly here
-      return evaluateWithBinding(fn.body, fn.param, arg, tools, bindings, log);
+      return evaluateWithBinding(closure.body, closure.param, arg, tools, bindings, log);
     }
 
     case "constrained":
@@ -1148,7 +1149,7 @@ function daysInMonth(month: number, year: number): number {
   if (month === 2 && (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0))) {
     return 29;
   }
-  return days[month] ?? 31;
+  return days[month] ?? 0;
 }
 
 /**

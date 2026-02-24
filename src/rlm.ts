@@ -462,20 +462,25 @@ export async function runRLM(
   let ragHints: RAGHints | undefined;
 
   if (ragEnabled) {
-    ragManager = getRAGManager();
-    const hints = ragManager.getHints(query, 2);
-    const hintsText = ragManager.formatHintsForPrompt(hints);
-    const selfCorrectionText = ragManager.generateSelfCorrectionFeedback(sessionId);
+    try {
+      ragManager = getRAGManager();
+      const hints = ragManager.getHints(query, 2);
+      const hintsText = ragManager.formatHintsForPrompt(hints);
+      const selfCorrectionText = ragManager.generateSelfCorrectionFeedback(sessionId);
 
-    if (hintsText || selfCorrectionText) {
-      ragHints = {
-        hintsText,
-        selfCorrectionText: selfCorrectionText || undefined,
-      };
-      log(`[RAG] Retrieved ${hints.length} hints for query`);
-      if (selfCorrectionText) {
-        log(`[RAG] Including self-correction feedback from previous failures`);
+      if (hintsText || selfCorrectionText) {
+        ragHints = {
+          hintsText,
+          selfCorrectionText: selfCorrectionText || undefined,
+        };
+        log(`[RAG] Retrieved ${hints.length} hints for query`);
+        if (selfCorrectionText) {
+          log(`[RAG] Including self-correction feedback from previous failures`);
+        }
       }
+    } catch (err) {
+      log(`[RAG] Failed to retrieve hints: ${err instanceof Error ? err.message : String(err)}`);
+      ragManager = null;
     }
   }
 
@@ -850,7 +855,7 @@ Try again with proper formatting.`;
           if (ragManager) {
             ragManager.recordFailure({
               query,
-              code: code,
+              code: code.slice(0, 500),
               error: result.error,
               timestamp: Date.now(),
               sessionId,

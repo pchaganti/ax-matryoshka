@@ -506,3 +506,21 @@ describe("cache key isolation", () => {
     expect(result).toBe(eurFn);
   });
 });
+
+describe("SynthesisIntegrator - date parser null consistency", () => {
+  it("should return null (not empty string) for invalid date input", () => {
+    const integrator = new SynthesisIntegrator();
+    const result = integrator.synthesizeOnFailure({
+      operation: "parseDate",
+      input: "not-a-date-at-all",
+      examples: [
+        { input: "2024-01-15", output: "2024-01-15" },
+      ],
+    });
+    // If synthesis returns a fn, it should return null for bad input, not ""
+    if (result.success && result.fn) {
+      const output = result.fn("not-a-date-at-all");
+      expect(output).not.toBe("");
+    }
+  });
+});

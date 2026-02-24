@@ -449,5 +449,25 @@ type ID = string | number;
       expect(result.success).toBe(true);
       expect(result.value).toBeNull();
     });
+
+    it("should reject month 13 as invalid date", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "2024-13-01" },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
+    });
+
+    it("should reject month 0 as invalid date", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "2024-00-15" },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
+    });
   });
 });

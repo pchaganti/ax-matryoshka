@@ -174,13 +174,13 @@ describe("evalExtractor (forward mode)", () => {
       expect(result).toBe(123);
     });
 
-    it("should return NaN for non-numeric", () => {
+    it("should return null for non-numeric", () => {
       const e: Extractor = {
         tag: "parseInt",
         str: { tag: "input" },
       };
       const result = evalExtractor(e, "hello");
-      expect(result).toBeNaN();
+      expect(result).toBeNull();
     });
   });
 

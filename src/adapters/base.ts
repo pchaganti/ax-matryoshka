@@ -123,10 +123,9 @@ function extractFinalAnswer(
       const valueFields = ['total', 'result', 'value', 'totalsales', 'total_sales', 'count', 'sum', 'answer', 'totals'];
       const keys = Object.keys(parsed);
       const foundKey = keys.find(k => valueFields.includes(k.toLowerCase().replace(/_/g, '')));
-      const foundValue = foundKey;
 
-      if (foundValue !== undefined) {
-        const value = parsed[foundValue];
+      if (foundKey !== undefined) {
+        const value = parsed[foundKey];
         if (parsed.notes) {
           return `${parsed.notes}\n\nResult: ${typeof value === 'number' ? value.toLocaleString() : value}`;
         }

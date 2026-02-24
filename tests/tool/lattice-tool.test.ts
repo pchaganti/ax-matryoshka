@@ -237,4 +237,20 @@ describe("formatResponse", () => {
 
     expect(output).toContain("... and 10 more");
   });
+
+  describe("path traversal prevention", () => {
+    it("should reject paths with directory traversal", async () => {
+      const tool = new LatticeTool();
+      const result = await tool.loadAsync("../../etc/passwd");
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/path|traversal|invalid/i);
+    });
+
+    it("should reject paths with embedded traversal", async () => {
+      const tool = new LatticeTool();
+      const result = await tool.loadAsync("/tmp/safe/../../../etc/passwd");
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/path|traversal|invalid/i);
+    });
+  });
 });

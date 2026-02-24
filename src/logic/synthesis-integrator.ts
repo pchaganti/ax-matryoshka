@@ -397,6 +397,9 @@ export class SynthesisIntegrator {
           const match = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2})(?!\d)/);
           if (!match) return null;
           const [_, day, month, shortYear] = match;
+          const m = parseInt(month, 10);
+          const d = parseInt(day, 10);
+          if (m < 1 || m > 12 || d < 1 || d > 31) return null;
           const year = parseInt(shortYear, 10) > 50 ? "19" + shortYear : "20" + shortYear;
           return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
         };
@@ -412,6 +415,9 @@ export class SynthesisIntegrator {
           const match = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
           if (!match) return null;
           const [_, day, month, year] = match;
+          const m = parseInt(month, 10);
+          const d = parseInt(day, 10);
+          if (m < 1 || m > 12 || d < 1 || d > 31) return null;
           return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
         };
       }
@@ -424,7 +430,7 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const d = new Date(s);
-        if (isNaN(d.getTime())) return "";
+        if (isNaN(d.getTime())) return null;
         return d.toISOString().split("T")[0];
       };
     }

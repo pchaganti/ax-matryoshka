@@ -95,15 +95,17 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
   },
 
   parseInt: (input, _args) => {
-    if (input === null || input === undefined) return NaN;
+    if (input === null || input === undefined) return null;
     const str = String(input).replace(/,/g, "");
-    return parseInt(str, 10);
+    const result = parseInt(str, 10);
+    return isNaN(result) ? null : result;
   },
 
   parseFloat: (input, _args) => {
-    if (input === null || input === undefined) return NaN;
+    if (input === null || input === undefined) return null;
     const str = String(input).replace(/,/g, "");
-    return parseFloat(str);
+    const result = parseFloat(str);
+    return isNaN(result) ? null : result;
   },
 
   parseDate: (input, args) => {

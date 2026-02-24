@@ -191,8 +191,8 @@ export class SessionDB {
   getLineCount(): number {
     if (!this.db) return 0;
     const stmt = this.db.prepare("SELECT COUNT(*) as count FROM document_lines");
-    const row = stmt.get() as { count: number };
-    return row.count;
+    const row = stmt.get() as { count: number } | undefined;
+    return row?.count ?? 0;
   }
 
   /**

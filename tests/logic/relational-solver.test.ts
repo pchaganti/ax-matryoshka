@@ -279,5 +279,25 @@ describe("Relational Solver", () => {
       expect(result).toBeNull();
     });
   });
+
+  describe("NaN guard in parseInt/parseFloat primitives", () => {
+    it("should return null instead of NaN for parseInt of non-numeric input", () => {
+      const composition: Composition = { steps: [{ primitive: "parseInt" as Primitive, args: {} }] };
+      const result = evaluateComposition(composition, "hello");
+      expect(result).toBeNull();
+    });
+
+    it("should return null instead of NaN for parseFloat of non-numeric input", () => {
+      const composition: Composition = { steps: [{ primitive: "parseFloat" as Primitive, args: {} }] };
+      const result = evaluateComposition(composition, "hello");
+      expect(result).toBeNull();
+    });
+
+    it("should return valid number for parseInt of numeric input", () => {
+      const composition: Composition = { steps: [{ primitive: "parseInt" as Primitive, args: {} }] };
+      const result = evaluateComposition(composition, "42");
+      expect(result).toBe(42);
+    });
+  });
 });
 

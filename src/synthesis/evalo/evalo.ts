@@ -73,27 +73,29 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
 
     case "parseInt": {
       const str = evalExtractor(extractor.str, input);
-      if (str === null) return NaN;
-      return parseInt(String(str), 10);
+      if (str === null) return null;
+      const intResult = parseInt(String(str), 10);
+      return isNaN(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
       const str = evalExtractor(extractor.str, input);
-      if (str === null) return NaN;
-      return parseFloat(String(str));
+      if (str === null) return null;
+      const floatResult = parseFloat(String(str));
+      return isNaN(floatResult) ? null : floatResult;
     }
 
     case "add": {
       const left = evalExtractor(extractor.left, input);
       const right = evalExtractor(extractor.right, input);
-      if (typeof left !== "number" || typeof right !== "number") return NaN;
+      if (typeof left !== "number" || typeof right !== "number" || isNaN(left) || isNaN(right)) return null;
       return left + right;
     }
 
     case "if": {
       const cond = evalExtractor(extractor.cond, input);
-      // Falsy: null, "", 0, false
-      const isFalsy = cond === null || cond === "" || cond === 0 || cond === false;
+      // Falsy: null, "", 0, false, NaN
+      const isFalsy = cond === null || cond === "" || cond === 0 || cond === false || (typeof cond === "number" && isNaN(cond));
       return isFalsy
         ? evalExtractor(extractor.else, input)
         : evalExtractor(extractor.then, input);

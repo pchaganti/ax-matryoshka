@@ -8,6 +8,7 @@
  * - HTTP server
  */
 
+import * as path from "node:path";
 import { NucleusEngine, type ExecutionResult } from "../engine/nucleus-engine.js";
 
 /**
@@ -92,6 +93,14 @@ export class LatticeTool {
    * Load a document from file (async)
    */
   async loadAsync(filePath: string): Promise<LatticeResponse> {
+    // Reject paths with directory traversal
+    const resolved = path.resolve(filePath);
+    if (resolved !== path.normalize(resolved) || filePath.includes("..")) {
+      return {
+        success: false,
+        error: `Invalid path: directory traversal not allowed`,
+      };
+    }
     try {
       await this.engine.loadFile(filePath);
       this.documentPath = filePath;
