@@ -1,5 +1,7 @@
 import type { LLMProvider, LLMConfig, ProviderConfig } from "./types.js";
 
+const LLM_TIMEOUT_MS = 120_000; // 2 minutes
+
 export function createOllamaProvider(config: ProviderConfig): LLMProvider {
   return {
     name: "ollama",
@@ -20,19 +22,34 @@ export function createOllamaProvider(config: ProviderConfig): LLMProvider {
         requestBody.format = "json";
       }
 
-      const response = await fetch(`${config.baseUrl}/api/generate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
+      let response: Response;
+      try {
+        response = await fetch(`${config.baseUrl}/api/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
+        let errorBody = "";
+        try { errorBody = await response.text(); } catch { /* ignore */ }
         throw new Error(
-          `Ollama error: ${response.status} ${response.statusText}`
+          `Ollama error: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody.slice(0, 200)}` : ""}`
         );
       }
 
-      const data = (await response.json()) as { response?: string };
+      let data: { response?: string };
+      try {
+        data = (await response.json()) as { response?: string };
+      } catch {
+        throw new Error("Ollama returned invalid JSON response");
+      }
       if (!data.response) {
         throw new Error("Ollama returned empty response");
       }

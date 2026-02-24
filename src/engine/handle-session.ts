@@ -15,6 +15,8 @@ import { ParserRegistry } from "../treesitter/parser-registry.js";
 import { SymbolExtractor } from "../treesitter/symbol-extractor.js";
 import { isExtensionSupported } from "../treesitter/language-map.js";
 
+const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
+
 /**
  * Result of a handle-based query execution
  */
@@ -69,6 +71,7 @@ export class HandleSession {
   private parserRegistry: ParserRegistry;
   private symbolExtractor: SymbolExtractor;
   private parserInitialized: boolean = false;
+  private initPromise: Promise<void> | null = null;
   private documentPath: string = "";
   private documentSize: number = 0;
   private loadedAt: Date | null = null;
@@ -91,8 +94,12 @@ export class HandleSession {
    */
   async init(): Promise<void> {
     if (!this.parserInitialized) {
-      await this.parserRegistry.init();
-      this.parserInitialized = true;
+      if (!this.initPromise) {
+        this.initPromise = this.parserRegistry.init().then(() => {
+          this.parserInitialized = true;
+        });
+      }
+      await this.initPromise;
     }
   }
 
@@ -102,6 +109,9 @@ export class HandleSession {
    */
   async loadFile(filePath: string): Promise<{ lineCount: number; size: number }> {
     const content = await readFile(filePath, "utf-8");
+    if (content.length > MAX_DOCUMENT_SIZE) {
+      throw new Error(`File too large (${(content.length / 1024 / 1024).toFixed(1)}MB, max ${MAX_DOCUMENT_SIZE / 1024 / 1024}MB)`);
+    }
     return this.loadContentWithSymbols(content, filePath);
   }
 
@@ -170,15 +180,32 @@ export class HandleSession {
     return { lineCount, size: content.length };
   }
 
+  private symbolExtractionPromise: Promise<void> | null = null;
+  private loadGeneration: number = 0;
+
   /**
    * Extract and store symbols (async, fire-and-forget for sync load)
+   * Uses a generation counter to discard stale results from previous loads.
    */
   private extractSymbolsAsync(content: string, ext: string): void {
-    this.init()
-      .then(() => this.extractAndStoreSymbols(content, ext))
-      .catch(() => {
-        // Silently ignore errors - symbols just won't be available
+    const gen = ++this.loadGeneration;
+    this.symbolExtractionPromise = this.init()
+      .then(() => {
+        if (gen !== this.loadGeneration) return; // stale load, skip
+        return this.extractAndStoreSymbols(content, ext);
+      })
+      .catch((err) => {
+        console.error("[HandleSession] Symbol extraction failed:", err instanceof Error ? err.message : String(err));
       });
+  }
+
+  /**
+   * Wait for symbol extraction to complete (if any is in progress)
+   */
+  async waitForSymbols(): Promise<void> {
+    if (this.symbolExtractionPromise) {
+      await this.symbolExtractionPromise;
+    }
   }
 
   /**
@@ -402,8 +429,16 @@ export class HandleSession {
    * Close the session and free resources
    */
   close(): void {
-    this.parserRegistry.dispose();
-    this.db.close();
+    try {
+      this.parserRegistry.dispose();
+    } catch (err) {
+      console.error("[HandleSession] Parser registry dispose failed:", err instanceof Error ? err.message : String(err));
+    }
+    try {
+      this.db.close();
+    } catch (err) {
+      console.error("[HandleSession] Database close failed:", err instanceof Error ? err.message : String(err));
+    }
   }
 
   /**

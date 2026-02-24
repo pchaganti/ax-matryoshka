@@ -67,8 +67,12 @@ export class SynthesisCoordinator {
    * Collect an example from execution
    */
   collectExample(category: string, example: CollectedExample): void {
+    const MAX_EXAMPLES_PER_CATEGORY = 100;
     const existing = this.exampleStore.get(category) || [];
     existing.push(example);
+    if (existing.length > MAX_EXAMPLES_PER_CATEGORY) {
+      existing.splice(0, existing.length - MAX_EXAMPLES_PER_CATEGORY);
+    }
     this.exampleStore.set(category, existing);
   }
 

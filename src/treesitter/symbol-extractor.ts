@@ -100,12 +100,16 @@ export class SymbolExtractor {
     // Get symbol mappings for this language
     const symbolMappings = getSymbolMappings(language);
     if (!symbolMappings) {
-      // No symbol mappings - return empty
+      // No symbol mappings - free native memory and return empty
+      tree.delete?.();
       return [];
     }
 
     // Walk the tree and extract symbols
     this.walkTree(tree.rootNode, language, symbolMappings, symbols, null);
+
+    // Free native tree-sitter memory
+    tree.delete?.();
 
     return symbols;
   }

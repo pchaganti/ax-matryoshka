@@ -81,6 +81,19 @@ describe("SynthesisCoordinator", () => {
       expect(coordinator.getExamples("dates")).toEqual([]);
     });
 
+    it("should cap examples per category at 100", () => {
+      // Add more than 100 examples to a single category
+      for (let i = 0; i < 120; i++) {
+        coordinator.collectExample("capped", { source: "grep", raw: `item-${i}` });
+      }
+
+      const examples = coordinator.getExamples("capped");
+      expect(examples).toHaveLength(100);
+      // Should keep the most recent ones (last 100)
+      expect(examples[0].raw).toBe("item-20");
+      expect(examples[99].raw).toBe("item-119");
+    });
+
     it("should list all categories", () => {
       coordinator.collectExample("numbers", { source: "grep", raw: "$1,000" });
       coordinator.collectExample("dates", { source: "grep", raw: "2024-01-15" });

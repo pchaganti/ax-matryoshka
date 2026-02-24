@@ -44,7 +44,14 @@ export class KnowledgeBase {
   /**
    * Add a synthesized component to the knowledge base
    */
+  private static readonly MAX_COMPONENTS = 500;
+
   add(component: SynthesizedComponent): void {
+    // Evict lowest-usage component if at capacity
+    if (this.components.size >= KnowledgeBase.MAX_COMPONENTS && !this.components.has(component.id)) {
+      this.evictLowestUsage();
+    }
+
     this.components.set(component.id, component);
 
     // Index by type
@@ -202,6 +209,47 @@ export class KnowledgeBase {
     for (const component of components) {
       this.add(component);
     }
+  }
+
+  /**
+   * Remove a component by id
+   */
+  remove(id: string): void {
+    const component = this.components.get(id);
+    if (!component) return;
+
+    // Remove from type index
+    const typeSet = this.typeIndex.get(component.type);
+    if (typeSet) {
+      typeSet.delete(id);
+      if (typeSet.size === 0) this.typeIndex.delete(component.type);
+    }
+
+    // Remove from pattern index
+    const signature = this.computeSignature(component);
+    const patternSet = this.patternIndex.get(signature);
+    if (patternSet) {
+      patternSet.delete(id);
+      if (patternSet.size === 0) this.patternIndex.delete(signature);
+    }
+
+    this.components.delete(id);
+  }
+
+  /**
+   * Evict the lowest-usage component to make room
+   */
+  private evictLowestUsage(): void {
+    let lowestId: string | null = null;
+    let lowestScore = Infinity;
+    for (const [id, comp] of this.components) {
+      const score = comp.usageCount + comp.successCount;
+      if (score < lowestScore) {
+        lowestScore = score;
+        lowestId = id;
+      }
+    }
+    if (lowestId) this.remove(lowestId);
   }
 
   /**

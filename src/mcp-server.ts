@@ -16,6 +16,7 @@ import {
   ListToolsRequestSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
+import { stat } from "node:fs/promises";
 import { runRLM } from "./rlm.js";
 import { loadConfig } from "./config.js";
 import { createLLMClient } from "./llm/index.js";
@@ -126,6 +127,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
   // Session-based engine cache for stateful Nucleus execution
   const MAX_ENGINE_SESSIONS = 20;
   const engineSessions = new Map<string, NucleusEngine>();
+  const engineMtimes = new Map<string, number>();
 
   const ensureLLMClient = async (): Promise<LLMQueryFn> => {
     if (llmClient) {
@@ -152,6 +154,21 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
 
     let engine = engineSessions.get(key);
     if (engine && engine.isLoaded()) {
+      // Check if file was modified since cached
+      try {
+        const fileStat = await stat(filePath);
+        const cachedMtime = engineMtimes.get(key);
+        if (cachedMtime && fileStat.mtimeMs > cachedMtime) {
+          // File changed, reload
+          engine = new NucleusEngine();
+          await engine.loadFile(filePath);
+          engineSessions.delete(key);
+          engineSessions.set(key, engine);
+          engineMtimes.set(key, fileStat.mtimeMs);
+          return engine;
+        }
+      } catch { /* stat failed, use cached */ }
+
       // Move to end for LRU ordering (most recently accessed = last)
       engineSessions.delete(key);
       engineSessions.set(key, engine);
@@ -162,13 +179,20 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
     if (engineSessions.size >= MAX_ENGINE_SESSIONS) {
       const oldestKey = engineSessions.keys().next().value;
       if (oldestKey !== undefined) {
+        const oldEngine = engineSessions.get(oldestKey);
         engineSessions.delete(oldestKey);
+        engineMtimes.delete(oldestKey);
+        oldEngine?.reset();
       }
     }
 
     engine = new NucleusEngine();
     await engine.loadFile(filePath);
     engineSessions.set(key, engine);
+    try {
+      const fileStat = await stat(filePath);
+      engineMtimes.set(key, fileStat.mtimeMs);
+    } catch { /* ignore */ }
     return engine;
   };
 

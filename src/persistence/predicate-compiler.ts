@@ -13,6 +13,7 @@ const DANGEROUS_PATTERNS = [
   /\beval\b/,
   /\bFunction\b/,
   /\bglobal\b/,
+  /\bglobalThis\b/,
   /\bwindow\b/,
   /\bdocument\b/,
   /\bfetch\b/,
@@ -22,6 +23,10 @@ const DANGEROUS_PATTERNS = [
   /\b__proto__\b/,
   /\bconstructor\s*\(/,
   /\bprototype\b/,
+  /\bthis\b/,
+  /\bReflect\b/,
+  /\bProxy\b/,
+  /\bSymbol\b/,
 ];
 
 // Whitelist of allowed operations
@@ -58,11 +63,7 @@ export class PredicateCompiler {
    * Compile a predicate string to a function
    */
   compile(predicate: string): PredicateFn {
-    this.validate(predicate);
-
-    // Create a sandboxed function
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const fn = new Function("item", `"use strict"; return (${predicate});`);
+    const fn = this.validateAndCompile(predicate);
 
     return (item: unknown) => {
       try {
@@ -77,10 +78,7 @@ export class PredicateCompiler {
    * Compile a transform expression to a function
    */
   compileTransform(expression: string): TransformFn {
-    this.validate(expression);
-
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
-    const fn = new Function("item", `"use strict"; return (${expression});`);
+    const fn = this.validateAndCompile(expression);
 
     return (item: unknown) => {
       try {
@@ -92,9 +90,9 @@ export class PredicateCompiler {
   }
 
   /**
-   * Validate a predicate/expression for safety
+   * Validate and compile a predicate/expression in a single step
    */
-  private validate(code: string): void {
+  private validateAndCompile(code: string): Function {
     if (!code || !code.trim()) {
       throw new Error("Empty predicate");
     }
@@ -106,41 +104,57 @@ export class PredicateCompiler {
       }
     }
 
-    // For complex expressions, we do a basic syntax check
     try {
-      // Use Function constructor to check syntax only
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
-      new Function("item", `"use strict"; return (${code});`);
+      return new Function("item", `"use strict"; return (${code});`);
     } catch (e) {
-      throw new Error(`Invalid syntax: ${e instanceof Error ? e.message : String(e)}`);
+      throw new Error(`Invalid predicate syntax: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
   /**
-   * Convert simple predicates to SQL WHERE conditions
-   * Returns null if conversion is not possible
+   * Validate a field name is a safe SQL identifier
    */
-  toSQLCondition(predicate: string): string | null {
-    // Simple equality: item.field === 'value'
-    const eqMatch = predicate.match(/^item\.(\w+)\s*===?\s*['"]([^'"]+)['"]$/);
+  private isValidFieldName(field: string): boolean {
+    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field);
+  }
+
+  /**
+   * Convert simple predicates to SQL WHERE conditions with parameterized queries.
+   * Returns null if conversion is not possible.
+   */
+  toSQLCondition(predicate: string): { sql: string; params: unknown[] } | null {
+    // Simple equality: item.field === 'value' or item.field === "value"
+    const eqMatch = predicate.match(/^item\.(\w+)\s*===?\s*['"]([^'"]*(?:(?<=\\)['"][^'"]*)*)['"]\s*$/);
     if (eqMatch) {
       const [, field, value] = eqMatch;
-      return `json_extract(data, '$.${field}') = '${value}'`;
+      if (!this.isValidFieldName(field)) return null;
+      return { sql: `json_extract(data, '$.${field}') = ?`, params: [value] };
+    }
+
+    // Also match double-quoted values containing single quotes: item.field === "O'Reilly"
+    const eqMatchDQ = predicate.match(/^item\.(\w+)\s*===?\s*"([^"]*)"\s*$/);
+    if (eqMatchDQ) {
+      const [, field, value] = eqMatchDQ;
+      if (!this.isValidFieldName(field)) return null;
+      return { sql: `json_extract(data, '$.${field}') = ?`, params: [value] };
     }
 
     // String includes: item.field.includes('value')
     const includesMatch = predicate.match(/^item\.(\w+)\.includes\s*\(\s*['"]([^'"]+)['"]\s*\)$/);
     if (includesMatch) {
       const [, field, value] = includesMatch;
-      return `json_extract(data, '$.${field}') LIKE '%${value}%'`;
+      if (!this.isValidFieldName(field)) return null;
+      return { sql: `json_extract(data, '$.${field}') LIKE ?`, params: [`%${value}%`] };
     }
 
     // Numeric comparison: item.field > 100
     const numMatch = predicate.match(/^item\.(\w+)\s*([<>]=?|===?|!==?)\s*(-?\d+(?:\.\d+)?)$/);
     if (numMatch) {
       const [, field, op, value] = numMatch;
+      if (!this.isValidFieldName(field)) return null;
       const sqlOp = op === "===" || op === "==" ? "=" : op === "!==" || op === "!=" ? "!=" : op;
-      return `CAST(json_extract(data, '$.${field}') AS REAL) ${sqlOp} ${value}`;
+      return { sql: `CAST(json_extract(data, '$.${field}') AS REAL) ${sqlOp} ?`, params: [Number(value)] };
     }
 
     // Can't convert - use JS evaluation

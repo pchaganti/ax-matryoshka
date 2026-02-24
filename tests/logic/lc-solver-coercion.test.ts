@@ -341,3 +341,77 @@ Line 8: Conclusion`;
     ]);
   });
 });
+
+describe("LC Solver NaN-safe parsing", () => {
+  const tools = createMockTools("");
+  const bindings: Bindings = new Map();
+
+  it("should return null for parseInt of non-numeric string", () => {
+    const term = {
+      tag: "parseInt" as const,
+      str: { tag: "lit" as const, value: "not-a-number" },
+    };
+    const result = solve(term as any, tools, bindings);
+    expect(result.success).toBe(true);
+    expect(result.value).toBeNull();
+  });
+
+  it("should return null for parseFloat of non-numeric string", () => {
+    const term = {
+      tag: "parseFloat" as const,
+      str: { tag: "lit" as const, value: "abc" },
+    };
+    const result = solve(term as any, tools, bindings);
+    expect(result.success).toBe(true);
+    expect(result.value).toBeNull();
+  });
+
+  it("should still parse valid integers", () => {
+    const term = {
+      tag: "parseInt" as const,
+      str: { tag: "lit" as const, value: "42" },
+    };
+    const result = solve(term as any, tools, bindings);
+    expect(result.success).toBe(true);
+    expect(result.value).toBe(42);
+  });
+
+  it("should still parse valid floats", () => {
+    const term = {
+      tag: "parseFloat" as const,
+      str: { tag: "lit" as const, value: "3.14" },
+    };
+    const result = solve(term as any, tools, bindings);
+    expect(result.success).toBe(true);
+    expect(result.value).toBe(3.14);
+  });
+});
+
+describe("LC Solver parse input length guard", () => {
+  const tools = createMockTools("");
+  const bindings: Bindings = new Map();
+
+  it("should return null for parseCurrency with oversized input", () => {
+    const longStr = "$" + "1".repeat(200);
+    const term = {
+      tag: "coerce" as const,
+      term: { tag: "lit" as const, value: longStr },
+      targetType: "currency",
+    };
+    const result = solve(term as any, tools, bindings);
+    expect(result.success).toBe(true);
+    expect(result.value).toBeNull();
+  });
+
+  it("should return null for parseNumber with oversized input", () => {
+    const longStr = "1".repeat(200);
+    const term = {
+      tag: "coerce" as const,
+      term: { tag: "lit" as const, value: longStr },
+      targetType: "number",
+    };
+    const result = solve(term as any, tools, bindings);
+    expect(result.success).toBe(true);
+    expect(result.value).toBeNull();
+  });
+});

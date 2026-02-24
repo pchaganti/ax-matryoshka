@@ -338,4 +338,30 @@ describe("Sandbox with synthesis - backward compatibility", () => {
       sandbox.dispose();
     }
   });
+
+  it("should cap grep results at 10000 matches", async () => {
+    // Create a large document where every line matches
+    const lines = Array.from({ length: 15000 }, (_, i) => `data line ${i}`);
+    const bigContent = lines.join("\n");
+
+    const bigSandbox = await createSandboxWithSynthesis(
+      bigContent,
+      async () => "mock",
+      new SynthesisCoordinator(),
+      {}
+    );
+
+    try {
+      const result = await bigSandbox.execute(`
+        const matches = grep('data');
+        console.log(matches.length);
+      `);
+
+      expect(result.error).toBeUndefined();
+      // Should be capped at 10000, not 15000
+      expect(parseInt(result.logs[0])).toBeLessThanOrEqual(10000);
+    } finally {
+      bigSandbox.dispose();
+    }
+  });
 });

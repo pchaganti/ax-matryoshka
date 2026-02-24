@@ -58,6 +58,54 @@ describe("HttpAdapter", () => {
     });
   });
 
+  describe("server timeouts", () => {
+    it("should have requestTimeout set after start", async () => {
+      await adapter.start();
+      // Access internal server to verify timeouts are configured
+      const server = (adapter as unknown as { server: { requestTimeout: number; headersTimeout: number } }).server;
+      expect(server.requestTimeout).toBe(30_000);
+      expect(server.headersTimeout).toBe(10_000);
+    });
+  });
+
+  describe("content-type validation", () => {
+    it("should return 415 for POST with wrong content-type", async () => {
+      await adapter.start();
+      const { port } = adapter.getServerInfo();
+
+      const response = await fetch(`http://localhost:${port}/load`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: "not json",
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(415);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain("application/json");
+    });
+
+    it("should allow POST to /reset without content-type", async () => {
+      await adapter.start();
+      const { port } = adapter.getServerInfo();
+
+      // Load a document first so /reset has a session
+      await fetch(`http://localhost:${port}/load`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "test" }),
+      });
+
+      const response = await fetch(`http://localhost:${port}/reset`, {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+    });
+  });
+
   describe("HTTP endpoints (integration)", () => {
     it("should handle /health endpoint", async () => {
       await adapter.start();
@@ -82,6 +130,19 @@ describe("HttpAdapter", () => {
       expect(response.status).toBe(200);
       expect(data.success).toBe(true);
       expect(data.message).toContain("grep");
+    });
+
+    it("should return same content for consecutive /help requests", async () => {
+      await adapter.start();
+      const { port } = adapter.getServerInfo();
+
+      const response1 = await fetch(`http://localhost:${port}/help`);
+      const data1 = await response1.json();
+
+      const response2 = await fetch(`http://localhost:${port}/help`);
+      const data2 = await response2.json();
+
+      expect(data1.message).toBe(data2.message);
     });
 
     it("should handle /bindings without session", async () => {

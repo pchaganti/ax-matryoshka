@@ -348,6 +348,7 @@ export async function createSandboxWithSynthesis(
     /**
      * grep - Fast regex search returning matches with line numbers
      */
+    var MAX_GREP_RESULTS = 10000;
     function grep(pattern, flags) {
       let f = flags || '';
       if (!f.includes('g')) f += 'g';
@@ -369,6 +370,10 @@ export async function createSandboxWithSynthesis(
           index: match.index,
           groups: match.slice(1)
         });
+
+        if (results.length >= MAX_GREP_RESULTS) {
+          break;
+        }
 
         if (match[0].length === 0) {
           regex.lastIndex++;

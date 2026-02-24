@@ -74,32 +74,46 @@ export class PipeAdapter {
     }
 
     rl.on("line", async (line) => {
-      const trimmed = line.trim();
+      try {
+        const trimmed = line.trim();
 
-      if (!trimmed) {
-        if (this.interactive) rl.prompt();
-        return;
+        if (!trimmed) {
+          if (this.interactive) rl.prompt();
+          return;
+        }
+
+        // Handle quit
+        if (this.interactive && (trimmed === ":quit" || trimmed === ":q" || trimmed === ":exit")) {
+          this.output.write("Goodbye!\n");
+          rl.close();
+          return;
+        }
+
+        let response: LatticeResponse;
+
+        if (this.interactive) {
+          // Interactive text mode
+          response = await this.handleInteractive(trimmed);
+          this.output.write(formatResponse(response) + "\n");
+          rl.prompt();
+        } else {
+          // JSON mode
+          response = await this.handleJSON(trimmed);
+          this.output.write(JSON.stringify(response) + "\n");
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (this.interactive) {
+          this.output.write(`Error: ${msg}\n`);
+          rl.prompt();
+        } else {
+          this.output.write(JSON.stringify({ success: false, error: msg }) + "\n");
+        }
       }
+    });
 
-      // Handle quit
-      if (this.interactive && (trimmed === ":quit" || trimmed === ":q" || trimmed === ":exit")) {
-        this.output.write("Goodbye!\n");
-        rl.close();
-        return;
-      }
-
-      let response: LatticeResponse;
-
-      if (this.interactive) {
-        // Interactive text mode
-        response = await this.handleInteractive(trimmed);
-        this.output.write(formatResponse(response) + "\n");
-        rl.prompt();
-      } else {
-        // JSON mode
-        response = await this.handleJSON(trimmed);
-        this.output.write(JSON.stringify(response) + "\n");
-      }
+    rl.on("error", (err) => {
+      console.error("[PipeAdapter] Readline error:", err.message);
     });
 
     rl.on("close", () => {

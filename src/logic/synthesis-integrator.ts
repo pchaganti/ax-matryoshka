@@ -95,6 +95,7 @@ const MONTH_NAMES: Record<string, string> = {
  * SynthesisIntegrator - Automatic synthesis on operation failure
  */
 export class SynthesisIntegrator {
+  private static readonly MAX_CACHE_SIZE = 200;
   private fnCache: Map<string, (input: string) => unknown>;
   private codeCache: Map<string, string>;
   private coordinator: SynthesisCoordinator;
@@ -175,8 +176,10 @@ export class SynthesisIntegrator {
     // Cache successful synthesis
     if (result.success && result.fn) {
       this.fnCache.set(cacheKey, result.fn);
+      this.evictIfNeeded(this.fnCache);
       if (result.code) {
         this.codeCache.set(cacheKey, result.code);
+        this.evictIfNeeded(this.codeCache);
       }
       result.cacheKey = cacheKey;
     }
@@ -208,6 +211,18 @@ export class SynthesisIntegrator {
    */
   cacheFunction(key: string, fn: (input: string) => unknown): void {
     this.fnCache.set(key, fn);
+    this.evictIfNeeded(this.fnCache);
+  }
+
+  /**
+   * Evict oldest entries when cache exceeds max size
+   */
+  private evictIfNeeded<V>(cache: Map<string, V>): void {
+    while (cache.size > SynthesisIntegrator.MAX_CACHE_SIZE) {
+      const oldestKey = cache.keys().next().value;
+      if (oldestKey !== undefined) cache.delete(oldestKey);
+      else break;
+    }
   }
 
   /**

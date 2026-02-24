@@ -295,6 +295,11 @@ function isSafeInvariant(expr: string): boolean {
     /\b__proto__\b/,
     /\bconstructor\b/,
     /\bprototype\b/,
+    /\bglobalThis\b/,
+    /\bProxy\b/,
+    /\bReflect\b/,
+    /\bWeakRef\b/,
+    /\bFinalizationRegistry\b/,
   ];
 
   for (const pattern of dangerous) {

@@ -29,6 +29,7 @@ import {
   ListToolsRequestSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
+import { stat } from "node:fs/promises";
 import { HandleSession } from "./engine/handle-session.js";
 import { getVersion } from "./version.js";
 
@@ -48,7 +49,12 @@ function resetInactivityTimer(): void {
   timeoutHandle = setTimeout(() => {
     if (session) {
       console.error(`[Lattice] Session expired after ${SESSION_TIMEOUT_MS / 1000}s inactivity`);
-      closeSession("timeout");
+      try {
+        closeSession("timeout");
+      } catch (err) {
+        console.error("[Lattice] Error closing expired session:", err instanceof Error ? err.message : String(err));
+        session = null;
+      }
     }
   }, SESSION_TIMEOUT_MS);
 }
@@ -83,7 +89,7 @@ function getSessionInfo(): string {
   const now = new Date();
   const age = info.loadedAt ? Math.round((now.getTime() - info.loadedAt.getTime()) / 1000) : 0;
   const idle = info.lastAccessedAt ? Math.round((now.getTime() - info.lastAccessedAt.getTime()) / 1000) : 0;
-  const timeout = Math.round((SESSION_TIMEOUT_MS - idle * 1000) / 1000);
+  const timeout = Math.round(SESSION_TIMEOUT_MS / 1000 - idle);
 
   return `Session active:
   Document: ${info.documentPath}
@@ -335,7 +341,7 @@ function formatExpandResult(result: {
     return `Error: ${result.error}`;
   }
 
-  const data = result.data!;
+  const data = result.data ?? [];
   let text = `Showing ${data.length} of ${result.total} items`;
   if (result.offset && result.offset > 0) {
     text += ` (offset: ${result.offset})`;
@@ -372,6 +378,27 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           return { content: [{ type: "text", text: "Error: filePath is required" }] };
         }
 
+        // Check file size before loading to avoid wasting memory
+        try {
+          const fileStat = await stat(filePath);
+          if (fileStat.size > MAX_DOCUMENT_SIZE) {
+            return {
+              content: [{
+                type: "text",
+                text: `Error: Document too large (${(fileStat.size / 1024 / 1024).toFixed(1)}MB). ` +
+                  `Maximum size is ${MAX_DOCUMENT_SIZE / 1024 / 1024}MB.`,
+              }],
+            };
+          }
+        } catch (err) {
+          return {
+            content: [{
+              type: "text",
+              text: `Error: Cannot access file: ${err instanceof Error ? err.message : String(err)}`,
+            }],
+          };
+        }
+
         // Close existing session
         if (session) {
           closeSession("new document loaded");
@@ -380,19 +407,6 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         // Create new session
         session = new HandleSession();
         const stats = await session.loadFile(filePath);
-
-        // Check size limit
-        if (stats.size > MAX_DOCUMENT_SIZE) {
-          session.close();
-          session = null;
-          return {
-            content: [{
-              type: "text",
-              text: `Error: Document too large (${(stats.size / 1024 / 1024).toFixed(1)}MB). ` +
-                `Maximum size is ${MAX_DOCUMENT_SIZE / 1024 / 1024}MB.`,
-            }],
-          };
-        }
 
         // Start inactivity timer
         resetInactivityTimer();

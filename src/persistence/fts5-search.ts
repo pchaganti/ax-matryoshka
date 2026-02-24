@@ -11,6 +11,7 @@
  */
 
 import type { SessionDB, DocumentLine } from "./session-db.js";
+import { validateRegex } from "../logic/lc-solver.js";
 
 export interface SearchResult extends DocumentLine {
   // Extended with optional fields for advanced queries
@@ -144,12 +145,26 @@ export class FTS5Search {
    */
   private regexFallback(pattern: string): SearchResult[] {
     try {
-      const regex = new RegExp(pattern, "gi");
-      const allLines = this.db.getLines(1, this.db.getLineCount());
+      const validation = validateRegex(pattern);
+      if (!validation.valid) return [];
 
-      return allLines.filter((line) => regex.test(line.content));
+      const regex = new RegExp(pattern, "i");
+      const totalLines = this.db.getLineCount();
+      const CHUNK_SIZE = 5000;
+      const results: SearchResult[] = [];
+
+      for (let start = 1; start <= totalLines; start += CHUNK_SIZE) {
+        const end = Math.min(start + CHUNK_SIZE - 1, totalLines);
+        const chunk = this.db.getLines(start, end);
+        for (const line of chunk) {
+          if (regex.test(line.content)) {
+            results.push(line);
+          }
+        }
+      }
+
+      return results;
     } catch {
-      // Invalid regex
       return [];
     }
   }

@@ -95,7 +95,7 @@ export function solve(
   try {
     // Resolve constraints first
     const resolved = resolveConstraints(term);
-    const value = evaluate(resolved.term, tools, bindings, log);
+    const value = evaluate(resolved.term, tools, bindings, log, 0);
     return { success: true, value, logs };
   } catch (err) {
     return {
@@ -107,6 +107,8 @@ export function solve(
   }
 }
 
+const MAX_EVAL_DEPTH = 1000;
+
 /**
  * Evaluate an LC term
  * Impure operations execute directly, pure operations use miniKanren
@@ -115,8 +117,12 @@ function evaluate(
   term: LCTerm,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): unknown {
+  if (depth > MAX_EVAL_DEPTH) {
+    throw new Error("Maximum evaluation depth exceeded (possible infinite recursion)");
+  }
   switch (term.tag) {
     case "lit":
       return term.value;
@@ -199,7 +205,7 @@ function evaluate(
 
     case "filter": {
       // Evaluate the collection first (may be grep, fuzzy_search, etc.)
-      const collection = evaluate(term.collection, tools, bindings, log) as Array<{ line: string; lineNum: number }>;
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1) as Array<{ line: string; lineNum: number }>;
       if (!Array.isArray(collection)) {
         throw new Error(`filter: expected array, got ${typeof collection}`);
       }
@@ -235,7 +241,7 @@ function evaluate(
     }
 
     case "map": {
-      const collection = evaluate(term.collection, tools, bindings, log) as Array<{ line: string; lineNum: number }>;
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1) as Array<{ line: string; lineNum: number }>;
       if (!Array.isArray(collection)) {
         throw new Error(`map: expected array, got ${typeof collection}`);
       }
@@ -270,7 +276,7 @@ function evaluate(
 
     case "sum": {
       // Sum numeric values in array - works with any numeric array
-      const collection = evaluate(term.collection, tools, bindings, log);
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`sum: expected array, got ${typeof collection}`);
       }
@@ -302,7 +308,7 @@ function evaluate(
 
     case "count": {
       // Count items in array
-      const collection = evaluate(term.collection, tools, bindings, log);
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`count: expected array, got ${typeof collection}`);
       }
@@ -312,11 +318,11 @@ function evaluate(
 
     case "reduce": {
       // Generic reduce - (reduce collection init (lambda (acc x) ...))
-      const collection = evaluate(term.collection, tools, bindings, log);
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`reduce: expected array, got ${typeof collection}`);
       }
-      const init = evaluate(term.init, tools, bindings, log);
+      const init = evaluate(term.init, tools, bindings, log, depth + 1);
       if (term.fn.tag !== "lambda") {
         throw new Error(`reduce: fn must be a lambda`);
       }
@@ -350,10 +356,8 @@ function evaluate(
       log(`[Solver] Found pattern: ${pattern}`);
 
       // Return a classifier function with case-insensitive matching
-      return (line: string) => {
-        const regex = new RegExp(pattern, "i");
-        return regex.test(line);
-      };
+      const regex = new RegExp(pattern, "i");
+      return (line: string) => regex.test(line);
     }
 
     // ==========================
@@ -361,9 +365,13 @@ function evaluate(
     // ==========================
 
     case "match": {
-      const str = evaluate(term.str, tools, bindings, log) as string;
+      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
+      }
+      const matchValidation = validateRegex(term.pattern);
+      if (!matchValidation.valid) {
+        throw new Error(`match: ${matchValidation.error}`);
       }
       const regex = new RegExp(term.pattern, "i"); // Case-insensitive like grep
       const result = str.match(regex);
@@ -371,15 +379,19 @@ function evaluate(
     }
 
     case "replace": {
-      const str = evaluate(term.str, tools, bindings, log) as string;
+      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`replace: expected string, got ${typeof str}`);
+      }
+      const replaceValidation = validateRegex(term.from);
+      if (!replaceValidation.valid) {
+        throw new Error(`replace: ${replaceValidation.error}`);
       }
       return str.replace(new RegExp(term.from, "g"), term.to);
     }
 
     case "split": {
-      const str = evaluate(term.str, tools, bindings, log) as string;
+      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`split: expected string, got ${typeof str}`);
       }
@@ -388,17 +400,19 @@ function evaluate(
     }
 
     case "parseInt": {
-      const str = evaluate(term.str, tools, bindings, log);
-      return parseInt(String(str), 10);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const intResult = parseInt(String(str), 10);
+      return isNaN(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
-      const str = evaluate(term.str, tools, bindings, log);
-      return parseFloat(String(str));
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const floatResult = parseFloat(String(str));
+      return isNaN(floatResult) ? null : floatResult;
     }
 
     case "parseDate": {
-      const str = evaluate(term.str, tools, bindings, log);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
       log(`[Lattice] Parsing date from: "${str}"`);
 
       // If examples are provided, prefer synthesis for consistency
@@ -423,7 +437,7 @@ function evaluate(
     }
 
     case "parseCurrency": {
-      const str = evaluate(term.str, tools, bindings, log);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
       log(`[Lattice] Parsing currency from: "${str}"`);
 
       // If examples are provided, prefer synthesis for consistency
@@ -448,7 +462,7 @@ function evaluate(
     }
 
     case "parseNumber": {
-      const str = evaluate(term.str, tools, bindings, log);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
       log(`[Lattice] Parsing number from: "${str}"`);
 
       // If examples are provided, prefer synthesis for consistency
@@ -473,7 +487,7 @@ function evaluate(
     }
 
     case "coerce": {
-      const value = evaluate(term.term, tools, bindings, log);
+      const value = evaluate(term.term, tools, bindings, log, depth + 1);
       log(`[Lattice] Coercing "${value}" to ${term.targetType}`);
       const coerced = coerceValue(value, term.targetType);
       log(`[Lattice] Coerced result: ${coerced}`);
@@ -481,9 +495,13 @@ function evaluate(
     }
 
     case "extract": {
-      const str = evaluate(term.str, tools, bindings, log) as string;
+      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`extract: expected string, got ${typeof str}`);
+      }
+      const extractValidation = validateRegex(term.pattern);
+      if (!extractValidation.valid) {
+        throw new Error(`extract: ${extractValidation.error}`);
       }
       const regex = new RegExp(term.pattern, "i");
       const result = str.match(regex);
@@ -573,17 +591,17 @@ function evaluate(
     }
 
     case "add": {
-      const left = evaluate(term.left, tools, bindings, log) as number;
-      const right = evaluate(term.right, tools, bindings, log) as number;
+      const left = evaluate(term.left, tools, bindings, log, depth + 1) as number;
+      const right = evaluate(term.right, tools, bindings, log, depth + 1) as number;
       return left + right;
     }
 
     case "if": {
-      const cond = evaluate(term.cond, tools, bindings, log);
+      const cond = evaluate(term.cond, tools, bindings, log, depth + 1);
       if (cond) {
-        return evaluate(term.then, tools, bindings, log);
+        return evaluate(term.then, tools, bindings, log, depth + 1);
       } else {
-        return evaluate(term.else, tools, bindings, log);
+        return evaluate(term.else, tools, bindings, log, depth + 1);
       }
     }
 
@@ -592,18 +610,18 @@ function evaluate(
       return { _type: "closure", param: term.param, body: term.body };
 
     case "app": {
-      const fn = evaluate(term.fn, tools, bindings, log) as { _type: "closure"; param: string; body: LCTerm };
+      const fn = evaluate(term.fn, tools, bindings, log, depth + 1) as { _type: "closure"; param: string; body: LCTerm };
       if (!fn || fn._type !== "closure") {
         throw new Error(`app: expected closure, got ${typeof fn}`);
       }
-      const arg = evaluate(term.arg, tools, bindings, log);
+      const arg = evaluate(term.arg, tools, bindings, log, depth + 1);
       // Substitute arg for param in body and evaluate
       // For simplicity, we evaluate directly here
       return evaluateWithBinding(fn.body, fn.param, arg, tools, bindings, log);
     }
 
     case "constrained":
-      return evaluate(term.term, tools, bindings, log);
+      return evaluate(term.term, tools, bindings, log, depth + 1);
 
     case "define-fn": {
       // Synthesize a function from examples and return it for storage
@@ -634,14 +652,14 @@ function evaluate(
       if (!storedFn || storedFn._type !== "synthesized-fn") {
         throw new Error(`apply-fn: function "${term.name}" not found in bindings`);
       }
-      const arg = evaluate(term.arg, tools, bindings, log);
+      const arg = evaluate(term.arg, tools, bindings, log, depth + 1);
       log(`[Lattice] Applying function "${term.name}" to "${arg}"`);
       return storedFn.fn(String(arg));
     }
 
     case "predicate": {
       // Synthesize a predicate from examples
-      const str = evaluate(term.str, tools, bindings, log);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
       if (term.examples && term.examples.length > 0) {
         log(`[Lattice] Synthesizing predicate from ${term.examples.length} examples`);
         const result = synthesisIntegrator.synthesizeOnFailure({
@@ -691,7 +709,7 @@ function evaluate(
         throw new Error("get_symbol_body: No symbol database available. Load a code file first.");
       }
 
-      const symbolRef = evaluate(term.symbol, tools, bindings, log);
+      const symbolRef = evaluate(term.symbol, tools, bindings, log, depth + 1);
       let symbol: import("../treesitter/types.js").Symbol | null = null;
 
       // Handle different input types
@@ -721,7 +739,8 @@ function evaluate(
       log(`[Solver] Finding references to: ${term.name}`);
 
       // Use word boundary matching to find whole-word references
-      const pattern = `\\b${term.name}\\b`;
+      const escaped = term.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const pattern = `\\b${escaped}\\b`;
       const results = tools.grep(pattern);
 
       log(`[Solver] Found ${results.length} references to "${term.name}"`);
@@ -747,7 +766,7 @@ function evaluatePredicate(
 ): boolean {
   // Simple pattern: (match var "pattern" 0)
   if (body.tag === "match") {
-    const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log));
+    const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, 0));
     const regex = new RegExp(body.pattern, "i"); // Case-insensitive like grep
     const result = str.match(regex);
     return result !== null && result[body.group] !== undefined;
@@ -806,14 +825,14 @@ function evaluateReduceFn(
     const newBindings = new Map(bindings);
     newBindings.set(param, acc);
     newBindings.set(itemParam, item);
-    return evaluate(innerBody, tools, newBindings, log);
+    return evaluate(innerBody, tools, newBindings, log, 0);
   }
 
   // Single param - bind it to the item, use existing bindings for acc
   const newBindings = new Map(bindings);
   newBindings.set(param, item);
   newBindings.set("acc", acc); // Convention: acc is available
-  return evaluate(body, tools, newBindings, log);
+  return evaluate(body, tools, newBindings, log, 0);
 }
 
 /**
@@ -831,7 +850,7 @@ function evaluateWithBinding(
   switch (body.tag) {
     case "var":
       if (body.name === param) return value;
-      return evaluate(body, tools, bindings, log);
+      return evaluate(body, tools, bindings, log, 0);
 
     case "lit":
       return body.value;
@@ -840,6 +859,10 @@ function evaluateWithBinding(
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
         : String(evaluateWithBinding(body.str, param, value, tools, bindings, log));
+      const matchVal = validateRegex(body.pattern);
+      if (!matchVal.valid) {
+        throw new Error(`match: ${matchVal.error}`);
+      }
       const regex = new RegExp(body.pattern, "i"); // Case-insensitive like grep
       const result = str.match(regex);
       return result ? (result[body.group] ?? null) : null;
@@ -849,6 +872,10 @@ function evaluateWithBinding(
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
         : String(evaluateWithBinding(body.str, param, value, tools, bindings, log));
+      const replaceVal = validateRegex(body.from);
+      if (!replaceVal.valid) {
+        throw new Error(`replace: ${replaceVal.error}`);
+      }
       return str.replace(new RegExp(body.from, "g"), body.to);
     }
 
@@ -1004,7 +1031,7 @@ function evaluateWithBinding(
       // For unhandled cases, create a temporary binding and evaluate
       const newBindings = new Map(bindings);
       newBindings.set(param, value);
-      return evaluate(body, tools, newBindings, log);
+      return evaluate(body, tools, newBindings, log, 0);
   }
 }
 
@@ -1176,8 +1203,11 @@ function parseDate(str: string, formatHint?: string): string | null {
  * Parse a currency string into a number
  * Handles: $1,234.56, €1.234,56, £1,234, ¥1234, etc.
  */
+const MAX_PARSE_INPUT_LENGTH = 100;
+
 function parseCurrency(str: string): number | null {
   if (!str || typeof str !== "string") return null;
+  if (str.length > MAX_PARSE_INPUT_LENGTH) return null;
 
   let cleaned = str.trim();
 
@@ -1250,6 +1280,7 @@ function parseCurrency(str: string): number | null {
  */
 function parseNumber(str: string): number | null {
   if (!str || typeof str !== "string") return null;
+  if (str.length > MAX_PARSE_INPUT_LENGTH) return null;
 
   const cleaned = str.trim();
 

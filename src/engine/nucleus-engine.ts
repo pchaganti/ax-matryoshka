@@ -83,6 +83,7 @@ function createSolverTools(context: string): SolverTools {
     context,
 
     grep: (pattern: string) => {
+      const MAX_GREP_MATCHES = 10000;
       const flags = "gmi";
       const regex = new RegExp(pattern, flags);
       const results: Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }> = [];
@@ -104,6 +105,8 @@ function createSolverTools(context: string): SolverTools {
         if (match[0].length === 0) {
           regex.lastIndex++;
         }
+
+        if (results.length >= MAX_GREP_MATCHES) break;
       }
 
       return results;
@@ -147,6 +150,7 @@ function createSolverTools(context: string): SolverTools {
  * ```
  */
 export class NucleusEngine {
+  private static readonly MAX_TURN_BINDINGS = 100;
   private context: string = "";
   private bindings: Bindings = new Map();
   private solverTools: SolverTools | null = null;
@@ -266,6 +270,9 @@ export class NucleusEngine {
       }
     }
 
+    // Evict old turn bindings to prevent unbounded growth
+    this.evictOldTurnBindings();
+
     return {
       success: solverResult.success,
       value: solverResult.value,
@@ -273,6 +280,19 @@ export class NucleusEngine {
       error: solverResult.error,
       type: typeResult.type ? typeToString(typeResult.type) : undefined,
     };
+  }
+
+  /**
+   * Evict oldest turn bindings (_N) when exceeding the cap
+   */
+  private evictOldTurnBindings(): void {
+    const turnKeys = [...this.bindings.keys()]
+      .filter(k => /^_\d+$/.test(k))
+      .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
+    while (turnKeys.length > NucleusEngine.MAX_TURN_BINDINGS) {
+      const oldest = turnKeys.shift()!;
+      this.bindings.delete(oldest);
+    }
   }
 
   /**

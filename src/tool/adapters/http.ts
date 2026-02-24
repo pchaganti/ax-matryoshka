@@ -60,6 +60,7 @@ interface Session {
 export class HttpAdapter {
   private session: Session | null = null;
   private server: http.Server | null = null;
+  private helpResponse: LatticeResponse | null = null;
   private port: number;
   private host: string;
   private cors: boolean;
@@ -133,6 +134,8 @@ export class HttpAdapter {
       this.server = http.createServer(async (req, res) => {
         await this.handleRequest(req, res);
       });
+      this.server.requestTimeout = 30_000;  // 30s max per request
+      this.server.headersTimeout = 10_000;  // 10s for headers
 
       this.server.on("error", reject);
 
@@ -203,6 +206,7 @@ export class HttpAdapter {
             this.sendError(res, 405, "Method not allowed");
             return;
           }
+          if (!this.validateJsonContentType(req, res)) return;
           response = await this.handleLoad(req);
           break;
 
@@ -211,6 +215,7 @@ export class HttpAdapter {
             this.sendError(res, 405, "Method not allowed");
             return;
           }
+          if (!this.validateJsonContentType(req, res)) return;
           response = await this.handleQuery(req);
           break;
 
@@ -246,7 +251,10 @@ export class HttpAdapter {
           break;
 
         case "/help":
-          response = new LatticeTool().execute({ type: "help" });
+          if (!this.helpResponse) {
+            this.helpResponse = new LatticeTool().execute({ type: "help" });
+          }
+          response = this.helpResponse;
           break;
 
         case "/health":
@@ -266,7 +274,9 @@ export class HttpAdapter {
 
       this.sendResponse(res, response);
     } catch (err) {
-      this.sendError(res, 500, err instanceof Error ? err.message : String(err));
+      if (!res.headersSent) {
+        this.sendError(res, 500, err instanceof Error ? err.message : String(err));
+      }
     }
   }
 
@@ -366,11 +376,17 @@ export class HttpAdapter {
    * Read and parse JSON body
    */
   private readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+    const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
     return new Promise((resolve, reject) => {
       let data = "";
 
-      req.on("data", (chunk) => {
-        data += chunk;
+      req.on("data", (chunk: Buffer) => {
+        if (Buffer.byteLength(data, "utf8") + chunk.length > MAX_BODY_SIZE) {
+          req.destroy();
+          reject(new Error("Request body too large"));
+          return;
+        }
+        data += chunk.toString("utf8");
       });
 
       req.on("end", () => {
@@ -396,6 +412,18 @@ export class HttpAdapter {
   private sendResponse(res: http.ServerResponse, response: LatticeResponse): void {
     res.writeHead(response.success ? 200 : 400);
     res.end(JSON.stringify(response, null, 2));
+  }
+
+  /**
+   * Validate Content-Type header for POST endpoints that require JSON
+   */
+  private validateJsonContentType(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    const contentType = req.headers["content-type"] || "";
+    if (!contentType.includes("application/json")) {
+      this.sendError(res, 415, "Content-Type must be application/json");
+      return false;
+    }
+    return true;
   }
 
   /**

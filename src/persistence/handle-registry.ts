@@ -45,8 +45,8 @@ export class HandleRegistry {
     const meta = this.db.getHandleMetadata(handle);
     if (!meta) return `${handle}: <invalid handle>`;
 
-    // Get preview of first few items
-    const data = this.db.getHandleData(handle);
+    // Get preview of first item only (avoids loading all data)
+    const data = this.db.getHandleDataSlice(handle, 1);
     let preview = "";
 
     if (data.length > 0) {

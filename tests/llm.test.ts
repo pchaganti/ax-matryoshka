@@ -215,6 +215,100 @@ describe("LLM Provider System", () => {
     });
   });
 
+  describe("Malformed response handling", () => {
+    let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      fetchSpy = vi.spyOn(global, "fetch");
+    });
+
+    afterEach(() => {
+      fetchSpy.mockRestore();
+    });
+
+    it("should throw descriptive error when DeepSeek returns invalid JSON", async () => {
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        json: async () => { throw new SyntaxError("Unexpected token"); },
+      } as unknown as Response);
+
+      const provider = createDeepSeekProvider({
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "test-key",
+      });
+
+      await expect(
+        provider.query("test", { provider: "deepseek", model: "test" })
+      ).rejects.toThrow(/invalid JSON/i);
+    });
+
+    it("should throw when DeepSeek choices[0].message.content is missing", async () => {
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        json: async () => ({ choices: [{ message: {} }] }),
+      } as unknown as Response);
+
+      const provider = createDeepSeekProvider({
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "test-key",
+      });
+
+      await expect(
+        provider.query("test", { provider: "deepseek", model: "test" })
+      ).rejects.toThrow(/missing message content/i);
+    });
+
+    it("should throw descriptive error when Ollama returns invalid JSON", async () => {
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        json: async () => { throw new SyntaxError("Unexpected token"); },
+      } as unknown as Response);
+
+      const provider = createOllamaProvider({
+        baseUrl: "http://localhost:11434",
+      });
+
+      await expect(
+        provider.query("test", { provider: "ollama", model: "test" })
+      ).rejects.toThrow(/invalid JSON/i);
+    });
+
+    it("should include response body text in DeepSeek HTTP error", async () => {
+      fetchSpy.mockResolvedValue({
+        ok: false,
+        status: 429,
+        statusText: "Too Many Requests",
+        text: async () => '{"error":"rate_limit_exceeded"}',
+      } as unknown as Response);
+
+      const provider = createDeepSeekProvider({
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "test-key",
+      });
+
+      await expect(
+        provider.query("test", { provider: "deepseek", model: "test" })
+      ).rejects.toThrow(/rate_limit_exceeded/);
+    });
+
+    it("should include response body text in Ollama HTTP error", async () => {
+      fetchSpy.mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: "Internal Server Error",
+        text: async () => "model not found",
+      } as unknown as Response);
+
+      const provider = createOllamaProvider({
+        baseUrl: "http://localhost:11434",
+      });
+
+      await expect(
+        provider.query("test", { provider: "ollama", model: "test" })
+      ).rejects.toThrow(/model not found/);
+    });
+  });
+
   describe("JSON Format Mode", () => {
     let fetchSpy: ReturnType<typeof vi.spyOn>;
 
@@ -289,6 +383,51 @@ describe("LLM Provider System", () => {
 
       const callBody = fetchSpy.mock.calls[0][1]?.body as string;
       expect(callBody).not.toContain('"format"');
+    });
+  });
+
+  describe("Fetch Timeout", () => {
+    let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+    beforeEach(() => {
+      fetchSpy = vi.spyOn(global, "fetch");
+    });
+
+    afterEach(() => {
+      fetchSpy.mockRestore();
+    });
+
+    it("should pass AbortController signal to Ollama fetch", async () => {
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        json: async () => ({ response: "test response" }),
+      } as Response);
+
+      const provider = createOllamaProvider({
+        baseUrl: "http://localhost:11434",
+      });
+      await provider.query("test", { provider: "ollama", model: "test" });
+
+      // Verify signal was passed
+      const fetchOptions = fetchSpy.mock.calls[0][1] as RequestInit;
+      expect(fetchOptions.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it("should pass AbortController signal to DeepSeek fetch", async () => {
+      fetchSpy.mockResolvedValue({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: "response" } }] }),
+      } as Response);
+
+      const provider = createDeepSeekProvider({
+        baseUrl: "https://api.deepseek.com",
+        apiKey: "test-key",
+      });
+      await provider.query("test", { provider: "deepseek", model: "test" });
+
+      // Verify signal was passed
+      const fetchOptions = fetchSpy.mock.calls[0][1] as RequestInit;
+      expect(fetchOptions.signal).toBeInstanceOf(AbortSignal);
     });
   });
 

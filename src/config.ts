@@ -51,7 +51,11 @@ export interface Config {
 function resolveEnvVars(obj: unknown): unknown {
   if (typeof obj === "string") {
     return obj.replace(/\$\{([^}]+)\}/g, (_, varName) => {
-      return process.env[varName] || "";
+      const resolved = process.env[varName];
+      if (resolved === undefined) {
+        throw new Error(`Environment variable ${varName} not set (referenced in config)`);
+      }
+      return resolved;
     });
   }
   if (Array.isArray(obj)) {
@@ -101,7 +105,10 @@ export async function loadConfig(configPath?: string): Promise<Config> {
       rlm: { ...DEFAULT_CONFIG.rlm, ...userConfig.rlm },
     };
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+    if (error instanceof SyntaxError) {
+      throw new Error(`Invalid JSON in config file ${path}: ${error.message}`);
+    }
+    if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
       // Config file not found, use defaults
       return DEFAULT_CONFIG;
     }

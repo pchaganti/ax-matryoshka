@@ -241,6 +241,35 @@ describe("SynthesisIntegrator", () => {
     });
   });
 
+  describe("cache size cap", () => {
+    it("should keep cache size bounded after many operations", () => {
+      // Synthesize many different operations to fill cache
+      for (let i = 0; i < 250; i++) {
+        integrator.cacheFunction(`key-${i}`, (s: string) => s.length + i);
+      }
+
+      // Access internal cache via synthesizeOnFailure to verify bounded growth
+      // The cache should have evicted old entries
+      const result = integrator.synthesizeOnFailure({
+        operation: "parseCurrency",
+        input: "$100",
+        examples: [
+          { input: "$100", output: 100 },
+          { input: "$200", output: 200 },
+        ],
+      });
+      expect(result.success).toBe(true);
+
+      // Old keys should have been evicted
+      const veryOldCached = integrator.getCached("key-0");
+      expect(veryOldCached).toBeNull();
+
+      // Recent keys should still be there
+      const recentCached = integrator.getCached("key-249");
+      expect(recentCached).not.toBeNull();
+    });
+  });
+
   describe("error handling", () => {
     it("returns failure when no examples provided", () => {
       const result = integrator.synthesizeOnFailure({

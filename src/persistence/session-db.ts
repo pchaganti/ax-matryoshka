@@ -175,6 +175,8 @@ export class SessionDB {
    */
   getLines(start: number, end: number): DocumentLine[] {
     if (!this.db) return [];
+    if (start > end) return [];
+    if (start < 1) start = 1;
     const stmt = this.db.prepare(`
       SELECT lineNum, content FROM document_lines
       WHERE lineNum >= ? AND lineNum <= ?
@@ -210,8 +212,8 @@ export class SessionDB {
 
     try {
       return stmt.all(query) as DocumentLine[];
-    } catch {
-      // If FTS5 query fails, fall back to empty
+    } catch (err) {
+      console.error("[SessionDB] FTS5 query failed:", err instanceof Error ? err.message : String(err), "| Query:", query);
       return [];
     }
   }
@@ -262,6 +264,27 @@ export class SessionDB {
   }
 
   /**
+   * Get a slice of data stored in a handle (avoids loading all rows)
+   */
+  getHandleDataSlice(handle: string, limit: number): unknown[] {
+    if (!this.db) return [];
+    const stmt = this.db.prepare(`
+      SELECT data FROM handle_data
+      WHERE handle = ?
+      ORDER BY idx
+      LIMIT ?
+    `);
+    const rows = stmt.all(handle, limit) as Array<{ data: string }>;
+    return rows.map((r) => {
+      try {
+        return JSON.parse(r.data);
+      } catch {
+        return null;
+      }
+    }).filter((item) => item !== null);
+  }
+
+  /**
    * Get data stored in a handle
    */
   getHandleData(handle: string): unknown[] {
@@ -272,7 +295,13 @@ export class SessionDB {
       ORDER BY idx
     `);
     const rows = stmt.all(handle) as Array<{ data: string }>;
-    return rows.map((r) => JSON.parse(r.data));
+    return rows.map((r) => {
+      try {
+        return JSON.parse(r.data);
+      } catch {
+        return null;
+      }
+    }).filter((item) => item !== null);
   }
 
   /**
@@ -316,8 +345,12 @@ export class SessionDB {
     const stmt = this.db.prepare("SELECT bindings FROM checkpoints WHERE turn = ?");
     const row = stmt.get(turn) as { bindings: string } | undefined;
     if (!row) return null;
-    const obj = JSON.parse(row.bindings) as Record<string, string>;
-    return new Map(Object.entries(obj));
+    try {
+      const obj = JSON.parse(row.bindings) as Record<string, string>;
+      return new Map(Object.entries(obj));
+    } catch {
+      return null;
+    }
   }
 
   /**

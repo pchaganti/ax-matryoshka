@@ -75,24 +75,78 @@ describe("PredicateCompiler", () => {
 
   describe("SQL-compatible output (optional optimization)", () => {
     it("should convert simple equality to SQL-like condition", () => {
-      const sql = compiler.toSQLCondition("item.type === 'error'");
-      expect(sql).toBe("json_extract(data, '$.type') = 'error'");
+      const result = compiler.toSQLCondition("item.type === 'error'");
+      expect(result).not.toBeNull();
+      expect(result!.sql).toBe("json_extract(data, '$.type') = ?");
+      expect(result!.params).toEqual(["error"]);
     });
 
     it("should convert string contains to SQL LIKE", () => {
-      const sql = compiler.toSQLCondition("item.line.includes('Error')");
-      expect(sql).toBe("json_extract(data, '$.line') LIKE '%Error%'");
+      const result = compiler.toSQLCondition("item.line.includes('Error')");
+      expect(result).not.toBeNull();
+      expect(result!.sql).toBe("json_extract(data, '$.line') LIKE ?");
+      expect(result!.params).toEqual(["%Error%"]);
     });
 
     it("should convert numeric comparison", () => {
-      const sql = compiler.toSQLCondition("item.value > 100");
-      expect(sql).toBe("CAST(json_extract(data, '$.value') AS REAL) > 100");
+      const result = compiler.toSQLCondition("item.value > 100");
+      expect(result).not.toBeNull();
+      expect(result!.sql).toBe("CAST(json_extract(data, '$.value') AS REAL) > ?");
+      expect(result!.params).toEqual([100]);
     });
 
     it("should return null for non-convertible predicates", () => {
       // Complex JS operations can't be converted to SQL
-      const sql = compiler.toSQLCondition("/pattern/.test(item.line)");
-      expect(sql).toBeNull();
+      const result = compiler.toSQLCondition("/pattern/.test(item.line)");
+      expect(result).toBeNull();
+    });
+
+    it("should parameterize values with single quotes (SQL injection prevention)", () => {
+      const result = compiler.toSQLCondition("item.name === \"O'Reilly\"");
+      expect(result).not.toBeNull();
+      expect(result!.params).toEqual(["O'Reilly"]);
+      // SQL should use placeholder, not interpolated value
+      expect(result!.sql).not.toContain("O'Reilly");
+    });
+
+    it("should not produce injectable SQL with malicious input", () => {
+      const result = compiler.toSQLCondition("item.x === \"'; DROP TABLE handles;--\"");
+      expect(result).not.toBeNull();
+      expect(result!.params).toEqual(["'; DROP TABLE handles;--"]);
+      expect(result!.sql).not.toContain("DROP TABLE");
+    });
+
+    it("should validate field names against injection", () => {
+      // Field names should only contain word characters
+      const result = compiler.toSQLCondition("item.type === 'error'");
+      expect(result).not.toBeNull();
+      expect(result!.sql).toContain("$.type");
+    });
+  });
+
+  describe("blacklist security", () => {
+    it("should reject this.constructor", () => {
+      expect(() => compiler.compile("this.constructor")).toThrow();
+    });
+
+    it("should reject globalThis", () => {
+      expect(() => compiler.compile("globalThis")).toThrow();
+    });
+
+    it("should reject Reflect", () => {
+      expect(() => compiler.compile("Reflect.ownKeys({})")).toThrow();
+    });
+
+    it("should reject Proxy", () => {
+      expect(() => compiler.compile("new Proxy({}, {})")).toThrow();
+    });
+
+    it("should reject Symbol", () => {
+      expect(() => compiler.compile("Symbol.iterator")).toThrow();
+    });
+
+    it("should still allow legitimate predicates", () => {
+      expect(() => compiler.compile("item.status === 'active'")).not.toThrow();
     });
   });
 
@@ -120,6 +174,20 @@ describe("PredicateCompiler", () => {
 
       expect(fn({ line: "Count: 123" })).toBe("123");
       expect(fn({ line: "No numbers" })).toBeUndefined();
+    });
+  });
+
+  describe("SQL field name validation", () => {
+    it("should convert valid field names to SQL", () => {
+      const result = compiler.toSQLCondition("item.name === 'test'");
+      expect(result).not.toBeNull();
+      expect(result!.sql).toContain("json_extract");
+    });
+
+    it("should reject digits-only field names by falling through to null", () => {
+      // "123" is matched by \w+ but is not a valid identifier
+      const result = compiler.toSQLCondition("item.123 === 'test'");
+      expect(result).toBeNull();
     });
   });
 });

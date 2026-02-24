@@ -237,6 +237,70 @@ describe("NucleusEngine", () => {
     });
   });
 
+  describe("turn bindings eviction", () => {
+    it("should evict old turn bindings after exceeding cap while preserving RESULTS and _fn_*", () => {
+      // Execute more than 100 queries to trigger eviction
+      for (let i = 0; i < 110; i++) {
+        engine.execute('(grep "FATAL")');
+      }
+
+      const bindings = engine.getBindings();
+
+      // RESULTS should still be present
+      expect(bindings.RESULTS).toBeDefined();
+
+      // Old turn bindings (_1, _2, ...) should be evicted
+      expect(bindings._1).toBeUndefined();
+      expect(bindings._2).toBeUndefined();
+
+      // Recent turn bindings should still exist
+      expect(bindings._110).toBeDefined();
+    });
+
+    it("should evict numerically oldest keys, not lexicographically first", () => {
+      // Execute 105 queries - should keep _6 through _105 (100 keys)
+      for (let i = 0; i < 105; i++) {
+        engine.execute('(grep "FATAL")');
+      }
+
+      const bindings = engine.getBindings();
+
+      // _1 through _5 should be evicted (numerically oldest)
+      expect(bindings._1).toBeUndefined();
+      expect(bindings._5).toBeUndefined();
+
+      // _6 through _105 should be kept
+      expect(bindings._6).toBeDefined();
+      expect(bindings._100).toBeDefined();
+      expect(bindings._105).toBeDefined();
+    });
+  });
+
+  describe("grep match limit", () => {
+    it("should cap results at MAX_GREP_MATCHES for broad patterns", () => {
+      // Create a very large document that would produce many matches
+      const bigLines: string[] = [];
+      for (let i = 0; i < 15000; i++) {
+        bigLines.push(`line ${i}: data`);
+      }
+      const bigEngine = new NucleusEngine();
+      bigEngine.loadContent(bigLines.join("\n"));
+
+      // Pattern that matches every "line" - will produce 15000 matches
+      const result = bigEngine.execute('(grep "line")');
+      expect(result.success).toBe(true);
+      const matches = result.value as unknown[];
+      // Should be capped at 10000 (MAX_GREP_MATCHES)
+      expect(matches.length).toBeLessThanOrEqual(10000);
+    });
+
+    it("should return all matches when below limit", () => {
+      const result = engine.execute('(grep "FATAL")');
+      expect(result.success).toBe(true);
+      expect((result.value as unknown[]).length).toBe(3);
+    });
+  });
+
   describe("regex validation (ReDoS protection)", () => {
     it("should reject catastrophic backtracking patterns", () => {
       const result = engine.execute('(grep "(a+)+$")');

@@ -661,6 +661,71 @@ describe("Knowledge Base", () => {
     });
   });
 
+  describe("capacity limit", () => {
+    it("should evict lowest-usage component when exceeding max", () => {
+      // Add 500 components (the max)
+      for (let i = 0; i < 500; i++) {
+        kb.add({
+          id: `comp-${i}`,
+          type: "regex",
+          name: `test-${i}`,
+          description: "",
+          positiveExamples: [],
+          negativeExamples: [],
+          usageCount: i, // increasing usage so comp-0 is lowest
+          successCount: 0,
+          lastUsed: new Date(),
+          composableWith: [],
+        });
+      }
+
+      expect(kb.size()).toBe(500);
+
+      // Add one more - should evict comp-0 (lowest usage + success = 0)
+      kb.add({
+        id: "comp-new",
+        type: "regex",
+        name: "new-component",
+        description: "",
+        positiveExamples: [],
+        negativeExamples: [],
+        usageCount: 1000,
+        successCount: 0,
+        lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      expect(kb.size()).toBe(500);
+      expect(kb.get("comp-0")).toBeNull(); // Evicted
+      expect(kb.get("comp-new")).not.toBeNull(); // Added
+      expect(kb.get("comp-1")).not.toBeNull(); // Still present
+    });
+  });
+
+  describe("remove", () => {
+    it("should remove a component and update indexes", () => {
+      kb.add({
+        id: "to-remove",
+        type: "regex",
+        name: "removable",
+        description: "",
+        positiveExamples: [],
+        negativeExamples: [],
+        usageCount: 0,
+        successCount: 0,
+        lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      expect(kb.get("to-remove")).not.toBeNull();
+
+      kb.remove("to-remove");
+
+      expect(kb.get("to-remove")).toBeNull();
+      expect(kb.getByType("regex").find(c => c.id === "to-remove")).toBeUndefined();
+    });
+  });
+
   describe("size", () => {
     it("should return the number of components", () => {
       expect(kb.size()).toBe(0);

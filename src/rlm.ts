@@ -81,6 +81,7 @@ function createSolverTools(context: string): SolverTools {
     context,
 
     grep: (pattern: string) => {
+      const MAX_GREP_MATCHES = 10000;
       const flags = "gmi";
       const regex = new RegExp(pattern, flags);
       const results: Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }> = [];
@@ -102,6 +103,8 @@ function createSolverTools(context: string): SolverTools {
         if (match[0].length === 0) {
           regex.lastIndex++;
         }
+
+        if (results.length >= MAX_GREP_MATCHES) break;
       }
 
       return results;
@@ -355,10 +358,9 @@ export function extractFinalAnswer(
       const valueFields = ['total', 'result', 'value', 'totalsales', 'total_sales', 'count', 'sum', 'answer', 'totals'];
       const keys = Object.keys(parsed);
       const foundKey = keys.find(k => valueFields.includes(k.toLowerCase().replace(/_/g, '')));
-      const foundValue = foundKey;
 
-      if (foundValue !== undefined) {
-        const value = parsed[foundValue];
+      if (foundKey !== undefined) {
+        const value = parsed[foundKey];
         if (parsed.notes) {
           return `${parsed.notes}\n\nResult: ${typeof value === 'number' ? value.toLocaleString() : value}`;
         }
@@ -725,6 +727,17 @@ Try again with proper formatting.`;
           } else {
             // Scalar result - only bind to _N, preserve RESULTS
             log(`[Turn ${turn}] Bound scalar result to _${turn} (RESULTS preserved)`);
+          }
+          // Evict old turn bindings to prevent unbounded growth
+          const MAX_SOLVER_BINDINGS = 200;
+          if (solverBindings.size > MAX_SOLVER_BINDINGS) {
+            const keys = [...solverBindings.keys()];
+            const turnKeys = keys.filter(k => /^_\d+$/.test(k))
+              .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
+            const toRemove = turnKeys.slice(0, turnKeys.length - (MAX_SOLVER_BINDINGS - (keys.length - turnKeys.length)));
+            for (const key of toRemove) {
+              solverBindings.delete(key);
+            }
           }
         } else {
           previousResultCount = lastResultCount;
