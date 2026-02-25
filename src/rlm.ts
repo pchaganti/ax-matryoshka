@@ -202,8 +202,8 @@ function generateClassifierGuidance(
 
   for (const idx of indices) {
     const line = grepResults[idx].line;
-    // Escape quotes for S-expression string
-    const escaped = line.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    // Escape double quotes for S-expression string embedding
+    const escaped = line.replace(/"/g, '\\"');
     examples.push(escaped);
   }
 

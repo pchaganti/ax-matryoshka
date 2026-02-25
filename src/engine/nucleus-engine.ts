@@ -101,7 +101,7 @@ function createSolverTools(context: string): SolverTools {
           line: line,
           lineNum: lineNum,
           index: match.index,
-          groups: match.slice(1),
+          groups: match.slice(1).filter((g): g is string => g !== undefined),
         });
 
         if (match[0].length === 0) {

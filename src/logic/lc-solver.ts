@@ -1149,7 +1149,8 @@ function findDistinguishingPattern(
 
   for (const word of trueWords) {
     if (word.length > 3 && !falseWords.has(word)) {
-      return word;
+      // Escape regex metacharacters so the word is safe for new RegExp()
+      return word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
   }
 

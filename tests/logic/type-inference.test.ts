@@ -48,14 +48,14 @@ describe("Type Inference", () => {
       expect(result.type?.tag).toBe("number");
     });
 
-    it("should infer string type for match", () => {
+    it("should infer any type for match (can return null)", () => {
       const parsed = parse('(match (input) "\\\\d+" 0)');
       expect(parsed.success).toBe(true);
       if (!parsed.term) return;
 
       const result = inferType(parsed.term);
       expect(result.valid).toBe(true);
-      expect(result.type?.tag).toBe("string");
+      expect(result.type?.tag).toBe("any");
     });
 
     it("should infer function type for classify", () => {

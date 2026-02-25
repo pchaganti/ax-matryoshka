@@ -90,6 +90,13 @@ export class HandleRegistry {
   }
 
   /**
+   * Clear the current RESULTS handle
+   */
+  clearResults(): void {
+    this.resultsHandle = null;
+  }
+
+  /**
    * Get the current RESULTS handle
    */
   getResults(): string | null {

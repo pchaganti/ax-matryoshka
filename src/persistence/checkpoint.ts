@@ -55,10 +55,12 @@ export class CheckpointManager {
     const bindings = this.db.getCheckpoint(turn);
     if (!bindings) return false;
 
-    // Restore RESULTS binding
+    // Restore RESULTS binding (or clear stale RESULTS if checkpoint has none)
     const resultsHandle = bindings.get("RESULTS");
     if (resultsHandle) {
       this.registry.setResults(resultsHandle);
+    } else {
+      this.registry.clearResults();
     }
 
     return true;
