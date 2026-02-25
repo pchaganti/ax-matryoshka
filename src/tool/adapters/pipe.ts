@@ -48,6 +48,8 @@ export class PipeAdapter {
   private interactive: boolean;
   private input: NodeJS.ReadableStream;
   private output: NodeJS.WritableStream;
+  private processing: boolean = false;
+  private queue: string[] = [];
   constructor(options: PipeAdapterOptions = {}) {
     this.tool = new LatticeTool();
     this.interactive = options.interactive ?? false;
@@ -73,15 +75,8 @@ export class PipeAdapter {
       rl.prompt();
     }
 
-    rl.on("line", async (line) => {
+    const processLine = async (trimmed: string) => {
       try {
-        const trimmed = line.trim();
-
-        if (!trimmed) {
-          if (this.interactive) rl.prompt();
-          return;
-        }
-
         // Handle quit
         if (this.interactive && (trimmed === ":quit" || trimmed === ":q" || trimmed === ":exit")) {
           this.output.write("Goodbye!\n");
@@ -110,6 +105,29 @@ export class PipeAdapter {
           this.output.write(JSON.stringify({ success: false, error: msg }) + "\n");
         }
       }
+    };
+
+    const drainQueue = async () => {
+      if (this.processing) return;
+      this.processing = true;
+      try {
+        while (this.queue.length > 0) {
+          const line = this.queue.shift()!;
+          await processLine(line);
+        }
+      } finally {
+        this.processing = false;
+      }
+    };
+
+    rl.on("line", (line) => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        if (this.interactive) rl.prompt();
+        return;
+      }
+      this.queue.push(trimmed);
+      void drainQueue();
     });
 
     rl.on("error", (err) => {

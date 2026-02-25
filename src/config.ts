@@ -96,7 +96,7 @@ const DEFAULT_CONFIG: Config = {
 
 function coerceConfigTypes(obj: unknown): unknown {
   if (typeof obj === "string") {
-    if (/^-?\d+(\.\d+)?$/.test(obj) && obj === String(Number(obj))) return Number(obj);
+    if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(obj) && obj === String(Number(obj))) return Number(obj);
     if (obj === "true") return true;
     if (obj === "false") return false;
     return obj;

@@ -229,19 +229,18 @@ export class SessionDB {
     const handle = `$res${nextId}`;
     const now = Date.now();
 
-    // Insert handle metadata
+    // Insert handle metadata and data rows atomically in one transaction
     const insertHandle = this.db.prepare(`
       INSERT INTO handles (handle, type, count, created_at)
       VALUES (?, ?, ?, ?)
     `);
-    insertHandle.run(handle, "array", data.length, now);
 
-    // Insert data rows
     const insertData = this.db.prepare(`
       INSERT INTO handle_data (handle, idx, data) VALUES (?, ?, ?)
     `);
 
     const insertAll = this.db.transaction((items: unknown[]) => {
+      insertHandle.run(handle, "array", items.length, now);
       for (let i = 0; i < items.length; i++) {
         try {
           insertData.run(handle, i, JSON.stringify(items[i]));

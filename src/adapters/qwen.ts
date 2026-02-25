@@ -91,12 +91,17 @@ function extractCode(response: string): string | null {
   if (standard) return standard;
 
   // Qwen sometimes omits language specifier or uses 'js' shorthand
-  const looseMatch = response.match(/```(?:js|javascript|typescript|ts)?\s*\n([\s\S]*?)```/);
-  if (looseMatch && looseMatch[1]) {
-    const code = looseMatch[1].trim();
-    // Validate it looks like code (has semicolons, parens, or common keywords)
-    if (/[;(){}]|const |let |var |function |=>|console\.log/.test(code)) {
-      return code;
+  // Use indexOf-based approach to avoid ReDoS with [\s\S]*? on unclosed fences
+  const looseOpen = response.match(/```(?:js|javascript|typescript|ts)?\s*\n/);
+  if (looseOpen && looseOpen.index !== undefined) {
+    const codeStart = looseOpen.index + looseOpen[0].length;
+    const closeIdx = response.indexOf("```", codeStart);
+    if (closeIdx !== -1) {
+      const code = response.slice(codeStart, closeIdx).trim();
+      // Validate it looks like code (has semicolons, parens, or common keywords)
+      if (code && /[;(){}]|const |let |var |function |=>|console\.log/.test(code)) {
+        return code;
+      }
     }
   }
 

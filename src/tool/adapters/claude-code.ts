@@ -195,8 +195,10 @@ export class ClaudeCodeAdapter {
         // Show preview of array results
         const preview = arr.slice(0, 15).map((item) => {
           if (typeof item === "object" && item !== null && "line" in item) {
-            const gr = item as { line: string; lineNum: number };
-            return `[${gr.lineNum}] ${gr.line.slice(0, 100)}`;
+            const gr = item as Record<string, unknown>;
+            if (typeof gr.line === "string" && typeof gr.lineNum === "number") {
+              return `[${gr.lineNum}] ${gr.line.slice(0, 100)}`;
+            }
           }
           return JSON.stringify(item).slice(0, 100);
         });

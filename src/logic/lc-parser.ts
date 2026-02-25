@@ -187,7 +187,12 @@ function tokenize(input: string): Token[] {
         num += input[i];
         i++;
       }
-      tokens.push({ type: "number", value: parseFloat(num) });
+      const parsed = parseFloat(num);
+      if (isNaN(parsed)) {
+        // Malformed number (e.g. bare "-"), skip
+        continue;
+      }
+      tokens.push({ type: "number", value: parsed });
       continue;
     }
 

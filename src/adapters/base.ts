@@ -78,14 +78,17 @@ Reminder: You are blind. Write code to see.`;
  */
 function extractCode(response: string): string | null {
   // Match typescript, ts, javascript, or js code blocks
-  const codeBlockRegex = /```(?:typescript|ts|javascript|js)\n([\s\S]*?)```/;
-  const match = response.match(codeBlockRegex);
+  // Use indexOf-based approach to avoid ReDoS with [\s\S]*? on unclosed fences
+  const openPattern = /```(?:typescript|ts|javascript|js)\n/;
+  const openMatch = response.match(openPattern);
+  if (!openMatch || openMatch.index === undefined) return null;
 
-  if (match && match[1]) {
-    return match[1].trim();
-  }
+  const codeStart = openMatch.index + openMatch[0].length;
+  const closeIdx = response.indexOf("```", codeStart);
+  if (closeIdx === -1) return null;
 
-  return null;
+  const code = response.slice(codeStart, closeIdx).trim();
+  return code || null;
 }
 
 /**

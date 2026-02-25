@@ -314,14 +314,17 @@ Reminder: You are blind. Write code to see.
  */
 export function extractCode(response: string): string | null {
   // Match typescript, ts, javascript, or js code blocks
-  const codeBlockRegex = /```(?:typescript|ts|javascript|js)\n([\s\S]*?)```/;
-  const match = response.match(codeBlockRegex);
+  // Use indexOf-based approach to avoid ReDoS with [\s\S]*? on unclosed fences
+  const openPattern = /```(?:typescript|ts|javascript|js)\n/;
+  const openMatch = response.match(openPattern);
+  if (!openMatch || openMatch.index === undefined) return null;
 
-  if (match && match[1]) {
-    return match[1].trim();
-  }
+  const codeStart = openMatch.index + openMatch[0].length;
+  const closeIdx = response.indexOf("```", codeStart);
+  if (closeIdx === -1) return null;
 
-  return null;
+  const code = response.slice(codeStart, closeIdx).trim();
+  return code || null;
 }
 
 /**
@@ -564,7 +567,7 @@ export async function runRLM(
   // Prune old history entries while keeping the system prompt and initial user message
   const pruneHistory = () => {
     while (history.length > MAX_HISTORY_ENTRIES) {
-      // Remove the third entry (index 2), preserving system prompt and initial user message
+      // Remove one assistant+user pair (2 entries) at index 2, preserving system prompt and initial user message
       history.splice(2, 2);
     }
   };
@@ -772,7 +775,8 @@ Try again with proper formatting.`;
         const MAX_OUTPUT_LENGTH = 4000; // Max chars per output section
         const truncate = (s: string, max: number = MAX_OUTPUT_LENGTH): string => {
           if (s.length <= max) return s;
-          const half = Math.floor(max / 2) - 20;
+          const half = Math.max(0, Math.floor(max / 2) - 20);
+          if (half === 0) return s.slice(0, max);
           return s.slice(0, half) + `\n... [${s.length - max} chars truncated] ...\n` + s.slice(-half);
         };
 

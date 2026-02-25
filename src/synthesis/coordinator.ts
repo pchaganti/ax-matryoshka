@@ -204,12 +204,13 @@ export class SynthesisCoordinator {
       });
     } else {
       // For extractor, use context as expected output if available
-      const expectedOutputs = examples
-        .filter((e) => e.context !== undefined)
+      const withContext = examples.filter((e) => e.context !== undefined && e.context !== null);
+      const expectedOutputs = withContext
         .map((e) => {
           // Try to parse as number
-          const num = parseFloat(e.context!);
-          return isNaN(num) ? e.context! : num;
+          const ctx = e.context as string;
+          const num = parseFloat(ctx);
+          return isNaN(num) ? ctx : num;
         });
 
       if (expectedOutputs.length === 0) {
@@ -223,9 +224,7 @@ export class SynthesisCoordinator {
       return this.synthesize({
         type: "extractor",
         description: `Synthesized from ${category}`,
-        positiveExamples: examples
-          .filter((e) => e.context !== undefined)
-          .map((e) => e.raw),
+        positiveExamples: withContext.map((e) => e.raw),
         expectedOutputs,
       });
     }

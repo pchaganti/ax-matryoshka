@@ -158,9 +158,11 @@ export class EvolutionarySynthesizer {
 
     if (typeof sampleOutput === "number") {
       // For numbers, try various parsing approaches
+      // Use new RegExp(JSON.stringify()) to avoid template literal escaping issues
+      const safePattern = JSON.stringify(pattern);
       strategies.push(
         `(s) => {
-        const m = s.match(/${this.escapeRegexInString(pattern)}/);
+        const m = s.match(new RegExp(${safePattern}));
         if (!m) return null;
         const r = parseFloat((m[1] || m[0]).replace(/[,$]/g, ''));
         return isNaN(r) ? null : r;
@@ -169,7 +171,7 @@ export class EvolutionarySynthesizer {
 
       strategies.push(
         `(s) => {
-        const m = s.match(/${this.escapeRegexInString(pattern)}/);
+        const m = s.match(new RegExp(${safePattern}));
         if (!m) return null;
         const r = parseInt((m[1] || m[0]).replace(/[,$]/g, ''), 10);
         return isNaN(r) ? null : r;
@@ -181,9 +183,10 @@ export class EvolutionarySynthesizer {
 
       strategies.push(`(s) => { const r = parseFloat(s.replace(/[^\\d.-]/g, '')); return isNaN(r) ? null : r; }`);
     } else if (typeof sampleOutput === "string") {
+      const safePattern = JSON.stringify(pattern);
       strategies.push(
         `(s) => {
-        const m = s.match(/${this.escapeRegexInString(pattern)}/);
+        const m = s.match(new RegExp(${safePattern}));
         return m ? (m[1] || m[0]) : null;
       }`
       );
@@ -241,13 +244,6 @@ export class EvolutionarySynthesizer {
     }
 
     return null;
-  }
-
-  /**
-   * Escape special characters for use inside a regex string in code
-   */
-  private escapeRegexInString(pattern: string): string {
-    return pattern.replace(/\\/g, "\\\\").replace(/\//g, "\\/").replace(/`/g, "\\`").replace(/\$/g, "\\$");
   }
 
   /**
