@@ -335,6 +335,9 @@ export class SessionDB {
    */
   saveCheckpoint(turn: number, bindings: Map<string, string>): void {
     if (!this.db) return;
+    if (!Number.isInteger(turn) || turn < 0) {
+      throw new Error("Turn must be a non-negative integer");
+    }
     const bindingsJson = JSON.stringify(Object.fromEntries(bindings));
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO checkpoints (turn, bindings, timestamp)

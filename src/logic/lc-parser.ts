@@ -822,7 +822,7 @@ export function parseAll(input: string): ParseResult[] {
  */
 /** Escape a string for embedding in double-quoted S-expression output */
 function escapeForPrint(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
 }
 
 export function prettyPrint(term: LCTerm): string {

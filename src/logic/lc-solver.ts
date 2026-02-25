@@ -894,7 +894,7 @@ function evaluateWithBinding(
   log: (msg: string) => void,
   depth: number = 0
 ): unknown {
-  if (depth > 1000) {
+  if (depth > MAX_EVAL_DEPTH) {
     throw new Error("evaluateWithBinding: maximum recursion depth exceeded");
   }
   // Substitute variables and evaluate
@@ -1124,6 +1124,8 @@ function findDistinguishingPattern(
   // Find pattern that matches all true and no false
   for (const pattern of candidatePatterns) {
     try {
+      const patternValidation = validateRegex(pattern);
+      if (!patternValidation.valid) continue;
       const regex = new RegExp(pattern, "i");
       const matchesAllTrue = trueExamples.every(ex => regex.test(ex));
       const matchesNoFalse = falseExamples.every(ex => !regex.test(ex));
@@ -1198,7 +1200,7 @@ function parseDate(str: string, formatHint?: string): string | null {
   const cleaned = str.trim();
 
   // ISO format: 2024-01-15, 2024/01/15
-  const isoMatch = cleaned.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  const isoMatch = cleaned.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
   if (isoMatch) {
     const [, year, month, day] = isoMatch;
     const m = parseInt(month, 10);
@@ -1210,7 +1212,7 @@ function parseDate(str: string, formatHint?: string): string | null {
 
   // US format: MM/DD/YYYY, MM-DD-YYYY
   if (formatHint === "US" || (!formatHint && cleaned.includes("/"))) {
-    const usMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+    const usMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
     if (usMatch) {
       const [, month, day, year] = usMatch;
       const m = parseInt(month, 10);
@@ -1224,7 +1226,7 @@ function parseDate(str: string, formatHint?: string): string | null {
 
   // EU format: DD/MM/YYYY, DD-MM-YYYY
   if (formatHint === "EU") {
-    const euMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+    const euMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
     if (euMatch) {
       const [, day, month, year] = euMatch;
       const m = parseInt(month, 10);

@@ -287,7 +287,7 @@ export function synthesizeExtractor(
   const inputToOutput = new Map<string, Value>();
   for (const { input, output } of examples) {
     const existing = inputToOutput.get(input);
-    if (existing !== undefined && existing !== output) {
+    if (existing !== undefined && !Object.is(existing, output)) {
       throw new Error(
         `Conflicting examples: input "${input}" maps to both ${JSON.stringify(existing)} and ${JSON.stringify(output)}`
       );
@@ -297,7 +297,7 @@ export function synthesizeExtractor(
 
   // Check for constant output (all outputs are the same)
   const outputs = examples.map(e => e.output);
-  const allSame = outputs.every(o => o === outputs[0]);
+  const allSame = outputs.every(o => Object.is(o, outputs[0]));
   if (allSame) {
     // Return literal extractor
     return [{ tag: "lit", value: outputs[0] as string | number }];
@@ -321,7 +321,8 @@ export function synthesizeExtractor(
     let allPass = true;
     for (const { input, output } of examples) {
       const result = evalExtractor(candidate, input);
-      if (result !== output) {
+      // Use Object.is for NaN-safe comparison
+      if (!Object.is(result, output)) {
         allPass = false;
         break;
       }

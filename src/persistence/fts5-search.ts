@@ -77,7 +77,14 @@ export class FTS5Search {
     query: string,
     options: HighlightOptions = {}
   ): HighlightResult[] {
-    const { openTag = "<mark>", closeTag = "</mark>" } = options;
+    // Sanitize tags to prevent XSS — strip script tags, event handlers, and JS URIs
+    const sanitizeTag = (tag: string) => tag
+      .replace(/<script\b[^>]*>/gi, "")
+      .replace(/<\/script>/gi, "")
+      .replace(/on\w+\s*=/gi, "")
+      .replace(/javascript\s*:/gi, "");
+    const openTag = sanitizeTag(options.openTag ?? "<mark>");
+    const closeTag = sanitizeTag(options.closeTag ?? "</mark>");
     const results = this.db.search(query);
 
     // Extract search terms (handle phrases and operators)

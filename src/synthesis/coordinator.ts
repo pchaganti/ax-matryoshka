@@ -123,8 +123,8 @@ export class SynthesisCoordinator {
    */
   validateRegex(pattern: string): boolean {
     try {
-      // Check for ReDoS patterns (nested quantifiers)
-      const redosPattern = /(\((?:[^()]*[+*])[^()]*\))[+*]|\(\?[^)]*[+*][^)]*\)[+*]/;
+      // Check for ReDoS patterns (nested quantifiers including {n,m} syntax)
+      const redosPattern = /(\((?:[^()]*[+*{])[^()]*\))[+*{]|\(\?[^)]*[+*{][^)]*\)[+*{]/;
       if (redosPattern.test(pattern)) return false;
       if (pattern.length > 500) return false;
       new RegExp(pattern);
@@ -138,6 +138,7 @@ export class SynthesisCoordinator {
    * Test a regex against a string (safe)
    */
   testRegex(pattern: string, str: string): boolean {
+    if (!this.validateRegex(pattern)) return false;
     try {
       return new RegExp(pattern).test(str);
     } catch {

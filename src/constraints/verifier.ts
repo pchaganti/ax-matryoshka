@@ -325,10 +325,20 @@ function isSafeInvariant(expr: string): boolean {
     }
   }
 
-  // Reject function calls - any parentheses indicate function invocation
-  if (/\(/.test(expr)) {
+  // Reject function calls — word character followed by '(' indicates invocation
+  // Allow grouping parentheses for expressions like (a > 0 && a < 10)
+  if (/\w\s*\(/.test(expr)) {
     return false;
   }
+
+  // Ensure balanced parentheses
+  let parenDepth = 0;
+  for (const ch of expr) {
+    if (ch === "(") parenDepth++;
+    else if (ch === ")") parenDepth--;
+    if (parenDepth < 0) return false;
+  }
+  if (parenDepth !== 0) return false;
 
   // Reject bracket notation access to dangerous properties
   if (/\[["']/.test(expr)) {
@@ -340,9 +350,9 @@ function isSafeInvariant(expr: string): boolean {
     return false;
   }
 
-  // Only allow: result, numbers, strings, comparisons, typeof, length, basic operators, dot property access
+  // Only allow: result, numbers, strings, comparisons, typeof, length, basic operators, dot property access, grouping parens
   const safePattern =
-    /^[\s\w.<>=!+\-*/%&|?:'"]+$/;
+    /^[\s\w.<>=!+\-*/%&|?:'"()]+$/;
 
   if (!safePattern.test(expr)) return false;
 

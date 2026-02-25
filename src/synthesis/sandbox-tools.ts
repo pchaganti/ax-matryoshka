@@ -235,6 +235,7 @@ export async function createSandboxWithSynthesis(
     },
 
     extract_with_regex: (pattern: string, str: string): string | null => {
+      if (!coordinator.validateRegex(pattern)) return null;
       try {
         const regex = new RegExp(pattern);
         const match = str.match(regex);
