@@ -650,7 +650,8 @@ Try again with proper formatting.`;
             history.push({ role: "user", content: feedback });
             continue;
           }
-          return extractedAnswer;
+          const verification = verifyAndReturnResult(extractedAnswer, constraint, log);
+          return verification.valid ? verification.result : extractedAnswer;
         }
 
         codeExecuted = true;
@@ -814,7 +815,8 @@ Try again with proper formatting.`;
             doneCount++;
             if (doneCount >= 3 && lastMeaningfulOutput) {
               log(`[Turn ${turn}] Detected stuck pattern. Auto-terminating with last meaningful output.`);
-              return lastMeaningfulOutput;
+              const verification = verifyAndReturnResult(lastMeaningfulOutput, constraint, log);
+              return verification.valid ? verification.result : lastMeaningfulOutput;
             }
             // Add feedback to encourage different approach
             if (isRepeatedOutput) {

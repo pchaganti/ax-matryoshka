@@ -156,15 +156,25 @@ console.log(JSON.stringify(hits, null, 2));
 /**
  * Get feedback message when code execution fails
  */
-function getErrorFeedback(error: string): string {
-  return `The previous code had an error: ${error}\nFix the code and try again.`;
+function getErrorFeedback(error: string, code?: string): string {
+  let feedback = `The previous code had an error: ${error}\nFix the code and try again.`;
+  if (code) {
+    feedback += `\nCode that failed: ${code.slice(0, 200)}`;
+  }
+  return feedback;
 }
 
 /**
  * Get feedback message after successful code execution
  * Generic reminder about continuing exploration or providing final answer
  */
-function getSuccessFeedback(): string {
+function getSuccessFeedback(resultCount?: number, previousCount?: number, query?: string): string {
+  if (resultCount === 0) {
+    return `No results found. Try different search terms or approach.`;
+  }
+  if (resultCount !== undefined && resultCount > 0) {
+    return `Found ${resultCount} results. Continue exploring, OR output final answer using <<<FINAL>>> and <<<END>>> tags.`;
+  }
   return `Variables persist between turns. Continue exploring, OR output final answer using <<<FINAL>>> and <<<END>>> tags.`;
 }
 
@@ -172,8 +182,8 @@ function getSuccessFeedback(): string {
  * Get feedback message when model repeats the same code
  * Encourages a different approach
  */
-function getRepeatedCodeFeedback(): string {
-  return `ERROR: You are repeating the same code. This will give the same output.
+function getRepeatedCodeFeedback(resultCount?: number): string {
+  return `ERROR: You are repeating the same code. This will give the same output.${resultCount !== undefined ? ` (${resultCount} results already available)` : ""}
 
 Try a DIFFERENT approach:
 - Use different search terms with grep()

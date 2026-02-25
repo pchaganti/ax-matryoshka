@@ -246,12 +246,15 @@ function findCommonSuffix(strings: string[]): string {
   let suffix = strings[0];
   for (const s of strings.slice(1)) {
     while (!s.endsWith(suffix)) {
-      suffix = suffix.slice(1);
+      suffix = suffix.slice(1); // Remove from start to shrink the suffix
       if (suffix === "") return "";
     }
   }
   return suffix;
 }
+// Note: slice(1) is correct here — we're finding the longest common suffix by
+// progressively removing characters from the *beginning* of the candidate suffix
+// string until all strings end with it. E.g., "hello" → "ello" → "llo" → "lo"...
 
 /**
  * Synthesize an extractor from examples
@@ -410,7 +413,7 @@ function tryDelimiterFieldExtraction(
       });
 
       if (allMatch) {
-        const escapedDelim = delim === "|" ? "\\|" : delim;
+        const escapedDelim = delim.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
         const code = `(s) => s.split('${escapedDelim}').map(x => x.trim())[${fieldIdx}]`;
         const testFn = (s: string) =>
           s.split(delim).map((x) => x.trim())[fieldIdx];

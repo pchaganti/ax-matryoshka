@@ -676,13 +676,17 @@ function evaluate(
     case "apply-fn": {
       // Look up stored function and apply it
       const fnKey = `_fn_${term.name}`;
-      const storedFn = bindings.get(fnKey) as { _type: string; fn: (input: string) => unknown } | undefined;
-      if (!storedFn || storedFn._type !== "synthesized-fn") {
+      const storedRaw = bindings.get(fnKey);
+      if (!storedRaw || typeof storedRaw !== "object" || storedRaw === null) {
         throw new Error(`apply-fn: function "${term.name}" not found in bindings`);
+      }
+      const storedFn = storedRaw as Record<string, unknown>;
+      if (storedFn._type !== "synthesized-fn" || typeof storedFn.fn !== "function") {
+        throw new Error(`apply-fn: function "${term.name}" not found or invalid in bindings`);
       }
       const arg = evaluate(term.arg, tools, bindings, log, depth + 1);
       log(`[Lattice] Applying function "${term.name}" to "${arg}"`);
-      return storedFn.fn(String(arg));
+      return (storedFn.fn as (input: string) => unknown)(String(arg));
     }
 
     case "predicate": {

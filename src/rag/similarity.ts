@@ -101,12 +101,13 @@ export function cosineSimilarity(
     norm2 += val2 * val2;
   }
 
-  // Handle zero vectors
-  if (norm1 === 0 || norm2 === 0) {
+  // Handle zero or infinite vectors
+  if (norm1 === 0 || norm2 === 0 || !Number.isFinite(norm1) || !Number.isFinite(norm2)) {
     return 0;
   }
 
-  return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+  const result = dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+  return Number.isFinite(result) ? result : 0;
 }
 
 /**

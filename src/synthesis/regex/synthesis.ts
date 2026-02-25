@@ -339,7 +339,7 @@ function getCharType(char: string): "digit" | "upper" | "lower" | "other" {
 }
 
 function analyzePosition(examples: string[], pos: number): { type: "fixed" | "class"; value: string | CharClass["class"] } {
-  const chars = examples.map((e) => e[pos]);
+  const chars = examples.map((e) => e[pos]).filter((c) => c !== undefined);
   const uniqueChars = [...new Set(chars)];
 
   // All same character at this position

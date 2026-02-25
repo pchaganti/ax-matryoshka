@@ -137,16 +137,22 @@ export class ClaudeCodeAdapter {
 
     switch (name) {
       case "lattice_load":
+        if (typeof args.filePath !== "string") {
+          throw new Error("lattice_load: filePath must be a string");
+        }
         response = await this.tool.executeAsync({
           type: "load",
-          filePath: args.filePath as string,
+          filePath: args.filePath,
         });
         break;
 
       case "lattice_query":
+        if (typeof args.command !== "string") {
+          throw new Error("lattice_query: command must be a string");
+        }
         response = this.tool.execute({
           type: "query",
-          command: args.command as string,
+          command: args.command,
         });
         break;
 
