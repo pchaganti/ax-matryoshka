@@ -270,6 +270,7 @@ export class SessionDB {
    */
   getHandleDataSlice(handle: string, limit: number): unknown[] {
     if (!this.db) return [];
+    if (limit <= 0) return [];
     const PARSE_FAILURE = Symbol("parse_failure");
     const stmt = this.db.prepare(`
       SELECT data FROM handle_data

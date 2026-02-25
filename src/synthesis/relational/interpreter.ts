@@ -301,6 +301,7 @@ export function exprToCode(expr: Expr): string {
  * Test a synthesized program against examples
  */
 export function testProgram(expr: Expr, examples: Example[]): boolean {
+  if (examples.length === 0) return false;
   try {
     const code = exprToCode(expr);
     const fn = new Function("input", `return ${code}`);

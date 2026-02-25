@@ -67,7 +67,7 @@ function jsonToSexp(json: unknown): string | null {
     case "search": {
       const pattern = obj.pattern || obj.query || obj.term;
       if (typeof pattern === "string") {
-        return `(grep "${pattern.replace(/"/g, '\\"')}")`;
+        return `(grep "${pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}")`;
       }
       break;
     }
@@ -76,7 +76,7 @@ function jsonToSexp(json: unknown): string | null {
       const collection = obj.collection || obj.input || "RESULTS";
       const pattern = obj.pattern || obj.predicate || obj.match;
       if (typeof pattern === "string") {
-        const escaped = pattern.replace(/"/g, '\\"');
+        const escaped = pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         return `(filter ${collection} (lambda x (match x "${escaped}" 0)))`;
       }
       break;
@@ -86,9 +86,9 @@ function jsonToSexp(json: unknown): string | null {
     case "extract": {
       const collection = obj.collection || obj.input || "RESULTS";
       const pattern = obj.pattern || obj.regex;
-      const group = typeof obj.group === "number" ? obj.group : 0;
+      const group = typeof obj.group === "number" && obj.group >= 0 ? obj.group : 0;
       if (typeof pattern === "string") {
-        const escaped = pattern.replace(/"/g, '\\"');
+        const escaped = pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         return `(map ${collection} (lambda x (match x "${escaped}" ${group})))`;
       }
       break;
@@ -99,7 +99,7 @@ function jsonToSexp(json: unknown): string | null {
       const query = obj.query || obj.term;
       const limit = typeof obj.limit === "number" ? obj.limit : 10;
       if (typeof query === "string") {
-        return `(fuzzy_search "${query.replace(/"/g, '\\"')}" ${limit})`;
+        return `(fuzzy_search "${query.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}" ${limit})`;
       }
       break;
     }

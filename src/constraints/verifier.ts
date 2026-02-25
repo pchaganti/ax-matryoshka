@@ -54,12 +54,19 @@ export function verifyResult(
 /**
  * Verify an output constraint recursively.
  */
+const MAX_CONSTRAINT_DEPTH = 50;
+
 function verifyOutputConstraint(
   value: unknown,
   constraint: OutputConstraint,
   errors: string[],
-  path: string
+  path: string,
+  depth: number = 0
 ): void {
+  if (depth > MAX_CONSTRAINT_DEPTH) {
+    errors.push(`${path}: constraint verification exceeded maximum depth (${MAX_CONSTRAINT_DEPTH})`);
+    return;
+  }
   // Type checking
   const actualType = getValueType(value);
 
@@ -84,7 +91,8 @@ function verifyOutputConstraint(
         value as Record<string, unknown>,
         constraint,
         errors,
-        path
+        path,
+        depth
       );
       break;
   }
@@ -233,12 +241,13 @@ function verifyObjectConstraint(
   value: Record<string, unknown>,
   constraint: OutputConstraint,
   errors: string[],
-  path: string
+  path: string,
+  depth: number = 0
 ): void {
   // Required properties
   if (constraint.required) {
     for (const prop of constraint.required) {
-      if (!(prop in value)) {
+      if (!Object.prototype.hasOwnProperty.call(value, prop)) {
         errors.push(`${path} is missing required property "${prop}"`);
       }
     }
@@ -247,12 +256,13 @@ function verifyObjectConstraint(
   // Property type constraints
   if (constraint.properties) {
     for (const [prop, propConstraint] of Object.entries(constraint.properties)) {
-      if (prop in value) {
+      if (Object.prototype.hasOwnProperty.call(value, prop)) {
         verifyOutputConstraint(
           value[prop],
           propConstraint,
           errors,
-          `${path}.${prop}`
+          `${path}.${prop}`,
+          depth + 1
         );
       }
     }
