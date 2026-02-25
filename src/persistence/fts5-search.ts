@@ -143,7 +143,7 @@ export class FTS5Search {
     // Handle alternation pattern: error|warning
     if (/^\w+(\|\w+)+$/.test(pattern)) {
       const terms = pattern.split("|");
-      const ftsQuery = terms.join(" OR ");
+      const ftsQuery = terms.map(t => `"${t}"`).join(" OR ");
       return this.search(ftsQuery);
     }
 

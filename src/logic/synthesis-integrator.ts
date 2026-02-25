@@ -590,7 +590,7 @@ export class SynthesisIntegrator {
       return this.synthesizePredicateViaRegex(trueExamples, falseExamples);
     }
 
-    const code = `(s) => /${pattern}/.test(s)`;
+    const code = `(s) => new RegExp(${JSON.stringify(pattern)}).test(s)`;
     const fn = (s: string) => regex.test(s);
 
     // Verify
@@ -939,7 +939,7 @@ export class SynthesisIntegrator {
       const pattern = coordResult.regex;
       try {
         const regex = new RegExp(pattern);
-        const code = `(s) => /${pattern}/.test(s)`;
+        const code = `(s) => new RegExp(${JSON.stringify(pattern)}).test(s)`;
         const fn = (s: string) => regex.test(s);
 
         return {

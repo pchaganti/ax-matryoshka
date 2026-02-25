@@ -147,7 +147,7 @@ export function evalo(
 
   // If expectedOutput is provided, check if it matches
   if (expectedOutput !== null) {
-    if (result === expectedOutput) {
+    if (Object.is(result, expectedOutput)) {
       return [result];
     }
     return [];
@@ -304,7 +304,7 @@ export function synthesizeExtractor(
   }
 
   // Check for identity (output === input for all)
-  const allIdentity = examples.every(e => e.output === e.input);
+  const allIdentity = examples.every(e => Object.is(e.output, e.input));
   if (allIdentity) {
     return [{ tag: "input" }];
   }

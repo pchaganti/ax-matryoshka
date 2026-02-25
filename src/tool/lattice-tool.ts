@@ -115,7 +115,7 @@ export class LatticeTool {
       const stats = this.engine.getStats();
       return {
         success: true,
-        message: `Loaded ${this.documentName}: ${stats?.lineCount.toLocaleString()} lines, ${stats?.length.toLocaleString()} chars`,
+        message: `Loaded ${this.documentName}: ${stats?.lineCount?.toLocaleString() ?? "?"} lines, ${stats?.length?.toLocaleString() ?? "?"} chars`,
         data: stats,
       };
     } catch (err) {
@@ -149,7 +149,7 @@ export class LatticeTool {
       const stats = this.engine.getStats();
       return {
         success: true,
-        message: `Loaded ${this.documentName}: ${stats?.lineCount.toLocaleString()} lines, ${stats?.length.toLocaleString()} chars`,
+        message: `Loaded ${this.documentName}: ${stats?.lineCount?.toLocaleString() ?? "?"} lines, ${stats?.length?.toLocaleString() ?? "?"} chars`,
         data: stats,
       };
     } catch (err) {
@@ -256,7 +256,7 @@ export class LatticeTool {
         documentName: this.documentName,
         documentPath: this.documentPath,
       },
-      message: `Document: ${this.documentName} (${stats?.lineCount.toLocaleString()} lines, ${stats?.length.toLocaleString()} chars)`,
+      message: `Document: ${this.documentName} (${stats?.lineCount?.toLocaleString() ?? "?"} lines, ${stats?.length?.toLocaleString() ?? "?"} chars)`,
     };
   }
 
