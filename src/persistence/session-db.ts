@@ -513,7 +513,8 @@ export class SessionDB {
       DELETE FROM checkpoints;
       DELETE FROM symbols;
     `);
-    this.handleCounter = 0;
+    // Don't reset handleCounter — preserves monotonicity and prevents
+    // handle name collisions with previously issued handles
   }
 
   /**

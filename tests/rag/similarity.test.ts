@@ -75,11 +75,11 @@ describe("inverseDocumentFrequency", () => {
 
     const idf = inverseDocumentFrequency(documents);
 
-    // "hello" appears in 2 of 3 docs
-    expect(idf.get("hello")).toBeCloseTo(Math.log(3 / 2));
+    // "hello" appears in 2 of 3 docs — formula: log(1 + N/df)
+    expect(idf.get("hello")).toBeCloseTo(Math.log(1 + 3 / 2));
 
     // "goodbye" appears in 1 of 3 docs
-    expect(idf.get("goodbye")).toBeCloseTo(Math.log(3 / 1));
+    expect(idf.get("goodbye")).toBeCloseTo(Math.log(1 + 3 / 1));
   });
 
   it("should give 0 IDF to terms in all documents", () => {
@@ -89,7 +89,7 @@ describe("inverseDocumentFrequency", () => {
     ];
 
     const idf = inverseDocumentFrequency(documents);
-    expect(idf.get("common")).toBeCloseTo(Math.log(2 / 2));  // log(1) = 0
+    expect(idf.get("common")).toBeCloseTo(Math.log(1 + 2 / 2));  // log(2) with smoothing
   });
 });
 

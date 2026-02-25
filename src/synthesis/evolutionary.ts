@@ -307,6 +307,11 @@ export class EvolutionarySynthesizer {
     const transformComp = components.find((c) => c.type === "transformer");
 
     if (regexComp && transformComp && regexComp.pattern && transformComp.code) {
+      // Validate transformer code is a safe arrow function or function expression
+      const safeCodePattern = /^(\(?\w*\)?\s*=>|function\s*\()/;
+      if (!safeCodePattern.test(transformComp.code.trim())) {
+        return null; // Reject unsafe code patterns
+      }
       // The pattern is stored ready for use with new RegExp(), so we use that approach
       // rather than a regex literal to avoid escaping issues
       const composedCode = `(s) => {

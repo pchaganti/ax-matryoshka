@@ -135,7 +135,8 @@ export class PipeAdapter {
     });
 
     rl.on("close", () => {
-      process.exit(0);
+      // Graceful shutdown: allow pending async operations to drain
+      setImmediate(() => process.exit(0));
     });
   }
 

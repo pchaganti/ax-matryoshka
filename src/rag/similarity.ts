@@ -51,10 +51,11 @@ export function inverseDocumentFrequency(
     }
   }
 
-  // Calculate IDF: log(N / df)
+  // Calculate IDF with smoothing: log(1 + N / df)
+  // Using log(1 + ratio) prevents all-zero IDF when docCount equals df (e.g., single document)
   const idf = new Map<string, number>();
   for (const [term, df] of termDocCount) {
-    idf.set(term, Math.log(docCount / df));
+    idf.set(term, Math.log(1 + docCount / df));
   }
 
   return idf;

@@ -134,6 +134,12 @@ function verifyNumberConstraint(
     return;
   }
 
+  // Validate min <= max
+  if (constraint.min !== undefined && constraint.max !== undefined && constraint.min > constraint.max) {
+    errors.push(`${path} has invalid constraint: min (${constraint.min}) > max (${constraint.max})`);
+    return;
+  }
+
   // Min constraint
   if (constraint.min !== undefined && value < constraint.min) {
     errors.push(

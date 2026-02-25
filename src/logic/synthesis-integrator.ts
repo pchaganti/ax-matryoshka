@@ -94,6 +94,7 @@ const MONTH_NAMES: Record<string, string> = {
 /** Max days per month (non-leap year defaults; Feb adjusted for leap years) */
 const DAYS_IN_MONTH = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 function maxDaysInMonth(month: number, year: number): number {
+  if (month < 1 || month > 12) return 0; // Invalid month
   if (month === 2 && (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0))) return 29;
   return DAYS_IN_MONTH[month] ?? 31;
 }
