@@ -347,8 +347,12 @@ function tryPrefixSuffixExtraction(
 ): Extractor | null {
   if (outputType !== "string") return null;
 
-  const inputs = examples.map((e) => e.input);
-  const outputs = examples.map((e) => String(e.output));
+  // Filter out examples with null/undefined outputs — String(null) produces "null"
+  // which causes false-positive pattern matching
+  const validExamples = examples.filter((e) => e.output != null);
+  if (validExamples.length === 0) return null;
+  const inputs = validExamples.map((e) => e.input);
+  const outputs = validExamples.map((e) => String(e.output));
 
   // Check if outputs are substrings of inputs with common prefix/suffix removed
   const inputPrefix = findCommonPrefix(inputs);
@@ -357,7 +361,7 @@ function tryPrefixSuffixExtraction(
   if (inputPrefix.length === 0 && inputSuffix.length === 0) return null;
 
   // Check if removing prefix/suffix gives us the outputs
-  const allMatch = examples.every((e, i) => {
+  const allMatch = validExamples.every((e, i) => {
     const endIdx = inputSuffix.length > 0 ? -inputSuffix.length : undefined;
     const stripped = e.input.slice(inputPrefix.length, endIdx);
     return stripped === outputs[i];

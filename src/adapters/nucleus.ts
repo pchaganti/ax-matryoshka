@@ -53,6 +53,14 @@ ${hints?.hintsText || ""}${hints?.selfCorrectionText || ""}`;
  * Try to convert JSON to S-expression
  * Handles common cases when model outputs JSON instead of S-expressions
  */
+/** Validate collection name is a safe S-expression identifier (RESULTS, _N, etc.) */
+function validateCollectionName(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+  // Only allow known safe identifiers: RESULTS, _1, _2, ..., or simple alphanumeric names
+  if (/^(RESULTS|_\d+|[A-Za-z]\w*)$/.test(name)) return name;
+  return null;
+}
+
 function jsonToSexp(json: unknown): string | null {
   if (typeof json !== "object" || json === null) return null;
 
@@ -73,9 +81,10 @@ function jsonToSexp(json: unknown): string | null {
     }
 
     case "filter": {
-      const collection = obj.collection || obj.input || "RESULTS";
+      const rawCollection = obj.collection || obj.input || "RESULTS";
+      const collection = validateCollectionName(rawCollection);
       const pattern = obj.pattern || obj.predicate || obj.match;
-      if (typeof pattern === "string") {
+      if (collection && typeof pattern === "string") {
         const escaped = pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         return `(filter ${collection} (lambda x (match x "${escaped}" 0)))`;
       }
@@ -84,10 +93,11 @@ function jsonToSexp(json: unknown): string | null {
 
     case "map":
     case "extract": {
-      const collection = obj.collection || obj.input || "RESULTS";
+      const rawCollection = obj.collection || obj.input || "RESULTS";
+      const collection = validateCollectionName(rawCollection);
       const pattern = obj.pattern || obj.regex;
       const group = typeof obj.group === "number" && obj.group >= 0 ? obj.group : 0;
-      if (typeof pattern === "string") {
+      if (collection && typeof pattern === "string") {
         const escaped = pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
         return `(map ${collection} (lambda x (match x "${escaped}" ${group})))`;
       }

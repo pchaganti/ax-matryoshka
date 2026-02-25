@@ -182,8 +182,18 @@ export class PipeAdapter {
       };
     }
 
+    // Validate required fields based on command type
     if (command.type === "load") {
+      if (typeof (command as Record<string, unknown>).filePath !== "string") {
+        return { success: false, error: "load command requires 'filePath' string field" };
+      }
       return this.tool.executeAsync(command);
+    }
+
+    if (command.type === "query") {
+      if (typeof (command as Record<string, unknown>).command !== "string") {
+        return { success: false, error: "query command requires 'command' string field" };
+      }
     }
 
     return this.tool.execute(command);

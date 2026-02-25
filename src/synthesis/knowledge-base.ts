@@ -5,6 +5,14 @@
 
 import { RegexNode } from "./regex/synthesis.js";
 
+/** Lightweight regex validation to avoid circular dependency with lc-solver */
+function validateRegex(pattern: string): { valid: boolean } {
+  if (pattern.length > 500) return { valid: false };
+  // Reject nested quantifiers (ReDoS patterns)
+  if (/(\((?:[^()]*[+*{])[^()]*\))[+*{]/.test(pattern)) return { valid: false };
+  try { new RegExp(pattern); return { valid: true }; } catch { return { valid: false }; }
+}
+
 /**
  * A synthesized component that can be reused
  */
@@ -148,6 +156,8 @@ export class KnowledgeBase {
 
     for (const [, component] of this.components) {
       if (component.pattern) {
+        const validation = validateRegex(component.pattern);
+        if (!validation.valid) continue;
         try {
           const regex = new RegExp(component.pattern);
           const matchCount = targetExamples.filter((e) => regex.test(e)).length;
