@@ -218,7 +218,7 @@ describe("verifyResult", () => {
       };
       const result = verifyResult([1, "two", 3], constraint);
       expect(result.valid).toBe(false);
-      expect(result.errors[0]).toContain("item");
+      expect(result.errors[0]).toContain("string");
     });
 
     it("should accept empty array when minItems is 0 or undefined", () => {

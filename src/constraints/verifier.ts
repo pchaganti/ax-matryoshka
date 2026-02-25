@@ -84,7 +84,7 @@ function verifyOutputConstraint(
       verifyStringConstraint(value as string, constraint, errors, path);
       break;
     case "array":
-      verifyArrayConstraint(value as unknown[], constraint, errors, path);
+      verifyArrayConstraint(value as unknown[], constraint, errors, path, depth);
       break;
     case "object":
       verifyObjectConstraint(
@@ -204,7 +204,8 @@ function verifyArrayConstraint(
   value: unknown[],
   constraint: OutputConstraint,
   errors: string[],
-  path: string
+  path: string,
+  depth: number = 0
 ): void {
   // MinItems constraint
   if (constraint.minItems !== undefined && value.length < constraint.minItems) {
@@ -220,16 +221,16 @@ function verifyArrayConstraint(
     );
   }
 
-  // Items constraint
+  // Items constraint — recursively verify each item
   if (constraint.items) {
     for (let i = 0; i < value.length; i++) {
-      const item = value[i];
-      const itemType = getValueType(item);
-      if (itemType !== constraint.items.type) {
-        errors.push(
-          `${path}[${i}] item has wrong type: expected ${constraint.items.type}, got ${itemType}`
-        );
-      }
+      verifyOutputConstraint(
+        value[i],
+        constraint.items,
+        errors,
+        `${path}[${i}]`,
+        depth + 1
+      );
     }
   }
 }
@@ -350,8 +351,8 @@ function isSafeInvariant(expr: string): boolean {
   }
   if (parenDepth !== 0) return false;
 
-  // Reject bracket notation access to dangerous properties
-  if (/\[["']/.test(expr)) {
+  // Reject all bracket notation access (prevents bypassing keyword blocklist)
+  if (/\[/.test(expr)) {
     return false;
   }
 

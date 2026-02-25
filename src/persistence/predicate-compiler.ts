@@ -103,9 +103,10 @@ export class PredicateCompiler {
    */
   toSQLCondition(predicate: string): { sql: string; params: unknown[] } | null {
     // Simple equality: item.field === 'value' or item.field === "value"
-    const eqMatch = predicate.match(/^item\.(\w+)\s*===?\s*['"]([^'"]*(?:(?<=\\)['"][^'"]*)*)['"]\s*$/);
+    const eqMatch = predicate.match(/^item\.(\w+)\s*===?\s*(['"])([^'"]*)\2\s*$/);
     if (eqMatch) {
-      const [, field, value] = eqMatch;
+      const field = eqMatch[1];
+      const value = eqMatch[3];
       if (!this.isValidFieldName(field)) return null;
       return { sql: `json_extract(data, '$.${field}') = ?`, params: [value] };
     }

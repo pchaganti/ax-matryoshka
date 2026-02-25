@@ -46,7 +46,7 @@ describe("compile", () => {
       };
       const code = compile(e);
       expect(code).toContain("match");
-      expect(code).toContain("/\\d+/");
+      expect(code).toContain("new RegExp");
     });
 
     it("should compile match with group", () => {
@@ -69,7 +69,7 @@ describe("compile", () => {
       };
       const code = compile(e);
       expect(code).toContain("replace");
-      expect(code).toContain("/,/g");
+      expect(code).toContain("new RegExp");
     });
 
     it("should compile slice", () => {

@@ -29,18 +29,16 @@ export function compile(extractor: Extractor): string {
       const matchValidation = validateRegex(extractor.pattern);
       if (!matchValidation.valid) return "null";
       const strCode = compile(extractor.str);
-      const pattern = escapeRegexForLiteral(extractor.pattern);
-      return `(${strCode}).match(/${pattern}/)?.[${extractor.group}] ?? null`;
+      return `(${strCode}).match(new RegExp(${JSON.stringify(extractor.pattern)}))?.[${extractor.group}] ?? null`;
     }
 
     case "replace": {
       const replaceValidation = validateRegex(extractor.from);
       if (!replaceValidation.valid) return compile(extractor.str);
       const strCode = compile(extractor.str);
-      const from = escapeRegexForLiteral(extractor.from);
       // Escape $ as $$ for replacement string to prevent backreference injection
       const to = escapeStringForLiteral(extractor.to.replace(/\$/g, "$$$$"));
-      return `(${strCode}).replace(/${from}/g, "${to}")`;
+      return `(${strCode}).replace(new RegExp(${JSON.stringify(extractor.from)}, "g"), "${to}")`;
     }
 
     case "slice": {
@@ -105,15 +103,6 @@ export function compileToFunction(extractor: Extractor): (input: string) => Valu
 export function compileToFunctionString(extractor: Extractor): string {
   const code = compile(extractor);
   return `(input) => ${code}`;
-}
-
-/**
- * Escape special characters for use in a regex literal
- */
-function escapeRegexForLiteral(pattern: string): string {
-  // Don't escape the pattern itself - it's already a regex pattern
-  // Just escape forward slashes for the literal syntax
-  return pattern.replace(/\//g, "\\/");
 }
 
 /**

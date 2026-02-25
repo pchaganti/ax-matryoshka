@@ -144,6 +144,7 @@ export class HandleOps {
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
     }
+    if (n <= 0) return [];
     return data.slice(0, n);
   }
 
@@ -156,6 +157,7 @@ export class HandleOps {
       throw new Error(`Invalid handle: ${handle}`);
     }
 
+    if (n <= 0) return [];
     if (data.length <= n) {
       return [...data];
     }

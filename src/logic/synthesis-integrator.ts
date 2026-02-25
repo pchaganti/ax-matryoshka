@@ -356,6 +356,7 @@ export class SynthesisIntegrator {
       const result = fn(e.input);
       if (result === null) return false;
       const expected = e.output as number;
+      if (typeof result !== "number" || isNaN(result) || isNaN(expected)) return false;
       return Math.abs(result - expected) < 0.01;
     });
 
@@ -537,6 +538,7 @@ export class SynthesisIntegrator {
       const result = fn(e.input);
       if (result === null) return false;
       const expected = e.output as number;
+      if (typeof result !== "number" || isNaN(result) || isNaN(expected)) return false;
       return Math.abs(result - expected) < 0.01;
     });
 
