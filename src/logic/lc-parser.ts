@@ -820,20 +820,25 @@ export function parseAll(input: string): ParseResult[] {
 /**
  * Pretty-print an LC term back to S-expression syntax
  */
+/** Escape a string for embedding in double-quoted S-expression output */
+function escapeForPrint(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
 export function prettyPrint(term: LCTerm): string {
   switch (term.tag) {
     case "input":
       return "(input)";
     case "lit":
       return typeof term.value === "string"
-        ? `"${term.value}"`
+        ? `"${escapeForPrint(term.value)}"`
         : String(term.value);
     case "grep":
-      return `(grep "${term.pattern}")`;
+      return `(grep "${escapeForPrint(term.pattern)}")`;
     case "fuzzy_search":
       return term.limit
-        ? `(fuzzy_search "${term.query}" ${term.limit})`
-        : `(fuzzy_search "${term.query}")`;
+        ? `(fuzzy_search "${escapeForPrint(term.query)}" ${term.limit})`
+        : `(fuzzy_search "${escapeForPrint(term.query)}")`;
     case "text_stats":
       return "(text_stats)";
     case "lines":
@@ -845,11 +850,11 @@ export function prettyPrint(term: LCTerm): string {
     case "add":
       return `(add ${prettyPrint(term.left)} ${prettyPrint(term.right)})`;
     case "match":
-      return `(match ${prettyPrint(term.str)} "${term.pattern}" ${term.group})`;
+      return `(match ${prettyPrint(term.str)} "${escapeForPrint(term.pattern)}" ${term.group})`;
     case "replace":
-      return `(replace ${prettyPrint(term.str)} "${term.from}" "${term.to}")`;
+      return `(replace ${prettyPrint(term.str)} "${escapeForPrint(term.from)}" "${escapeForPrint(term.to)}")`;
     case "split":
-      return `(split ${prettyPrint(term.str)} "${term.delim}" ${term.index})`;
+      return `(split ${prettyPrint(term.str)} "${escapeForPrint(term.delim)}" ${term.index})`;
     case "parseInt":
       return `(parseInt ${prettyPrint(term.str)})`;
     case "parseFloat":
@@ -858,7 +863,7 @@ export function prettyPrint(term: LCTerm): string {
       return `(if ${prettyPrint(term.cond)} ${prettyPrint(term.then)} ${prettyPrint(term.else)})`;
     case "classify": {
       const examples = term.examples
-        .map((e) => `"${e.input}" ${e.output}`)
+        .map((e) => `"${escapeForPrint(e.input)}" ${e.output}`)
         .join(" ");
       return `(classify ${examples})`;
     }

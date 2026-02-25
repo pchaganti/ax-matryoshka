@@ -765,9 +765,20 @@ function evaluate(
       // Find all occurrences of the identifier in the document
       log(`[Solver] Finding references to: ${term.name}`);
 
+      // Limit name length to prevent performance issues
+      if (term.name.length > 500) {
+        log(`[Solver] Name too long for find_references: ${term.name.length} chars`);
+        return [];
+      }
+
       // Use word boundary matching to find whole-word references
       const escaped = term.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const pattern = `\\b${escaped}\\b`;
+      const patternValidation = validateRegex(pattern);
+      if (!patternValidation.valid) {
+        log(`[Solver] Invalid find_references pattern: ${patternValidation.error}`);
+        return [];
+      }
       const results = tools.grep(pattern);
 
       log(`[Solver] Found ${results.length} references to "${term.name}"`);

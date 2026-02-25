@@ -91,6 +91,17 @@ const MONTH_NAMES: Record<string, string> = {
   december: "12",
 };
 
+/** Max days per month (non-leap year defaults; Feb adjusted for leap years) */
+const DAYS_IN_MONTH = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+function maxDaysInMonth(month: number, year: number): number {
+  if (month === 2 && (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0))) return 29;
+  return DAYS_IN_MONTH[month] ?? 31;
+}
+
+/** Inline JS code string for daysInMonth validation */
+const DAYS_IN_MONTH_JS = `const _dim = [0,31,28,31,30,31,30,31,31,30,31,30,31];
+          function _maxDays(mo, yr) { if (mo===2 && (yr%4===0 && (yr%100!==0 || yr%400===0))) return 29; return _dim[mo] || 31; }`;
+
 /**
  * SynthesisIntegrator - Automatic synthesis on operation failure
  */
@@ -135,9 +146,11 @@ export class SynthesisIntegrator {
     // Generate cache key
     const cacheKey = this.generateCacheKey(operation, examples);
 
-    // Check cache first
+    // Check cache first (re-insert to mark as recently used for LRU)
     const cached = this.fnCache.get(cacheKey);
     if (cached) {
+      this.fnCache.delete(cacheKey);
+      this.fnCache.set(cacheKey, cached);
       return {
         success: true,
         fn: cached,
@@ -191,9 +204,12 @@ export class SynthesisIntegrator {
    * Get cached function by key
    */
   getCached(key: string): ((input: string) => unknown) | null {
-    // Try exact match first
+    // Try exact match first (re-insert for LRU)
     if (this.fnCache.has(key)) {
-      return this.fnCache.get(key)!;
+      const fn = this.fnCache.get(key)!;
+      this.fnCache.delete(key);
+      this.fnCache.set(key, fn);
+      return fn;
     }
 
     // Try partial match
@@ -217,12 +233,13 @@ export class SynthesisIntegrator {
   }
 
   /**
-   * Evict oldest entries when cache exceeds max size
+   * Evict least recently used entries when cache exceeds max size.
+   * LRU is maintained by re-inserting entries on access (Map preserves insertion order).
    */
   private evictIfNeeded<V>(cache: Map<string, V>): void {
     while (cache.size > SynthesisIntegrator.MAX_CACHE_SIZE) {
-      const oldestKey = cache.keys().next().value;
-      if (oldestKey !== undefined) cache.delete(oldestKey);
+      const lruKey = cache.keys().next().value;
+      if (lruKey !== undefined) cache.delete(lruKey);
       else break;
     }
   }
@@ -396,12 +413,14 @@ export class SynthesisIntegrator {
       if (hasShortYear) {
         // Short year format: DD/MM/YY
         code = `(s) => {
+          ${DAYS_IN_MONTH_JS}
           const match = s.match(/(\\d{1,2})\\/(\\d{1,2})\\/(\\d{2})(?!\\d)/);
           if (!match) return null;
           const [_, day, month, shortYear] = match;
           const m = parseInt(month, 10);
           const d = parseInt(day, 10);
-          if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+          const yr = parseInt(shortYear, 10) > 50 ? 1900 + parseInt(shortYear, 10) : 2000 + parseInt(shortYear, 10);
+          if (m < 1 || m > 12 || d < 1 || d > _maxDays(m, yr)) return null;
           const year = parseInt(shortYear, 10) > 50 ? '19' + shortYear : '20' + shortYear;
           return \`\${year}-\${month.padStart(2, '0')}-\${day.padStart(2, '0')}\`;
         }`;
@@ -411,19 +430,22 @@ export class SynthesisIntegrator {
           const [_, day, month, shortYear] = match;
           const m = parseInt(month, 10);
           const d = parseInt(day, 10);
-          if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+          const yr = parseInt(shortYear, 10) > 50 ? 1900 + parseInt(shortYear, 10) : 2000 + parseInt(shortYear, 10);
+          if (m < 1 || m > 12 || d < 1 || d > maxDaysInMonth(m, yr)) return null;
           const year = parseInt(shortYear, 10) > 50 ? "19" + shortYear : "20" + shortYear;
           return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
         };
       } else {
         // Full year format: DD/MM/YYYY
         code = `(s) => {
+          ${DAYS_IN_MONTH_JS}
           const match = s.match(/(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})/);
           if (!match) return null;
           const [_, day, month, year] = match;
           const m = parseInt(month, 10);
           const d = parseInt(day, 10);
-          if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+          const yr = parseInt(year, 10);
+          if (m < 1 || m > 12 || d < 1 || d > _maxDays(m, yr)) return null;
           return \`\${year}-\${month.padStart(2, '0')}-\${day.padStart(2, '0')}\`;
         }`;
         fn = (s: string) => {
@@ -432,7 +454,8 @@ export class SynthesisIntegrator {
           const [_, day, month, year] = match;
           const m = parseInt(month, 10);
           const d = parseInt(day, 10);
-          if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+          const yr = parseInt(year, 10);
+          if (m < 1 || m > 12 || d < 1 || d > maxDaysInMonth(m, yr)) return null;
           return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
         };
       }

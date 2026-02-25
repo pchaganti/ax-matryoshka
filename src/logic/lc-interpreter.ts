@@ -339,7 +339,8 @@ export function evaluate(
       // Classify builds a predicate function from examples
       log(`Building classifier from ${term.examples.length} examples`);
 
-      const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input);
+      // Filter out empty strings — "".includes("") is always true, making classifier match everything
+      const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input).filter(s => s.length > 0);
 
       log(`  True examples: ${trueExamples.length}`);
 

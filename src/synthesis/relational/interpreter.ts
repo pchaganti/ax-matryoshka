@@ -225,7 +225,8 @@ export function synthesizeProgram(
       let allPassed = true;
       for (const { input, output } of examples) {
         const result = executeExpr(expr, input);
-        if (result !== output) {
+        // Use Object.is for NaN-safe comparison (NaN !== NaN but Object.is(NaN, NaN) is true)
+        if (!Object.is(result, output)) {
           allPassed = false;
           break;
         }
@@ -306,7 +307,8 @@ export function testProgram(expr: Expr, examples: Example[]): boolean {
 
     for (const { input, output } of examples) {
       const result = fn(input);
-      if (result !== output) {
+      // Use Object.is for NaN-safe comparison
+      if (!Object.is(result, output)) {
         return false;
       }
     }

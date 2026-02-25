@@ -561,6 +561,11 @@ Examples:
       port = parsed;
     } else if (args[i] === "--host" && args[i + 1]) {
       host = args[++i];
+      // Validate host is a reasonable hostname/IP
+      if (!/^[a-zA-Z0-9._-]+$/.test(host)) {
+        console.error(`Invalid host: ${host}. Must be a valid hostname or IP address.`);
+        process.exit(1);
+      }
     } else if (args[i] === "--timeout" && args[i + 1]) {
       const parsed = parseInt(args[++i], 10);
       if (isNaN(parsed) || parsed < 1) {

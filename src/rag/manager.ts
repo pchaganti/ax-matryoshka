@@ -178,6 +178,10 @@ Error: ${failure.error}
    * @param record - The failure to record
    */
   recordFailure(record: FailureRecord): void {
+    // Auto-prune stale failures older than 10 minutes before adding
+    const staleCutoff = Date.now() - 10 * 60 * 1000;
+    this.failureMemory = this.failureMemory.filter(f => f.timestamp > staleCutoff);
+
     this.failureMemory.push(record);
 
     // Prune old failures if over limit

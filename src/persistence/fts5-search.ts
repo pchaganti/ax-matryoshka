@@ -55,14 +55,18 @@ export class FTS5Search {
     // Count occurrences of search terms in each result
     const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
 
+    // Pre-compute relevance scores to avoid recalculating per sort comparison
+    const scores = new Map<SearchResult, number>();
+    for (const r of results) {
+      const lower = r.content.toLowerCase();
+      const count = queryTerms.reduce((sum, term) => {
+        return sum + (lower.split(term).length - 1);
+      }, 0);
+      scores.set(r, count);
+    }
+
     return results.sort((a, b) => {
-      const aCount = queryTerms.reduce((sum, term) => {
-        return sum + (a.content.toLowerCase().split(term).length - 1);
-      }, 0);
-      const bCount = queryTerms.reduce((sum, term) => {
-        return sum + (b.content.toLowerCase().split(term).length - 1);
-      }, 0);
-      return bCount - aCount;  // Higher count first
+      return (scores.get(b) ?? 0) - (scores.get(a) ?? 0);
     });
   }
 
