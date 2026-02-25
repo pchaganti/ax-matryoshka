@@ -52,6 +52,22 @@ export class KnowledgeBase {
       this.evictLowestUsage();
     }
 
+    // Clean old index entries if re-adding an existing component
+    const existing = this.components.get(component.id);
+    if (existing) {
+      const oldTypeSet = this.typeIndex.get(existing.type);
+      if (oldTypeSet) {
+        oldTypeSet.delete(component.id);
+        if (oldTypeSet.size === 0) this.typeIndex.delete(existing.type);
+      }
+      const oldSignature = this.computeSignature(existing);
+      const oldPatternSet = this.patternIndex.get(oldSignature);
+      if (oldPatternSet) {
+        oldPatternSet.delete(component.id);
+        if (oldPatternSet.size === 0) this.patternIndex.delete(oldSignature);
+      }
+    }
+
     this.components.set(component.id, component);
 
     // Index by type

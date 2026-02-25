@@ -95,12 +95,12 @@ function verifyOutputConstraint(
  */
 function getValueType(
   value: unknown
-): "number" | "string" | "boolean" | "array" | "object" | "null" | "undefined" {
+): "number" | "string" | "boolean" | "array" | "object" | "null" | "undefined" | "function" | "bigint" | "symbol" {
   if (value === null) return "null";
   if (value === undefined) return "undefined";
   if (Array.isArray(value)) return "array";
   const t = typeof value;
-  if (t === "number" || t === "string" || t === "boolean") return t;
+  if (t === "number" || t === "string" || t === "boolean" || t === "function" || t === "bigint" || t === "symbol") return t;
   if (t === "object") return "object";
   return "undefined";
 }

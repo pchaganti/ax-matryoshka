@@ -13,7 +13,7 @@ export function tokenize(text: string): string[] {
     .toLowerCase()
     .replace(/[^\w\s$]/g, " ")  // Keep $ for currency
     .split(/\s+/)
-    .filter(word => word.length > 1);  // Skip single chars
+    .filter(word => word.length > 1 || word === "$");  // Skip single chars, but keep $
 }
 
 /**

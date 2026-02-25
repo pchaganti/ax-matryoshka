@@ -274,13 +274,13 @@ export function exprToCode(expr: Expr): string {
       return `(String(${exprToCode(expr.left)}) + String(${exprToCode(expr.right)}))`;
 
     case "match": {
-      const escapedPattern = expr.pattern.replace(/\//g, "\\/").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-      return `((_s) => _s == null ? null : _s.match(/${escapedPattern}/)?.[${expr.group}])(${exprToCode(expr.str)})`;
+      // Use RegExp constructor with JSON.stringify to safely embed pattern
+      // This avoids regex literal delimiter issues with backslashes and forward slashes
+      return `((_s) => _s == null ? null : _s.match(new RegExp(${JSON.stringify(expr.pattern)}))?.[${expr.group}])(${exprToCode(expr.str)})`;
     }
 
     case "replace": {
-      const escapedReplacePattern = expr.pattern.replace(/\//g, "\\/").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
-      return `((_s) => _s == null ? null : _s.replace(/${escapedReplacePattern}/g, ${JSON.stringify(expr.replacement)}))(${exprToCode(expr.str)})`;
+      return `((_s) => _s == null ? null : _s.replace(new RegExp(${JSON.stringify(expr.pattern)}, "g"), ${JSON.stringify(expr.replacement)}))(${exprToCode(expr.str)})`;
     }
 
     case "parseInt":

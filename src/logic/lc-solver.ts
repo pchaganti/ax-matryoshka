@@ -356,8 +356,9 @@ function evaluate(
       // Use miniKanren to find a pattern that matches the examples
       log(`[Solver] Building classifier from ${term.examples.length} examples`);
 
-      const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input);
-      const falseExamples = term.examples.filter(e => e.output === false).map(e => e.input);
+      // Filter empty strings — they match everything and corrupt pattern finding
+      const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input).filter(s => s.length > 0);
+      const falseExamples = term.examples.filter(e => e.output === false).map(e => e.input).filter(s => s.length > 0);
 
       log(`[Solver] True examples: ${trueExamples.length}, False examples: ${falseExamples.length}`);
 
@@ -1258,7 +1259,12 @@ function parseDate(str: string, formatHint?: string): string | null {
   if (mdy) {
     const monthNum = months[mdy[1].toLowerCase()];
     if (monthNum) {
-      return `${mdy[3]}-${monthNum}-${mdy[2].padStart(2, "0")}`;
+      const m = parseInt(monthNum, 10);
+      const d = parseInt(mdy[2], 10);
+      if (d >= 1 && d <= daysInMonth(m, parseInt(mdy[3], 10))) {
+        return `${mdy[3]}-${monthNum}-${mdy[2].padStart(2, "0")}`;
+      }
+      return null; // Recognized month but invalid day — don't fall through to JS Date
     }
   }
 
@@ -1267,7 +1273,12 @@ function parseDate(str: string, formatHint?: string): string | null {
   if (dmy) {
     const monthNum = months[dmy[2].toLowerCase()];
     if (monthNum) {
-      return `${dmy[3]}-${monthNum}-${dmy[1].padStart(2, "0")}`;
+      const m = parseInt(monthNum, 10);
+      const d = parseInt(dmy[1], 10);
+      if (d >= 1 && d <= daysInMonth(m, parseInt(dmy[3], 10))) {
+        return `${dmy[3]}-${monthNum}-${dmy[1].padStart(2, "0")}`;
+      }
+      return null; // Recognized month but invalid day — don't fall through to JS Date
     }
   }
 
