@@ -111,9 +111,11 @@ export class CheckpointManager {
       typeof v === "string" && v.startsWith("$res")
     ).length;
 
+    const timestamp = this.db.getCheckpointTimestamp(turn) ?? Date.now();
+
     return {
       turn,
-      timestamp: Date.now(),  // Ideally stored with checkpoint
+      timestamp,
       handleCount,
     };
   }

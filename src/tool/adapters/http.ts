@@ -146,6 +146,7 @@ export class HttpAdapter {
       });
       this.server.requestTimeout = 30_000;  // 30s max per request
       this.server.headersTimeout = 10_000;  // 10s for headers
+      this.server.keepAliveTimeout = 10_000; // Match headersTimeout
 
       this.server.on("error", reject);
 
@@ -440,8 +441,8 @@ export class HttpAdapter {
    * Validate Content-Type header for POST endpoints that require JSON
    */
   private validateJsonContentType(req: http.IncomingMessage, res: http.ServerResponse): boolean {
-    const contentType = req.headers["content-type"] || "";
-    if (!contentType.includes("application/json")) {
+    const contentType = (req.headers["content-type"] || "").split(";")[0].trim();
+    if (contentType !== "application/json") {
       this.sendError(res, 415, "Content-Type must be application/json");
       return false;
     }

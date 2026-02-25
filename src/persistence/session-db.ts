@@ -354,6 +354,13 @@ export class SessionDB {
   /**
    * Get a checkpoint
    */
+  getCheckpointTimestamp(turn: number): number | null {
+    if (!this.db) return null;
+    const stmt = this.db.prepare("SELECT timestamp FROM checkpoints WHERE turn = ?");
+    const row = stmt.get(turn) as { timestamp: number } | undefined;
+    return row ? row.timestamp : null;
+  }
+
   getCheckpoint(turn: number): Map<string, string> | null {
     if (!this.db) return null;
     const stmt = this.db.prepare("SELECT bindings FROM checkpoints WHERE turn = ?");

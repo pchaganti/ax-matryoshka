@@ -71,7 +71,8 @@ export function tfidfVector(
   const tfidf = new Map<string, number>();
 
   for (const [term, tfValue] of tf) {
-    const idfValue = idf.get(term) || Math.log(1000);  // Default high IDF for unknown terms
+    const DEFAULT_IDF = Math.log(1000);  // High IDF for terms not in corpus
+    const idfValue = idf.get(term) ?? DEFAULT_IDF;
     tfidf.set(term, tfValue * idfValue);
   }
 

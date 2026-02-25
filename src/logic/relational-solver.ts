@@ -188,7 +188,7 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
   // US format: MM/DD/YYYY
   if (formatHint === "US" || !formatHint) {
     const usMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (usMatch && formatHint === "US") {
+    if (usMatch) {
       const [, mm, dd, yyyy] = usMatch;
       const month = parseInt(mm, 10);
       const day = parseInt(dd, 10);

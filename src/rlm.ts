@@ -82,6 +82,7 @@ function createSolverTools(context: string): SolverTools {
 
     grep: (pattern: string) => {
       const MAX_GREP_MATCHES = 10000;
+      if (!pattern) return [];
       const validation = validateRegex(pattern);
       if (!validation.valid) return [];
       const flags = "gmi";
@@ -99,7 +100,7 @@ function createSolverTools(context: string): SolverTools {
           line: line,
           lineNum: lineNum,
           index: match.index,
-          groups: match.slice(1),
+          groups: match.slice(1).filter((g: string | undefined) => g !== undefined),
         });
 
         if (match[0].length === 0) {
