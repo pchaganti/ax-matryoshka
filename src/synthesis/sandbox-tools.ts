@@ -422,8 +422,8 @@ export async function createSandboxWithSynthesis(
      */
     function locate_line(start, end) {
       const totalLines = __linesArray.length;
-      let startIdx = start < 0 ? totalLines + start : start - 1;
-      let endIdx = end === undefined ? startIdx : (end < 0 ? totalLines + end : end - 1);
+      let startIdx = start <= 0 ? Math.max(0, totalLines + start) : start - 1;
+      let endIdx = end === undefined ? startIdx : (end <= 0 ? Math.max(0, totalLines + end) : end - 1);
 
       if (startIdx < 0 || startIdx >= totalLines) return '';
       if (endIdx < 0) endIdx = 0;

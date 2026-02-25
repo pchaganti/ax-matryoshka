@@ -243,7 +243,12 @@ export class SessionDB {
 
     const insertAll = this.db.transaction((items: unknown[]) => {
       for (let i = 0; i < items.length; i++) {
-        insertData.run(handle, i, JSON.stringify(items[i]));
+        try {
+          insertData.run(handle, i, JSON.stringify(items[i]));
+        } catch {
+          // Skip non-serializable items (circular refs, BigInt, etc.)
+          insertData.run(handle, i, "null");
+        }
       }
     });
 

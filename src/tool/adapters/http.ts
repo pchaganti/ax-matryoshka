@@ -553,9 +553,10 @@ Examples:
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--port" && args[i + 1]) {
-      const parsed = parseInt(args[++i], 10);
+      const portArg = args[++i];
+      const parsed = parseInt(portArg, 10);
       if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
-        console.error(`Invalid port: ${args[i]}. Must be 1-65535.`);
+        console.error(`Invalid port: ${portArg}. Must be 1-65535.`);
         process.exit(1);
       }
       port = parsed;
@@ -567,9 +568,10 @@ Examples:
         process.exit(1);
       }
     } else if (args[i] === "--timeout" && args[i + 1]) {
-      const parsed = parseInt(args[++i], 10);
+      const timeoutArg = args[++i];
+      const parsed = parseInt(timeoutArg, 10);
       if (isNaN(parsed) || parsed < 1) {
-        console.error(`Invalid timeout: ${args[i]}. Must be a positive number.`);
+        console.error(`Invalid timeout: ${timeoutArg}. Must be a positive number.`);
         process.exit(1);
       }
       timeoutSeconds = parsed;

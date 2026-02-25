@@ -162,12 +162,13 @@ export class HandleOps {
       return [...data];
     }
 
-    // Random index selection — avoids copying the entire array
-    const indices = new Set<number>();
-    while (indices.size < n) {
-      indices.add(Math.floor(Math.random() * data.length));
+    // Fisher-Yates partial shuffle — O(n) guaranteed, no collision risk
+    const indices = Array.from({ length: data.length }, (_, i) => i);
+    for (let i = 0; i < n; i++) {
+      const j = i + Math.floor(Math.random() * (indices.length - i));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
     }
-    return [...indices].map((i) => data[i]);
+    return indices.slice(0, n).map((i) => data[i]);
   }
 
   /**

@@ -155,8 +155,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Extract content from square brackets",
     inputPattern: /^\[.+\]$/,
     outputType: "string",
-    code: "(s) => s.slice(1, -1)",
-    testFn: (s) => s.slice(1, -1),
+    code: "(s) => s.length >= 2 ? s.slice(1, -1) : null",
+    testFn: (s: string) => s.length >= 2 ? s.slice(1, -1) : null,
   },
 
   // Log level extraction: [timestamp] LEVEL: message -> LEVEL
@@ -516,8 +516,8 @@ function tryRegexExtraction(
       return {
         name: "bracket_content",
         description: "Extract content from brackets",
-        code: "(s) => s.slice(1, -1)",
-        test: (s) => s.slice(1, -1),
+        code: "(s) => s.length >= 2 ? s.slice(1, -1) : null",
+        test: (s: string) => s.length >= 2 ? s.slice(1, -1) : null,
       };
     }
   }
@@ -535,8 +535,8 @@ function tryRegexExtraction(
       return {
         name: "paren_content",
         description: "Extract content from parentheses",
-        code: "(s) => s.slice(1, -1)",
-        test: (s) => s.slice(1, -1),
+        code: "(s) => s.length >= 2 ? s.slice(1, -1) : null",
+        test: (s: string) => s.length >= 2 ? s.slice(1, -1) : null,
       };
     }
   }

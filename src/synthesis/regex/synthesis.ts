@@ -490,6 +490,9 @@ export interface SynthesisResult {
 }
 
 export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
+  if (!input || !input.positives) {
+    return { success: false, error: "Invalid input: positives required" };
+  }
   const { positives, negatives } = input;
 
   // Validation
@@ -515,7 +518,7 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
   }
 
   // If still no match, try literal alternation for small sets
-  if (!ast && positives.length <= 10) {
+  if (!ast && positives.length > 0 && positives.length <= 10) {
     ast = {
       type: "alt",
       children: positives.map((p) => ({ type: "literal", value: p })),

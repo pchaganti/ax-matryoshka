@@ -165,6 +165,17 @@ const MONTHS: Record<string, string> = {
   dec: "12", december: "12",
 };
 
+const DAYS_IN_MONTH = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function daysInMonth(month: number, year: number): number {
+  if (month < 1 || month > 12) return 0;
+  if (month === 2) {
+    const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    return leap ? 29 : 28;
+  }
+  return DAYS_IN_MONTH[month] ?? 0;
+}
+
 function parseDateImpl(str: string, formatHint?: string): string | null {
   const trimmed = str.trim();
 
@@ -181,7 +192,8 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
       const [, mm, dd, yyyy] = usMatch;
       const month = parseInt(mm, 10);
       const day = parseInt(dd, 10);
-      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+      const year = parseInt(yyyy, 10);
+      if (month < 1 || month > 12 || day < 1 || day > daysInMonth(month, year)) return null;
       return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
     }
   }
@@ -193,7 +205,8 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
       const [, dd, mm, yyyy] = euMatch;
       const month = parseInt(mm, 10);
       const day = parseInt(dd, 10);
-      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+      const year = parseInt(yyyy, 10);
+      if (month < 1 || month > 12 || day < 1 || day > daysInMonth(month, year)) return null;
       return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
     }
   }
@@ -204,9 +217,11 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
     const [, monthName, day, year] = naturalMatch;
     const month = MONTHS[monthName.toLowerCase()];
     const dayNum = parseInt(day, 10);
-    if (month && dayNum >= 1 && dayNum <= 31) {
+    const m = month ? parseInt(month, 10) : 0;
+    if (month && dayNum >= 1 && dayNum <= daysInMonth(m, parseInt(year, 10))) {
       return `${year}-${month}-${day.padStart(2, "0")}`;
     }
+    if (month) return null; // Recognized month but invalid day
   }
 
   // Day Month Year (15 Jan 2024)
@@ -215,9 +230,11 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
     const [, day, monthName, year] = dmyMatch;
     const month = MONTHS[monthName.toLowerCase()];
     const dayNum = parseInt(day, 10);
-    if (month && dayNum >= 1 && dayNum <= 31) {
+    const m = month ? parseInt(month, 10) : 0;
+    if (month && dayNum >= 1 && dayNum <= daysInMonth(m, parseInt(year, 10))) {
       return `${year}-${month}-${day.padStart(2, "0")}`;
     }
+    if (month) return null; // Recognized month but invalid day
   }
 
   // DD-Mon-YY format (15-Jan-24)
@@ -227,6 +244,9 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
     const month = MONTHS[monthName.toLowerCase()];
     if (month) {
       const year = parseInt(shortYear) < 50 ? `20${shortYear}` : `19${shortYear}`;
+      const dayNum = parseInt(day, 10);
+      const m = parseInt(month, 10);
+      if (dayNum < 1 || dayNum > daysInMonth(m, parseInt(year, 10))) return null;
       return `${year}-${month}-${day.padStart(2, "0")}`;
     }
   }
