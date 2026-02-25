@@ -1140,8 +1140,8 @@ function findDistinguishingPattern(
   }
 
   // Fallback: use the most common word in true examples not in false
-  const trueWords = new Set(trueExamples.flatMap(ex => ex.toLowerCase().split(/\W+/)));
-  const falseWords = new Set(falseExamples.flatMap(ex => ex.toLowerCase().split(/\W+/)));
+  const trueWords = new Set(trueExamples.flatMap(ex => ex.toLowerCase().split(/\W+/).filter(w => w.length > 0)));
+  const falseWords = new Set(falseExamples.flatMap(ex => ex.toLowerCase().split(/\W+/).filter(w => w.length > 0)));
 
   for (const word of trueWords) {
     if (word.length > 3 && !falseWords.has(word)) {

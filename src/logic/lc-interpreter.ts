@@ -341,16 +341,21 @@ export function evaluate(
 
       // Filter out empty strings — "".includes("") is always true, making classifier match everything
       const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input).filter(s => s.length > 0);
+      const falseExamples = term.examples.filter(e => e.output === false).map(e => e.input).filter(s => s.length > 0);
 
-      log(`  True examples: ${trueExamples.length}`);
+      log(`  True examples: ${trueExamples.length}, False examples: ${falseExamples.length}`);
 
-      // Return a function that checks if input matches any true example substring
+      // Return a function that checks if input matches true examples but not false ones
       return (input: unknown) => {
         // Extract string from grep result objects that have .line property
         const str = typeof input === "object" && input !== null && "line" in input
           ? String((input as { line: unknown }).line)
           : String(input);
-        return trueExamples.some(ex => str.includes(ex));
+        // Must match at least one true example
+        const matchesTrue = trueExamples.some(ex => str.includes(ex));
+        // Must not match any false example
+        const matchesFalse = falseExamples.some(ex => str.includes(ex));
+        return matchesTrue && !matchesFalse;
       };
     }
 

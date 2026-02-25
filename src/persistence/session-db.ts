@@ -176,6 +176,7 @@ export class SessionDB {
    */
   getLines(start: number, end: number): DocumentLine[] {
     if (!this.db) return [];
+    if (end < 1) return [];
     if (start > end) return [];
     if (start < 1) start = 1;
     const stmt = this.db.prepare(`

@@ -221,9 +221,11 @@ function verifyArrayConstraint(
     );
   }
 
-  // Items constraint — recursively verify each item
+  // Items constraint — recursively verify each item (capped to prevent OOM)
   if (constraint.items) {
-    for (let i = 0; i < value.length; i++) {
+    const MAX_ITEMS_TO_VERIFY = 1000;
+    const limit = Math.min(value.length, MAX_ITEMS_TO_VERIFY);
+    for (let i = 0; i < limit; i++) {
       verifyOutputConstraint(
         value[i],
         constraint.items,
@@ -231,6 +233,9 @@ function verifyArrayConstraint(
         `${path}[${i}]`,
         depth + 1
       );
+    }
+    if (value.length > MAX_ITEMS_TO_VERIFY) {
+      errors.push(`${path} has ${value.length} items, only first ${MAX_ITEMS_TO_VERIFY} verified`);
     }
   }
 }

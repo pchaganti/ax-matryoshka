@@ -122,7 +122,7 @@ export class RAGManager {
     // Sort by score and limit
     return hints
       .sort((a, b) => b.score - a.score)
-      .slice(0, topK + 1);  // Allow one extra for pitfall/failure
+      .slice(0, topK);
   }
 
   /**

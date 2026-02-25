@@ -441,7 +441,7 @@ export class HttpAdapter {
    * Validate Content-Type header for POST endpoints that require JSON
    */
   private validateJsonContentType(req: http.IncomingMessage, res: http.ServerResponse): boolean {
-    const contentType = (req.headers["content-type"] || "").split(";")[0].trim();
+    const contentType = (req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
     if (contentType !== "application/json") {
       this.sendError(res, 415, "Content-Type must be application/json");
       return false;

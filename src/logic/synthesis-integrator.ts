@@ -561,10 +561,12 @@ export class SynthesisIntegrator {
   ): SynthesisOutcome {
     const trueExamples = examples
       .filter((e) => e.output === true)
-      .map((e) => e.input);
+      .map((e) => e.input)
+      .filter((s) => s.length > 0);
     const falseExamples = examples
       .filter((e) => e.output === false)
-      .map((e) => e.input);
+      .map((e) => e.input)
+      .filter((s) => s.length > 0);
 
     if (trueExamples.length === 0 || falseExamples.length === 0) {
       return {

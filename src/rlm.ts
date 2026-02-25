@@ -37,7 +37,7 @@ function createSolverTools(context: string): SolverTools {
       start: lines.slice(0, 5).join("\n"),
       middle: lines
         .slice(
-          Math.floor(lines.length / 2) - 2,
+          Math.max(0, Math.floor(lines.length / 2) - 2),
           Math.floor(lines.length / 2) + 3
         )
         .join("\n"),
@@ -356,10 +356,10 @@ export function extractFinalAnswer(
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[1]);
-      // Check for common answer field names
-      if (parsed.summary) return parsed.summary;
-      if (parsed.response) return parsed.response;
-      if (parsed.answer) return parsed.answer;
+      // Check for common answer field names — ensure string return
+      if (parsed.summary) return typeof parsed.summary === "string" ? parsed.summary : String(parsed.summary);
+      if (parsed.response) return typeof parsed.response === "string" ? parsed.response : String(parsed.response);
+      if (parsed.answer) return typeof parsed.answer === "string" ? parsed.answer : String(parsed.answer);
       // Check for any field that looks like a final value (case-insensitive)
       const valueFields = ['total', 'result', 'value', 'totalsales', 'total_sales', 'count', 'sum', 'answer', 'totals'];
       const keys = Object.keys(parsed);
