@@ -213,6 +213,12 @@ function verifyArrayConstraint(
   path: string,
   depth: number = 0
 ): void {
+  // Validate minItems <= maxItems
+  if (constraint.minItems !== undefined && constraint.maxItems !== undefined && constraint.minItems > constraint.maxItems) {
+    errors.push(`${path} has invalid constraint: minItems (${constraint.minItems}) > maxItems (${constraint.maxItems})`);
+    return;
+  }
+
   // MinItems constraint
   if (constraint.minItems !== undefined && value.length < constraint.minItems) {
     errors.push(

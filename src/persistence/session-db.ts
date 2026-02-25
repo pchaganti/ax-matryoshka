@@ -156,7 +156,7 @@ export class SessionDB {
       return 0;
     }
 
-    const lines = content.split("\n");
+    const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
     const insert = this.db.prepare(
       "INSERT INTO document_lines (lineNum, content) VALUES (?, ?)"
     );

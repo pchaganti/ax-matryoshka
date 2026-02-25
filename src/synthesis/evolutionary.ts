@@ -267,7 +267,8 @@ export class EvolutionarySynthesizer {
   /**
    * Deep equality check
    */
-  private deepEqual(a: unknown, b: unknown): boolean {
+  private deepEqual(a: unknown, b: unknown, depth: number = 0): boolean {
+    if (depth > 50) return false; // Prevent stack overflow on deep/circular structures
     if (a === b) return true;
     if (typeof a !== typeof b) return false;
     if (typeof a === "number" && typeof b === "number") {
@@ -276,7 +277,7 @@ export class EvolutionarySynthesizer {
     }
     if (Array.isArray(a) && Array.isArray(b)) {
       if (a.length !== b.length) return false;
-      return a.every((v, i) => this.deepEqual(v, b[i]));
+      return a.every((v, i) => this.deepEqual(v, b[i], depth + 1));
     }
     if (
       typeof a === "object" &&
@@ -290,7 +291,8 @@ export class EvolutionarySynthesizer {
       return aKeys.every((k) =>
         this.deepEqual(
           (a as Record<string, unknown>)[k],
-          (b as Record<string, unknown>)[k]
+          (b as Record<string, unknown>)[k],
+          depth + 1
         )
       );
     }

@@ -384,13 +384,13 @@ export function extractFinalAnswer(
  * Try to parse a numeric value from a string result
  */
 function parseNumericResult(result: unknown): number | null {
-  if (typeof result === "number") return result;
+  if (typeof result === "number") return Number.isFinite(result) ? result : null;
   if (typeof result === "string") {
     // Handle strings like "Total: 13000000" or "13,000,000"
     const match = result.match(/[\d,]+(?:\.\d+)?/);
     if (match) {
       const parsed = parseFloat(match[0].replace(/,/g, ""));
-      if (!isNaN(parsed)) return parsed;
+      if (!isNaN(parsed) && Number.isFinite(parsed)) return parsed;
     }
   }
   return null;

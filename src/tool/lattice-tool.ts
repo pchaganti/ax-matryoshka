@@ -100,13 +100,9 @@ export class LatticeTool {
         error: `Invalid path: directory traversal not allowed`,
       };
     }
-    const resolved = path.resolve(filePath);
-    if (resolved !== path.normalize(filePath) && !path.isAbsolute(filePath)) {
-      return {
-        success: false,
-        error: `Invalid path: directory traversal not allowed`,
-      };
-    }
+    // The ".." check above already handles directory traversal.
+    // No additional resolve/normalize check needed — it incorrectly
+    // rejects all relative paths since resolve() always differs from normalize().
     try {
       await this.engine.loadFile(filePath);
       this.documentPath = filePath;
@@ -361,8 +357,10 @@ export function formatResponse(response: LatticeResponse): string {
       const arr = response.data;
       const preview = arr.slice(0, 10).map((item) => {
         if (typeof item === "object" && item !== null && "line" in item) {
-          const gr = item as { line: string; lineNum: number };
-          return `  [${gr.lineNum}] ${gr.line.slice(0, 80)}${gr.line.length > 80 ? "..." : ""}`;
+          const gr = item as Record<string, unknown>;
+          if (typeof gr.line === "string" && typeof gr.lineNum === "number") {
+            return `  [${gr.lineNum}] ${gr.line.slice(0, 80)}${gr.line.length > 80 ? "..." : ""}`;
+          }
         }
         return `  ${JSON.stringify(item).slice(0, 80)}`;
       });

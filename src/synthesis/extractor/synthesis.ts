@@ -413,7 +413,7 @@ function tryDelimiterFieldExtraction(
       });
 
       if (allMatch) {
-        const escapedDelim = delim.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+        const escapedDelim = delim.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
         const code = `(s) => s.split('${escapedDelim}').map(x => x.trim())[${fieldIdx}]`;
         const testFn = (s: string) =>
           s.split(delim).map((x) => x.trim())[fieldIdx];
