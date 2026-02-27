@@ -228,7 +228,7 @@ export function evaluate(
     }
 
     case "match": {
-      if (term.group < 0) return null;
+      if (!Number.isInteger(term.group) || term.group < 0) return null;
       const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
@@ -283,7 +283,7 @@ export function evaluate(
         throw new Error(`parseFloat: expected string or number, got ${typeof str}`);
       }
       const floatResult = parseFloat(String(str));
-      return isNaN(floatResult) ? null : floatResult;
+      return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
     case "add": {
@@ -406,6 +406,7 @@ export function evaluate(
       const lines = tools.context.split("\n");
       const start = Math.max(1, term.start);
       const end = Math.min(lines.length, term.end);
+      if (end < start) return "";
       log(`Getting lines ${start}-${end}`);
       return lines.slice(start - 1, end).join("\n");
     }
@@ -506,7 +507,7 @@ export function evaluate(
       let cleaned = str.replace(/[^0-9.,\-]/g, "");
       cleaned = cleaned.replace(/,/g, "");
       const num = parseFloat(cleaned);
-      return isNaN(num) ? null : num;
+      return isNaN(num) || !isFinite(num) ? null : num;
     }
 
     case "coerce": {
@@ -531,6 +532,7 @@ export function evaluate(
     }
 
     case "extract": {
+      if (!Number.isInteger(term.group) || term.group < 0) return null;
       const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") return null;
       log(`Extracting pattern from string`);
@@ -538,7 +540,8 @@ export function evaluate(
       if (!extractValidation.valid) return null;
       const regex = new RegExp(term.pattern);
       const m = str.match(regex);
-      return m ? (m[term.group] ?? null) : null;
+      if (!m || term.group >= m.length) return null;
+      return m[term.group] ?? null;
     }
 
     case "synthesize":

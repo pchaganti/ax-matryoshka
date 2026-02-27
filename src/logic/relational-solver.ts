@@ -100,14 +100,14 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
     if (input === null || input === undefined) return null;
     const str = String(input).replace(/,/g, "");
     const result = parseInt(str, 10);
-    return isNaN(result) ? null : result;
+    return isNaN(result) || !Number.isSafeInteger(result) ? null : result;
   },
 
   parseFloat: (input, _args) => {
     if (input === null || input === undefined) return null;
     const str = String(input).replace(/,/g, "");
     const result = parseFloat(str);
-    return isNaN(result) ? null : result;
+    return isNaN(result) || !isFinite(result) ? null : result;
   },
 
   parseDate: (input, args) => {
