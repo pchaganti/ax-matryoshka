@@ -59,9 +59,14 @@ function escapeRegex(str: string): string {
  * and only escapes characters that are special inside character classes.
  */
 function escapeForCharClass(str: string): string {
-  // Inside character classes, only these need escaping: ] \ ^ (and - when not in range position)
-  // We preserve a-z, A-Z, 0-9 range patterns and escape other special chars
-  return str.replace(/([\\^\]])/g, "\\$1");
+  // Inside character classes, only these need escaping: ] \ ^ and standalone -
+  // We preserve X-Y range patterns (e.g., a-z, A-Z, 0-9) and escape other special chars
+  // Escape ] \ ^ unconditionally, then escape - only when not part of a range (e.g., not \w-\w)
+  let result = str.replace(/([\\^\]])/g, "\\$1");
+  // Escape dashes that are NOT part of a character range (char-char pattern)
+  result = result.replace(/(^-|-$)/g, "\\-");  // leading or trailing dash
+  result = result.replace(/([^a-zA-Z0-9])-([^a-zA-Z0-9])/g, "$1\\-$2");  // dash between non-alphanumerics
+  return result;
 }
 
 export function nodeToRegex(node: RegexNode): string {

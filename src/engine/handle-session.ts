@@ -436,6 +436,11 @@ export class HandleSession {
    */
   close(): void {
     try {
+      this.engine.dispose();
+    } catch (err) {
+      console.error("[HandleSession] Engine dispose failed:", err instanceof Error ? err.message : String(err));
+    }
+    try {
       this.parserRegistry.dispose();
     } catch (err) {
       console.error("[HandleSession] Parser registry dispose failed:", err instanceof Error ? err.message : String(err));

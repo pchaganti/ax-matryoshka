@@ -268,7 +268,7 @@ function parseCurrencyImpl(str: string, depth: number = 0): number | null {
   }
 
   // Handle negative with minus: -$1,234
-  const negMinusMatch = trimmed.match(/^-(.+)$/);
+  const negMinusMatch = trimmed.match(/^-([^-].*)$/);
   if (negMinusMatch) {
     const inner = parseCurrencyImpl(negMinusMatch[1], depth + 1);
     return inner !== null ? -inner : null;

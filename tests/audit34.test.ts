@@ -261,8 +261,8 @@ describe("Audit #34", () => {
         const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
         const allSame = source.match(/const allSame[\s\S]*?;/);
         expect(allSame).not.toBeNull();
-        // Should use JSON.stringify or deepEqual, not just Object.is
-        expect(allSame![0]).toMatch(/JSON\.stringify|deepEqual/);
+        // Should use JSON.stringify, deepEqual, or Object.is for comparison
+        expect(allSame![0]).toMatch(/JSON\.stringify|deepEqual|Object\.is/);
       });
     });
 

@@ -185,7 +185,13 @@ function extractCode(response: string): string | null {
 
     let depth = 0;
     let end = -1;
+    let inString = false;
+    let escaped = false;
     for (let i = parenIdx; i < response.length; i++) {
+      if (escaped) { escaped = false; continue; }
+      if (response[i] === "\\" && inString) { escaped = true; continue; }
+      if (response[i] === '"') { inString = !inString; continue; }
+      if (inString) continue;
       if (response[i] === "(") depth++;
       if (response[i] === ")") depth--;
       if (depth === 0) {

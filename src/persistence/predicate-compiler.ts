@@ -32,6 +32,21 @@ const DANGEROUS_PATTERNS = [
   /\bWebAssembly\b/,
   /\bBuffer\b/,
   /\barguments\b/,
+  /\bfunction\b/,
+  /\bnew\b/,
+  /\bclass\b/,
+  /\bdelete\b/,
+  /\bthrow\b/,
+  /\bawait\b/,
+  /\byield\b/,
+  /\bwith\b/,
+  /\bdebugger\b/,
+  /\bfor\b/,
+  /\bwhile\b/,
+  /\bdo\b/,
+  /\bvar\b/,
+  /\blet\b/,
+  /\bconst\b/,
 ];
 
 export type PredicateFn = (item: unknown) => boolean;
@@ -115,6 +130,12 @@ export class PredicateCompiler {
     // Block bracket notation with strings (prevents dynamic property access)
     if (/\[\s*['"]/.test(code)) {
       throw new Error("Bracket notation with strings is not allowed in predicates");
+    }
+
+    // Block assignment operators (prevents data mutation via item.x = 42)
+    // Allow ===, !==, ==, !=, >=, <= but block =, +=, -=, *=, /=, etc.
+    if (/[^=!<>]=[^=]/.test(code) || /(\+=|-=|\*=|\/=|%=|\|=|&=|\^=|<<=|>>=|>>>=|\?\?=|\|\|=|&&=)/.test(code)) {
+      throw new Error("Assignment operators are not allowed in predicates");
     }
 
     // Block arrow functions (prevents IIFE execution: (()=>code)())

@@ -298,9 +298,9 @@ export function synthesizeExtractor(
   }
 
   // Check for constant output (all outputs are the same)
+  // Use Object.is for NaN-safe comparison (JSON.stringify conflates NaN and null)
   const outputs = examples.map(e => e.output);
-  const firstOutput = JSON.stringify(outputs[0]);
-  const allSame = outputs.every(o => JSON.stringify(o) === firstOutput);
+  const allSame = outputs.every(o => Object.is(o, outputs[0]));
   if (allSame) {
     // Return literal extractor
     return [{ tag: "lit", value: outputs[0] as string | number }];

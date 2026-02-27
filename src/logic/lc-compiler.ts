@@ -57,7 +57,11 @@ function compile(term: LCTerm): string {
     case "split": {
       const str = compile(term.str);
       const delim = escapeString(term.delim);
-      return `(${str}).split("${delim}")?.[${term.index}] ?? null`;
+      const index = term.index;
+      if (!Number.isInteger(index) || index < 0) {
+        return `null`;
+      }
+      return `(${str}).split("${delim}")?.[${index}] ?? null`;
     }
 
     case "parseInt": {

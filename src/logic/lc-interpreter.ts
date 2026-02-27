@@ -292,6 +292,9 @@ export function evaluate(
       if (typeof left !== "number" || typeof right !== "number") {
         throw new Error(`add: expected numbers`);
       }
+      if (!Number.isFinite(left) || !Number.isFinite(right)) {
+        return null;
+      }
       return left + right;
     }
 
@@ -454,8 +457,20 @@ export function evaluate(
       const lastCommaPos = cleaned.lastIndexOf(",");
       const lastDotPos = cleaned.lastIndexOf(".");
       if (lastCommaPos > lastDotPos && lastCommaPos >= 0) {
-        // EU format: periods are thousands separators, comma is decimal
-        cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+        if (lastDotPos >= 0) {
+          // EU format with dots and commas: "1.234,56" — comma is decimal
+          cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+        } else {
+          // Comma-only: check if digits after last comma are exactly 3 (US thousands)
+          const afterLastComma = cleaned.slice(lastCommaPos + 1);
+          if (afterLastComma.length === 3) {
+            // US thousands format: "1,234" or "1,234,567"
+            cleaned = cleaned.replace(/,/g, "");
+          } else {
+            // EU decimal: "1234,56"
+            cleaned = cleaned.replace(",", ".");
+          }
+        }
       } else {
         // US format: commas are thousands separators
         cleaned = cleaned.replace(/,/g, "");

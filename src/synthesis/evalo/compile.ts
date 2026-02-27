@@ -51,7 +51,11 @@ export function compile(extractor: Extractor): string {
     case "split": {
       const strCode = compile(extractor.str);
       const delim = escapeStringForLiteral(extractor.delim);
-      return `((_s) => _s == null ? null : _s.split("${delim}")?.[${extractor.index}] ?? null)(${strCode})`;
+      const idx = extractor.index;
+      if (!Number.isInteger(idx) || idx < 0) {
+        return `null`;
+      }
+      return `((_s) => _s == null ? null : _s.split("${delim}")?.[${idx}] ?? null)(${strCode})`;
     }
 
     case "parseInt": {
