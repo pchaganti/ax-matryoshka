@@ -5,9 +5,8 @@ describe("HttpAdapter", () => {
   let adapter: HttpAdapter;
 
   beforeEach(() => {
-    // Use a random port to avoid conflicts
-    const port = 10000 + Math.floor(Math.random() * 10000);
-    adapter = new HttpAdapter({ port, host: "localhost" });
+    // Use port 0 to let the OS assign a free port, avoiding conflicts on CI
+    adapter = new HttpAdapter({ port: 0, host: "localhost" });
   });
 
   afterEach(async () => {

@@ -467,10 +467,12 @@ export class HttpAdapter {
   }
 
   /**
-   * Get server info
+   * Get server info (port reflects the actual bound port after start)
    */
   getServerInfo(): { host: string; port: number; timeoutSeconds: number } {
-    return { host: this.host, port: this.port, timeoutSeconds: this.timeoutMs / 1000 };
+    // After start(), use the actual bound port (important when configured port is 0)
+    const actualPort = (this.server?.address() as { port: number } | null)?.port ?? this.port;
+    return { host: this.host, port: actualPort, timeoutSeconds: this.timeoutMs / 1000 };
   }
 }
 
