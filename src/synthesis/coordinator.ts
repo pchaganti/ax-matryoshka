@@ -19,6 +19,7 @@ function safeEvalSynthesized(code: string): (input: string) => unknown {
     /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
     /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
     /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+    /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
   ];
   for (const pattern of dangerous) {
     if (pattern.test(code)) {

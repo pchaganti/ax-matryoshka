@@ -203,11 +203,16 @@ function evaluate(
     }
 
     case "lines": {
+      // Validate start/end are finite positive integers
+      if (!Number.isFinite(term.start) || !Number.isFinite(term.end) || term.start < 1 || term.end < 1) {
+        log(`[Solver] Invalid line range: ${term.start} to ${term.end}`);
+        return [];
+      }
       log(`[Solver] Getting lines ${term.start} to ${term.end}`);
       const allLines = tools.context.split("\n");
       // Convert to 0-indexed and clamp to valid range
-      const startIdx = Math.max(0, term.start - 1);
-      const endIdx = Math.min(allLines.length, term.end);
+      const startIdx = Math.max(0, Math.floor(term.start) - 1);
+      const endIdx = Math.min(allLines.length, Math.floor(term.end));
       const selectedLines = allLines.slice(startIdx, endIdx);
       log(`[Solver] Retrieved ${selectedLines.length} lines`);
       // Return array of strings to be compatible with filter/map

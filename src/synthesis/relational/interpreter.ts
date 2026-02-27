@@ -168,11 +168,26 @@ function compileCandidate(candidate: { structure: { kind: string; group: number 
   }
 }
 
+/** Dangerous patterns blocked from new Function() execution */
+const DANGEROUS_CODE_PATTERNS = [
+  /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+  /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+  /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+  /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
+  /\[['"]/, // Block bracket property access
+];
+
+function isCodeDangerous(code: string): boolean {
+  return DANGEROUS_CODE_PATTERNS.some(p => p.test(code));
+}
+
 /**
  * Execute an Expr and return the result
  */
 function executeExpr(expr: Expr, input: unknown): unknown {
   const code = exprToCode(expr);
+  // Validate generated code against dangerous patterns before execution
+  if (isCodeDangerous(code)) return null;
   try {
     const fn = new Function("input", `return ${code}`);
     return fn(input);
@@ -306,6 +321,8 @@ export function testProgram(expr: Expr, examples: Example[]): boolean {
   if (examples.length === 0) return false;
   try {
     const code = exprToCode(expr);
+    // Validate generated code against dangerous patterns before execution
+    if (isCodeDangerous(code)) return false;
     const fn = new Function("input", `return ${code}`);
 
     for (const { input, output } of examples) {

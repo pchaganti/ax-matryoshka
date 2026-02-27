@@ -791,7 +791,9 @@ export class SynthesisIntegrator {
               /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
               /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
               /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+              /\bReflect\b/, /\bProxy\b/, /\bwith\b/, /\barguments\b/,
               /\[['"]/, // Block bracket property access like input['constructor']
+              /`/, // Block template literals
             ];
             const hasDangerous = dangerousPatterns.some(p => p.test(generatedCode));
             if (hasDangerous) continue;

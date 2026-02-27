@@ -160,8 +160,14 @@ function escapeString(s: string): string {
  */
 function escapeRegex(pattern: string): string {
   // Don't escape the pattern itself - it's already a regex pattern
-  // Just escape forward slashes for the literal syntax
-  return pattern.replace(/\//g, "\\/");
+  // Escape forward slashes for the literal syntax, and line terminators
+  // which are invalid inside JS regex literals
+  return pattern
+    .replace(/\//g, "\\/")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 /**

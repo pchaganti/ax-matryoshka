@@ -28,6 +28,7 @@ export function compile(extractor: Extractor): string {
     case "match": {
       const matchValidation = validateRegex(extractor.pattern);
       if (!matchValidation.valid) return "null";
+      if (!Number.isInteger(extractor.group) || extractor.group < 0) return "null";
       const strCode = compile(extractor.str);
       return `(${strCode}).match(new RegExp(${JSON.stringify(extractor.pattern)}))?.[${extractor.group}] ?? null`;
     }
@@ -42,6 +43,7 @@ export function compile(extractor: Extractor): string {
     }
 
     case "slice": {
+      if (!Number.isInteger(extractor.start) || !Number.isInteger(extractor.end)) return "null";
       const strCode = compile(extractor.str);
       return `((_s) => _s == null ? null : _s.slice(${extractor.start}, ${extractor.end}))(${strCode})`;
     }

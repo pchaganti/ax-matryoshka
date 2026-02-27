@@ -119,7 +119,7 @@ export class HttpAdapter {
     const now = new Date();
     const age = Math.round((now.getTime() - this.session.loadedAt.getTime()) / 1000);
     const idle = Math.round((now.getTime() - this.session.lastAccessedAt.getTime()) / 1000);
-    const timeoutIn = Math.max(0, Math.round((this.timeoutMs - idle * 1000) / 1000));
+    const timeoutIn = Math.max(0, Math.round(this.timeoutMs / 1000 - idle));
 
     return {
       active: true,

@@ -83,6 +83,12 @@ export class PredicateCompiler {
       }
     }
 
+    // Block Unicode and hex escape sequences that bypass word-boundary regex checks
+    // e.g., \u0065val becomes eval, \x65val becomes eval after JS parsing
+    if (/\\u[0-9a-fA-F]{4}|\\u\{[0-9a-fA-F]+\}|\\x[0-9a-fA-F]{2}/.test(code)) {
+      throw new Error("Unicode/hex escape sequences are not allowed in predicates");
+    }
+
     // Block semicolons (prevents statement injection via ); ... ;()
     if (/;/.test(code)) {
       throw new Error("Semicolons are not allowed in predicates");
@@ -95,7 +101,8 @@ export class PredicateCompiler {
 
     // Block string concatenation patterns that could bypass the blocklist
     // e.g., 'con' + 'structor' or "con" + "structor"
-    if (/['"][^'"]*['"]\s*\+\s*['"]/.test(code)) {
+    // Also block parenthesized string concat: ('ev') + ('al')
+    if (/['"][^'"]*['"]\s*\+\s*['"]/.test(code) || /\)\s*\+\s*\(/.test(code)) {
       throw new Error("String concatenation is not allowed in predicates");
     }
 
