@@ -66,6 +66,7 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
       const regex = new RegExp(pattern);
       const result = input.match(regex);
       if (!result) return null;
+      if (group >= result.length) return null;
       return result[group] ?? null;
     } catch {
       return null;

@@ -237,7 +237,12 @@ export function evaluate(
       if (!matchValidation.valid) return null;
       const regex = new RegExp(term.pattern);
       const result = str.match(regex);
-      return result ? (result[term.group] ?? null) : null;
+      if (!result) return null;
+      if (term.group >= result.length) {
+        log(`match: group ${term.group} out of bounds (result has ${result.length} groups)`);
+        return null;
+      }
+      return result[term.group] ?? null;
     }
 
     case "replace": {
@@ -258,6 +263,7 @@ export function evaluate(
         throw new Error(`split: expected string, got ${typeof str}`);
       }
       if (term.index < 0) return null;
+      if (!term.delim.length) return null;
       const parts = str.split(term.delim);
       return parts[term.index] ?? null;
     }
@@ -442,8 +448,18 @@ export function evaluate(
       let cleaned = str.replace(/[^0-9.,\-()]/g, "");
       const isNegative = cleaned.startsWith("(") || cleaned.startsWith("-") || cleaned.endsWith("-");
       cleaned = cleaned.replace(/[()]/g, "").replace(/^-|-$/g, "");
-      // Handle comma as thousands separator
-      cleaned = cleaned.replace(/,/g, "");
+      // Detect EU format: comma is decimal separator when it's the last separator
+      // EU: "1.234,56" -> comma after last period means comma is decimal
+      // US: "1,234.56" -> period after last comma means period is decimal
+      const lastCommaPos = cleaned.lastIndexOf(",");
+      const lastDotPos = cleaned.lastIndexOf(".");
+      if (lastCommaPos > lastDotPos && lastCommaPos >= 0) {
+        // EU format: periods are thousands separators, comma is decimal
+        cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+      } else {
+        // US format: commas are thousands separators
+        cleaned = cleaned.replace(/,/g, "");
+      }
       const num = parseFloat(cleaned);
       if (isNaN(num)) return null;
       return isNegative ? -num : num;

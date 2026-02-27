@@ -412,7 +412,8 @@ function tryDelimiterFieldExtraction(
     if (!allHaveDelim) continue;
 
     // Find which field index produces the output
-    const maxFields = Math.max(...examples.map((e) => e.input.split(delim).length));
+    if (examples.length === 0) continue;
+    const maxFields = Math.max(0, ...examples.map((e) => e.input.split(delim).length));
     for (let fieldIdx = 0; fieldIdx < maxFields; fieldIdx++) {
       const allMatch = examples.every((e) => {
         const fields = e.input.split(delim).map((f) => f.trim());

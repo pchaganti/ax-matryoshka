@@ -394,7 +394,7 @@ export class HttpAdapter {
     const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
     // Pre-check content-length header to reject oversized requests immediately
     const contentLength = parseInt(req.headers["content-length"] || "", 10);
-    if (!isNaN(contentLength) && contentLength > MAX_BODY_SIZE) {
+    if (!isNaN(contentLength) && (contentLength < 0 || contentLength > MAX_BODY_SIZE)) {
       req.destroy();
       return Promise.reject(new Error("Request body too large"));
     }

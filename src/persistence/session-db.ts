@@ -148,11 +148,9 @@ export class SessionDB {
   loadDocument(content: string): number {
     if (!this.db) return 0;
 
-    // Clear existing data
-    this.db.exec("DELETE FROM document_lines");
-
     // Handle empty document
     if (!content) {
+      this.db.exec("DELETE FROM document_lines");
       return 0;
     }
 
@@ -161,13 +159,15 @@ export class SessionDB {
       "INSERT INTO document_lines (lineNum, content) VALUES (?, ?)"
     );
 
-    const insertMany = this.db.transaction((lines: string[]) => {
+    // Wrap DELETE + INSERT in the same transaction for atomicity
+    const replaceAll = this.db.transaction((lines: string[]) => {
+      this.db!.exec("DELETE FROM document_lines");
       for (let i = 0; i < lines.length; i++) {
         insert.run(i + 1, lines[i]);
       }
     });
 
-    insertMany(lines);
+    replaceAll(lines);
     return lines.length;
   }
 

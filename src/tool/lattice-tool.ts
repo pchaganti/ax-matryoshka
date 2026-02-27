@@ -9,6 +9,7 @@
  */
 
 import * as path from "node:path";
+import * as fs from "node:fs";
 import { NucleusEngine, type ExecutionResult } from "../engine/nucleus-engine.js";
 
 /**
@@ -93,10 +94,27 @@ export class LatticeTool {
    * Load a document from file (async)
    */
   async loadAsync(filePath: string): Promise<LatticeResponse> {
-    // Resolve first, then validate the resolved path is within CWD
+    // Resolve first, then dereference symlinks with realpathSync to prevent bypass
     const resolved = path.resolve(filePath);
     const cwd = process.cwd();
+    // Pre-check resolved path before stat/realpath (catches obvious traversal)
     if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
+      return {
+        success: false,
+        error: `Invalid path: paths outside working directory not allowed`,
+      };
+    }
+    // Dereference symlinks to prevent symlink-based directory escape
+    let realResolved: string;
+    try {
+      realResolved = fs.realpathSync(resolved);
+    } catch {
+      return {
+        success: false,
+        error: `Invalid path: cannot resolve ${filePath}`,
+      };
+    }
+    if (!realResolved.startsWith(cwd + path.sep) && realResolved !== cwd) {
       return {
         success: false,
         error: `Invalid path: paths outside working directory not allowed`,

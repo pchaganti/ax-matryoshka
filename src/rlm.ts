@@ -569,12 +569,15 @@ export async function runRLM(
   const pruneHistory = () => {
     while (history.length > MAX_HISTORY_ENTRIES) {
       // Remove one assistant+user pair (2 entries) at index 2, preserving system prompt and initial user message
-      // Validate we're removing an assistant+user pair to maintain alternating roles
-      if (history.length > 3 && history[2]?.role === "assistant") {
+      // Validate we're removing a complete assistant+user pair to maintain alternating roles
+      if (history.length > 3 && history[2]?.role === "assistant" && history[3]?.role === "user") {
+        history.splice(2, 2);
+      } else if (history.length > 3 && history[2]?.role === "user" && history[3]?.role === "assistant") {
+        // Misaligned but still a pair — remove both to maintain parity
         history.splice(2, 2);
       } else {
-        // Safety: if roles are misaligned, remove from index 2 anyway to prevent infinite loop
-        history.splice(2, 1);
+        // Safety: roles are misaligned and no valid pair found, remove 2 to prevent infinite loop
+        history.splice(2, Math.min(2, history.length - 2));
       }
     }
   };
