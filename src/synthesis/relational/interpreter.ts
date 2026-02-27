@@ -267,8 +267,10 @@ export function exprToCode(expr: Expr): string {
     case "mul":
       return `(${exprToCode(expr.left)} * ${exprToCode(expr.right)})`;
 
-    case "div":
-      return `(${exprToCode(expr.left)} / ${exprToCode(expr.right)})`;
+    case "div": {
+      const divResult = `(${exprToCode(expr.left)} / ${exprToCode(expr.right)})`;
+      return `((_d) => isFinite(_d) ? _d : null)(${divResult})`;
+    }
 
     case "concat":
       return `(String(${exprToCode(expr.left)}) + String(${exprToCode(expr.right)}))`;

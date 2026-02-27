@@ -169,9 +169,9 @@ Line 5: Final line`;
         .prepare("UPDATE handle_data SET data = 'not{valid}json' WHERE handle = ?")
         .run(handle);
 
-      // Should return empty array, not crash
+      // Should return null for corrupted item, not crash
       const data = db.getHandleData(handle);
-      expect(data).toEqual([]);
+      expect(data).toEqual([null]);
     });
 
     it("should return null for corrupted checkpoint JSON", () => {
@@ -200,7 +200,7 @@ Line 5: Final line`;
       expect(retrieved[0]).toEqual({ line: "Error 1", lineNum: 1 });
     });
 
-    it("should filter out corrupted items but keep valid ones", () => {
+    it("should return null for corrupted items but keep valid ones", () => {
       const handle = db.createHandle([{ a: 1 }, { b: 2 }, { c: 3 }]);
 
       // Corrupt only the middle entry
@@ -209,9 +209,10 @@ Line 5: Final line`;
         .run(handle);
 
       const data = db.getHandleData(handle);
-      expect(data).toHaveLength(2);
+      expect(data).toHaveLength(3);
       expect(data[0]).toEqual({ a: 1 });
-      expect(data[1]).toEqual({ c: 3 });
+      expect(data[1]).toBeNull();
+      expect(data[2]).toEqual({ c: 3 });
     });
   });
 

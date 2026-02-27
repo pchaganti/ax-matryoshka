@@ -408,7 +408,12 @@ function evaluate(
       }
       const regex = new RegExp(term.pattern);
       const result = str.match(regex);
-      return result ? (result[term.group] ?? null) : null;
+      if (!result) return null;
+      if (term.group >= result.length) {
+        log(`[Solver] match: group ${term.group} out of bounds (result has ${result.length} groups)`);
+        return null;
+      }
+      return result[term.group] ?? null;
     }
 
     case "replace": {
@@ -542,7 +547,14 @@ function evaluate(
       }
       const regex = new RegExp(term.pattern, "i");
       const result = str.match(regex);
-      let extracted = result ? (result[term.group] ?? null) : null;
+      let extracted: string | null = null;
+      if (result) {
+        if (term.group >= result.length) {
+          log(`[Solver] extract: group ${term.group} out of bounds (result has ${result.length} groups)`);
+        } else {
+          extracted = (result[term.group] as string) ?? null;
+        }
+      }
 
       // If extraction failed and examples are provided, use synthesis
       if (extracted === null && term.examples && term.examples.length > 0) {

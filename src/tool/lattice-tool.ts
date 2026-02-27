@@ -121,7 +121,7 @@ export class LatticeTool {
       };
     }
     try {
-      await this.engine.loadFile(filePath);
+      await this.engine.loadFile(realResolved);
       this.documentPath = filePath;
       this.documentName = path.basename(filePath);
 

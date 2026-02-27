@@ -74,7 +74,7 @@ const MONTH_NAMES: Record<string, string> = {
   jun: "06",
   jul: "07",
   aug: "08",
-  sep: "09",
+  sep: "09", sept: "09",
   oct: "10",
   nov: "11",
   dec: "12",
@@ -688,7 +688,9 @@ export class SynthesisIntegrator {
       try {
         if (rule.pattern.length > 500) return false;
         // Check for ReDoS patterns (nested quantifiers)
-        if (/(\((?:[^()]*[+*])[^()]*\))[+*]|\(\?[^)]*[+*][^)]*\)[+*]/.test(rule.pattern)) return false;
+        if (/(\((?:[^()]*[+*{])[^()]*\))[+*{]|\(\?[^)]*[+*{][^)]*\)[+*{]/.test(rule.pattern)) return false;
+        // Check for quantifier-on-quantifier patterns like (\w+)* or [a-z]+*
+        if (/[+*}]\s*[+*{]/.test(rule.pattern)) return false;
         new RegExp(rule.pattern);
         return true;
       } catch {
@@ -789,6 +791,7 @@ export class SynthesisIntegrator {
               /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
               /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
               /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+              /\[['"]/, // Block bracket property access like input['constructor']
             ];
             const hasDangerous = dangerousPatterns.some(p => p.test(generatedCode));
             if (hasDangerous) continue;

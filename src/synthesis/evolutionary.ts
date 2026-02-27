@@ -344,7 +344,8 @@ export class EvolutionarySynthesizer {
         /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
         /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
         /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
-        /\bReflect\b/, /\bProxy\b/, /\bObject\b/,
+        /\bReflect\b/, /\bProxy\b/,
+        /\bObject\s*\.\s*(?:constructor|getPrototypeOf|setPrototypeOf|defineProperty|__proto__|create|assign)\b/,
       ];
       for (const pattern of DANGEROUS_PATTERNS) {
         if (pattern.test(composedCode)) {
