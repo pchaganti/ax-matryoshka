@@ -253,6 +253,19 @@ export class EvolutionarySynthesizer {
     code: string,
     examples: Array<{ input: string; output: unknown }>
   ): boolean {
+    // Block dangerous patterns in synthesized code
+    const DANGEROUS_PATTERNS = [
+      /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+      /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+      /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+      /\bReflect\b/, /\bProxy\b/, /\bObject\b/,
+    ];
+    for (const pattern of DANGEROUS_PATTERNS) {
+      if (pattern.test(code)) {
+        return false;
+      }
+    }
+
     try {
       const fn = new Function("return " + code)();
       return examples.every((e) => {
@@ -323,6 +336,19 @@ export class EvolutionarySynthesizer {
         const transform = ${transformComp.code};
         return transform(extracted);
       }`;
+
+      // Block dangerous patterns in composed code
+      const DANGEROUS_PATTERNS = [
+        /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+        /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+        /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+        /\bReflect\b/, /\bProxy\b/, /\bObject\b/,
+      ];
+      for (const pattern of DANGEROUS_PATTERNS) {
+        if (pattern.test(composedCode)) {
+          return null;
+        }
+      }
 
       return this.knowledgeBase.derive([regexComp, transformComp], {
         id: `composed_${Date.now()}_${this.idCounter++}`,

@@ -242,7 +242,13 @@ export async function createSandbox(
 
     // Async iteration support
     Symbol,
+
+    // Block eval to prevent code injection
+    eval: () => { throw new Error("eval is not allowed in sandbox"); },
   };
+
+  // Prevent constructor chain escape (this.constructor.constructor("return process")())
+  Object.defineProperty(sandboxGlobals, 'constructor', { value: undefined, writable: false, configurable: false });
 
   // Create VM context
   const vmContext = vm.createContext(sandboxGlobals);

@@ -103,6 +103,12 @@ export class PredicateCompiler {
       throw new Error("Bracket notation with strings is not allowed in predicates");
     }
 
+    // Block arrow functions (prevents IIFE execution: (()=>code)())
+    // Use negative lookbehind to avoid matching >= and <=
+    if (/(?<![><!])=>/.test(code)) {
+      throw new Error("Arrow functions are not allowed in predicates");
+    }
+
     try {
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
       return new Function("item", `"use strict"; return (${code});`);

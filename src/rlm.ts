@@ -839,7 +839,7 @@ Try again with proper formatting.`;
             // Look for any substantial numeric data (4+ digits) or structured output
             const hasRawData = logsText.match(/[\d,]{4,}|"[^"]+"\s*:/);
 
-            if (computedMatch && turn > 1) {
+            if (computedMatch && turn > 2) {
               // Look for the answer line (only auto-terminate after initial exploration)
               const answerLine = result.logs.find(line =>
                 /(?:total|sum|result|answer|count|average|mean)[^:]*:/i.test(line)

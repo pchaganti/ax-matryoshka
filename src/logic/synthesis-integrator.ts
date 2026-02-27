@@ -214,14 +214,7 @@ export class SynthesisIntegrator {
       return fn;
     }
 
-    // Try partial match
-    for (const [cacheKey, fn] of this.fnCache.entries()) {
-      const cachePrefix = cacheKey.split(":")[0];
-      const keyPrefix = key.split(":")[0];
-      if (cachePrefix === keyPrefix) {
-        return fn;
-      }
-    }
+    // No partial match — different suffixes may need different parsing logic
 
     return null;
   }

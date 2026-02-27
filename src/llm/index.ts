@@ -33,6 +33,14 @@ function resolveEnvVar(value: string | undefined): string | undefined {
   if (!value) return value;
 
   return value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+    // Validate variable name format
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(varName)) {
+      throw new Error(`Invalid environment variable name: ${varName}`);
+    }
+    const DANGEROUS_VAR_NAMES = ["__proto__", "constructor", "prototype"];
+    if (DANGEROUS_VAR_NAMES.includes(varName)) {
+      throw new Error(`Dangerous environment variable name: ${varName}`);
+    }
     const resolved = process.env[varName];
     if (resolved === undefined) {
       throw new Error(

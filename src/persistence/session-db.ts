@@ -203,6 +203,21 @@ export class SessionDB {
   search(query: string): DocumentLine[] {
     if (!this.db) return [];
 
+    // Sanitize FTS5 special characters to prevent query injection
+    const sanitized = query.replace(/['"*(){}:^~\-]/g, " ").replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ").trim();
+    if (!sanitized) return [];
+
+    return this.searchRaw(sanitized);
+  }
+
+  /**
+   * Search with a raw FTS5 query (for trusted internal callers only)
+   * WARNING: Do not pass user input directly to this method
+   */
+  searchRaw(ftsQuery: string): DocumentLine[] {
+    if (!this.db) return [];
+    if (!ftsQuery.trim()) return [];
+
     // Use FTS5 MATCH query
     const stmt = this.db.prepare(`
       SELECT d.lineNum, d.content
@@ -213,9 +228,9 @@ export class SessionDB {
     `);
 
     try {
-      return stmt.all(query) as DocumentLine[];
+      return stmt.all(ftsQuery) as DocumentLine[];
     } catch (err) {
-      console.error("[SessionDB] FTS5 query failed:", err instanceof Error ? err.message : String(err), "| Query:", query);
+      console.error("[SessionDB] FTS5 query failed:", err instanceof Error ? err.message : String(err), "| Query:", ftsQuery);
       return [];
     }
   }
@@ -273,7 +288,7 @@ export class SessionDB {
   /**
    * Get a slice of data stored in a handle (avoids loading all rows)
    */
-  getHandleDataSlice(handle: string, limit: number): unknown[] {
+  getHandleDataSlice(handle: string, limit: number, offset: number = 0): unknown[] {
     if (!this.db) return [];
     if (limit <= 0) return [];
     const PARSE_FAILURE = Symbol("parse_failure");
@@ -281,9 +296,9 @@ export class SessionDB {
       SELECT data FROM handle_data
       WHERE handle = ?
       ORDER BY idx
-      LIMIT ?
+      LIMIT ? OFFSET ?
     `);
-    const rows = stmt.all(handle, limit) as Array<{ data: string }>;
+    const rows = stmt.all(handle, limit, offset) as Array<{ data: string }>;
     return rows.map((r) => {
       try {
         return JSON.parse(r.data);

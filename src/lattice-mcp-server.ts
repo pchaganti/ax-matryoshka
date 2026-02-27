@@ -30,6 +30,7 @@ import {
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { stat } from "node:fs/promises";
+import { resolve, sep } from "node:path";
 import { HandleSession } from "./engine/handle-session.js";
 import { getVersion } from "./version.js";
 
@@ -376,6 +377,16 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         const filePath = args.filePath as string;
         if (!filePath) {
           return { content: [{ type: "text", text: "Error: filePath is required" }] };
+        }
+
+        // Validate path - reject traversal and paths outside CWD
+        if (filePath.includes("..")) {
+          return { content: [{ type: "text", text: "Error: Path traversal (..) is not allowed" }] };
+        }
+        const resolvedPath = resolve(filePath);
+        const cwd = process.cwd();
+        if (!resolvedPath.startsWith(cwd + sep) && resolvedPath !== cwd) {
+          return { content: [{ type: "text", text: "Error: Path outside working directory is not allowed" }] };
         }
 
         // Check file size before loading to avoid wasting memory

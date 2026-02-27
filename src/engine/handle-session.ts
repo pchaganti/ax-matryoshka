@@ -300,20 +300,21 @@ export class HandleSession {
   expand(handle: string, options: ExpandOptions = {}): ExpandResult {
     this.lastAccessedAt = new Date();
 
-    const data = this.registry.get(handle);
-    if (data === null) {
+    // Check handle exists via metadata (avoids loading all data)
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) {
       return {
         success: false,
         error: `Invalid handle: ${handle}`,
       };
     }
 
-    const total = data.length;
+    const total = meta.count;
     const offset = options.offset ?? 0;
     const limit = options.limit ?? total;
 
-    // Slice the data
-    let sliced = data.slice(offset, offset + limit);
+    // Use database-level pagination instead of loading all data then slicing
+    let sliced = this.db.getHandleDataSlice(handle, limit, offset);
 
     // Format if requested
     if (options.format === "lines") {

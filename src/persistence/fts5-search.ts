@@ -39,9 +39,10 @@ export class FTS5Search {
 
   /**
    * Basic search - returns results in line order
+   * Uses raw FTS5 query (caller is responsible for sanitization)
    */
   search(query: string): SearchResult[] {
-    return this.db.search(query);
+    return this.db.searchRaw(query);
   }
 
   /**
@@ -50,7 +51,7 @@ export class FTS5Search {
   searchByRelevance(query: string): SearchResult[] {
     // FTS5 uses bm25() for relevance ranking
     // Since we're using the SessionDB abstraction, we'll sort by occurrence count
-    const results = this.db.search(query);
+    const results = this.db.searchRaw(query);
 
     // Count occurrences of search terms in each result
     const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
@@ -85,7 +86,7 @@ export class FTS5Search {
       .replace(/javascript\s*:/gi, "");
     const openTag = sanitizeTag(options.openTag ?? "<mark>");
     const closeTag = sanitizeTag(options.closeTag ?? "</mark>");
-    const results = this.db.search(query);
+    const results = this.db.searchRaw(query);
 
     // Extract search terms (handle phrases and operators)
     const terms = this.extractSearchTerms(query);
@@ -104,7 +105,7 @@ export class FTS5Search {
    * Search with relevant snippets
    */
   searchWithSnippets(query: string): SnippetResult[] {
-    const results = this.db.search(query);
+    const results = this.db.searchRaw(query);
     const terms = this.extractSearchTerms(query);
 
     return results.map((result) => {

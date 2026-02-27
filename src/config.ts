@@ -115,6 +115,11 @@ function coerceConfigTypes(obj: unknown): unknown {
 export async function loadConfig(configPath?: string): Promise<Config> {
   const path = configPath || resolve(process.cwd(), "config.json");
 
+  // Validate custom config path — block path traversal sequences
+  if (configPath && configPath.includes("..")) {
+    throw new Error("Config path traversal (..) is not allowed");
+  }
+
   try {
     const content = await readFile(path, "utf-8");
     const rawConfig = JSON.parse(content) as Partial<Config>;

@@ -499,11 +499,10 @@ describe("cache key isolation", () => {
     const eurFn = (input: string) => input;
     integrator.cacheFunction("parseCurrency:EUR", eurFn);
 
-    // Looking up with a different suffix should still match by prefix
-    // But "parseCurrency:EUR".startsWith("parseCurrency:GBP") should NOT match
+    // Looking up with a different suffix should NOT match — different
+    // suffixes may need different parsing logic
     const result = integrator.getCached("parseCurrency:GBP");
-    // After fix: prefix-based match returns eurFn (same function name "parseCurrency")
-    expect(result).toBe(eurFn);
+    expect(result).toBeNull();
   });
 });
 

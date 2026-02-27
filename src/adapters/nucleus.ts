@@ -166,10 +166,16 @@ function extractCode(response: string): string | null {
 
   // Check for plain S-expression in raw text
   // Find opening paren and balance to closing
-  if (firstParen >= 0) {
+  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references"];
+
+  let searchFrom = firstParen;
+  while (searchFrom >= 0 && searchFrom < response.length) {
+    const parenIdx = response.indexOf("(", searchFrom);
+    if (parenIdx < 0) break;
+
     let depth = 0;
     let end = -1;
-    for (let i = firstParen; i < response.length; i++) {
+    for (let i = parenIdx; i < response.length; i++) {
       if (response[i] === "(") depth++;
       if (response[i] === ")") depth--;
       if (depth === 0) {
@@ -177,8 +183,18 @@ function extractCode(response: string): string | null {
         break;
       }
     }
-    if (end > firstParen) {
-      return response.slice(firstParen, end);
+    if (end > parenIdx) {
+      const expr = response.slice(parenIdx, end);
+      // Check the expression starts with a known command
+      const exprContent = expr.slice(1).trim(); // remove leading (
+      const firstWord = exprContent.match(/^(\S+)/)?.[1];
+      if (firstWord && KNOWN_COMMANDS.includes(firstWord)) {
+        return expr;
+      }
+      // Not a valid S-expression command, skip and look for next one
+      searchFrom = end;
+    } else {
+      break;
     }
   }
 

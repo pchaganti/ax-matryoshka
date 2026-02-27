@@ -74,6 +74,9 @@ export function compile(extractor: Extractor): string {
       const elseCode = compile(extractor.else);
       return `(${condCode}) ? (${thenCode}) : (${elseCode})`;
     }
+
+    default:
+      return "null";
   }
 }
 

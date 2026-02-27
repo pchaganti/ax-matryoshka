@@ -17,6 +17,7 @@ import {
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { stat } from "node:fs/promises";
+import { resolve as resolvePath, sep as pathSep } from "node:path";
 import { runRLM } from "./rlm.js";
 import { loadConfig } from "./config.js";
 import { createLLMClient } from "./llm/index.js";
@@ -39,6 +40,21 @@ export type MCPToolResult = CallToolResult;
 export interface MCPServerOptions {
   llmClient?: LLMQueryFn;
   onRunRLM?: (opts: { maxTurns?: number }) => void;
+}
+
+function validateFilePath(filePath: string): string | null {
+  // Reject path traversal
+  if (filePath.includes("..")) {
+    return "Path traversal (..) is not allowed";
+  }
+  // Resolve to absolute path
+  const resolved = resolvePath(filePath);
+  const cwd = process.cwd();
+  // Absolute paths must be under CWD
+  if (!resolved.startsWith(cwd + pathSep) && resolved !== cwd) {
+    return "Path outside working directory is not allowed";
+  }
+  return null;
 }
 
 export interface MCPServerInstance {
@@ -171,7 +187,8 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
         const fileStat = await stat(filePath);
         const cachedMtime = engineMtimes.get(key);
         if (cachedMtime && fileStat.mtimeMs > cachedMtime) {
-          // File changed, reload
+          // File changed, dispose old engine and reload
+          engine.dispose();
           engine = new NucleusEngine();
           await engine.loadFile(filePath);
           engineSessions.delete(key);
@@ -244,6 +261,11 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
           };
         }
 
+        const pathError = validateFilePath(filePath);
+        if (pathError) {
+          return { content: [{ type: "text", text: `Error: ${pathError}` }] };
+        }
+
         try {
           const engine = await getEngine(filePath, sessionId);
           const result = engine.execute(command);
@@ -303,6 +325,11 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
           maxTurns?: number;
           timeoutMs?: number;
         };
+
+        const analyzePathError = validateFilePath(filePath);
+        if (analyzePathError) {
+          return { content: [{ type: "text", text: `Error: ${analyzePathError}` }] };
+        }
 
         // Notify callback if provided (for testing)
         if (options.onRunRLM) {

@@ -53,6 +53,17 @@ function escapeRegex(str: string): string {
   return str.replace(REGEX_SPECIAL_CHARS, "\\$&");
 }
 
+/**
+ * Escape special characters for use inside a character class [...]
+ * Unlike escapeRegex, this preserves range syntax (a-z, A-Z, 0-9)
+ * and only escapes characters that are special inside character classes.
+ */
+function escapeForCharClass(str: string): string {
+  // Inside character classes, only these need escaping: ] \ ^ (and - when not in range position)
+  // We preserve a-z, A-Z, 0-9 range patterns and escape other special chars
+  return str.replace(/([\\^\]])/g, "\\$1");
+}
+
 export function nodeToRegex(node: RegexNode): string {
   switch (node.type) {
     case "literal":
@@ -77,7 +88,7 @@ export function nodeToRegex(node: RegexNode): string {
         case "hex":
           return "[0-9A-Fa-f]";
         case "custom":
-          return `[${escapeRegex(node.chars || "")}]`;
+          return `[${escapeForCharClass(node.chars || "")}]`;
         default:
           return ".";
       }

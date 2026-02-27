@@ -157,7 +157,7 @@ describe("Audit #32", () => {
         expect(autoTerm).not.toBeNull();
         // Should require the LLM to have signaled completion, not just matched a keyword
         // Check for an additional condition beyond just the regex match
-        expect(autoTerm![0]).toMatch(/turn\s*>\s*1|turn\s*>=\s*2|codeExecuted|doneCount|hasExplored/i);
+        expect(autoTerm![0]).toMatch(/turn\s*>\s*[12]|turn\s*>=\s*[23]|codeExecuted|doneCount|hasExplored/i);
       });
     });
 

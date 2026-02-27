@@ -8,20 +8,13 @@ const hasRealLLM = process.env.RUN_E2E === "1";
 describe("E2E Integration (Mock)", () => {
   describe("document analysis", () => {
     it("should complete a multi-turn analysis", async () => {
-      // Simulate an LLM that explores, then answers
+      // Simulate an LLM that explores using S-expressions, then answers
       const mockLLM = vi
         .fn()
-        .mockResolvedValueOnce(`Let me first check the document structure.
-\`\`\`typescript
-const stats = text_stats();
-console.log("Document stats:", stats.lineCount, "lines");
-\`\`\``)
-        .mockResolvedValueOnce(`Now I'll search for relevant content.
-\`\`\`typescript
-const matches = fuzzy_search("sleep");
-memory.push(...matches.slice(0, 3));
-console.log("Found", matches.length, "matches");
-\`\`\``)
+        .mockResolvedValueOnce(`Let me search for relevant content.
+(grep "sleep")`)
+        .mockResolvedValueOnce(`I found matches. Let me filter for the most relevant.
+(filter RESULTS (lambda x (match x "sleep" 0)))`)
         .mockResolvedValueOnce(`Based on my analysis:
 <<<FINAL>>>
 The document discusses the science of sleep, including sleep stages and tips for better sleep.
@@ -43,17 +36,10 @@ The document discusses the science of sleep, including sleep stages and tips for
     it("should handle errors and self-correct", async () => {
       const mockLLM = vi
         .fn()
-        // First attempt has an error
-        .mockResolvedValueOnce(`\`\`\`typescript
-// Typo in function name
-const stats = tex_stats();
-\`\`\``)
-        // LLM sees error and corrects
-        .mockResolvedValueOnce(`I see the error. Let me fix that.
-\`\`\`typescript
-const stats = text_stats();
-console.log(stats);
-\`\`\``)
+        // First attempt has bad syntax - not a valid S-expression command
+        .mockResolvedValueOnce(`I will analyze the document now.`)
+        // LLM sees feedback about no code and provides valid command
+        .mockResolvedValueOnce(`(grep "test")`)
         // LLM provides answer
         .mockResolvedValueOnce(`<<<FINAL>>>
 The document has been analyzed successfully.
@@ -65,8 +51,8 @@ The document has been analyzed successfully.
       });
 
       expect(result).toContain("analyzed");
-      // The error should have been fed back for correction
-      expect(mockLLM.mock.calls[1][0]).toMatch(/error|not defined|tex_stats/i);
+      // The no-code feedback should have been fed back for correction
+      expect(mockLLM.mock.calls[1][0]).toMatch(/error|no valid command|parse/i);
     });
 
     // SKIP: Memory buffer is not supported in LC execution
@@ -101,9 +87,7 @@ memory.push({ color: "red", count: reds.length });
     it("should respect maxTurns limit", async () => {
       const mockLLM = vi
         .fn()
-        .mockResolvedValue(`\`\`\`typescript
-console.log("Still working...");
-\`\`\``);
+        .mockResolvedValue(`(grep "still working")`);
 
       const result = await runRLM("Never finish", "./test-fixtures/small.txt", {
         llmClient: mockLLM,
@@ -120,11 +104,7 @@ console.log("Still working...");
       const mockLLM = vi
         .fn()
         .mockResolvedValueOnce(`Let me search for exported functions.
-\`\`\`typescript
-const exports = fuzzy_search("export function");
-memory.push(...exports.map(e => e.line));
-console.log("Found exports:", exports.length);
-\`\`\``)
+(grep "export function")`)
         .mockResolvedValueOnce(`<<<FINAL>>>
 The file exports 10 functions including: sum, average, max, min, filterByDomain, getPostsByAuthor, getPublishedPosts, formatDisplayName, createUser, and isValidEmail.
 <<<END>>>`);
@@ -147,14 +127,9 @@ The file exports 10 functions including: sum, average, max, min, filterByDomain,
     it("should find approximate matches", async () => {
       const mockLLM = vi
         .fn()
-        .mockResolvedValueOnce(`\`\`\`typescript
-// Search with typo
-const results = fuzzy_search("slep"); // misspelled "sleep"
-console.log("Found:", results.length, "results");
-memory.push(results[0]);
-\`\`\``)
+        .mockResolvedValueOnce(`(fuzzy_search "sleep" 10)`)
         .mockResolvedValueOnce(`<<<FINAL>>>
-Even with the misspelling "slep", I found matches related to sleep.
+Even with a broad search, I found matches related to sleep.
 <<<END>>>`);
 
       const result = await runRLM(

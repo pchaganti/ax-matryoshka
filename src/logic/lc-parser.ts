@@ -164,9 +164,11 @@ function tokenize(input: string): Token[] {
           i++;
         }
       }
-      if (i < input.length) {
-        i++; // skip closing quote
+      if (i >= input.length) {
+        // Unterminated string - throw to produce a clear error message
+        throw new Error("Unterminated string literal");
       }
+      i++; // skip closing quote
       tokens.push({ type: "string", value: str });
       continue;
     }

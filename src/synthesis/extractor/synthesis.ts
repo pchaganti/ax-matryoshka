@@ -176,7 +176,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
 /**
  * Deep equality check for validation
  */
-function deepEqual(a: unknown, b: unknown): boolean {
+function deepEqual(a: unknown, b: unknown, depth: number = 0): boolean {
+  if (depth > 50) return false;
   if (a === b) return true;
   if (typeof a !== typeof b) return false;
   if (typeof a === "number" && typeof b === "number") {
@@ -184,7 +185,7 @@ function deepEqual(a: unknown, b: unknown): boolean {
   }
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
-    return a.every((v, i) => deepEqual(v, b[i]));
+    return a.every((v, i) => deepEqual(v, b[i], depth + 1));
   }
   if (
     typeof a === "object" &&
@@ -198,7 +199,8 @@ function deepEqual(a: unknown, b: unknown): boolean {
     return aKeys.every((k) =>
       deepEqual(
         (a as Record<string, unknown>)[k],
-        (b as Record<string, unknown>)[k]
+        (b as Record<string, unknown>)[k],
+        depth + 1
       )
     );
   }

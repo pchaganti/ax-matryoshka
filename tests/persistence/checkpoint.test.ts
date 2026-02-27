@@ -39,13 +39,28 @@ describe("CheckpointManager", () => {
 
       checkpoints.save(1);
 
-      // Clear registry
-      registry.delete(h1);
+      // Clear the RESULTS binding but keep the handle data
+      registry.clearResults();
 
-      // Restore should bring back the state
+      // Restore should bring back the RESULTS binding since handle still exists
       const restored = checkpoints.restore(1);
       expect(restored).toBe(true);
       expect(registry.getResults()).not.toBeNull();
+    });
+
+    it("should not restore RESULTS for deleted handles", () => {
+      const h1 = registry.store([{ line: "Test", lineNum: 1 }]);
+      registry.setResults(h1);
+
+      checkpoints.save(1);
+
+      // Delete the handle entirely
+      registry.delete(h1);
+
+      // Restore should detect missing handle and clear RESULTS
+      const restored = checkpoints.restore(1);
+      expect(restored).toBe(true);
+      expect(registry.getResults()).toBeNull();
     });
 
     it("should overwrite checkpoint for same turn", () => {
