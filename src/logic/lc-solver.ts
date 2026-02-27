@@ -297,13 +297,18 @@ function evaluate(
         throw new Error(`sum: expected array, got ${typeof collection}`);
       }
       log(`[Solver] Summing ${collection.length} values`);
+      let skippedCount = 0;
       const total = collection.reduce((acc: number, val: unknown) => {
         if (typeof val === "number") return acc + val;
         if (typeof val === "string") {
           // Try to parse numeric string (handles "$1,000" format)
           const cleaned = val.replace(/[$,]/g, "");
           const num = parseFloat(cleaned);
-          return isNaN(num) ? acc : acc + num;
+          if (isNaN(num)) {
+            skippedCount++;
+            return acc;
+          }
+          return acc + num;
         }
         // Handle grep result objects - extract number from line
         if (typeof val === "object" && val !== null && "line" in val) {
@@ -313,11 +318,19 @@ function evaluate(
           if (numMatch) {
             const cleaned = numMatch[1].replace(/,/g, "");
             const num = parseFloat(cleaned);
-            return isNaN(num) ? acc : acc + num;
+            if (isNaN(num)) {
+              skippedCount++;
+              return acc;
+            }
+            return acc + num;
           }
         }
+        skippedCount++;
         return acc;
       }, 0);
+      if (skippedCount > 0) {
+        log(`[Solver] Warning: skipped ${skippedCount} non-numeric/unparseable values`);
+      }
       log(`[Solver] Sum = ${total}`);
       return total;
     }

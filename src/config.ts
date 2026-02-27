@@ -94,9 +94,10 @@ const DEFAULT_CONFIG: Config = {
   },
 };
 
+const MAX_NUMERIC_COERCE_LENGTH = 15; // Don't coerce strings longer than this (API keys, tokens)
 function coerceConfigTypes(obj: unknown): unknown {
   if (typeof obj === "string") {
-    if (/^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(obj) && !isNaN(Number(obj))) return Number(obj);
+    if (obj.length <= MAX_NUMERIC_COERCE_LENGTH && /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(obj) && !isNaN(Number(obj))) return Number(obj);
     if (obj === "true") return true;
     if (obj === "false") return false;
     return obj;

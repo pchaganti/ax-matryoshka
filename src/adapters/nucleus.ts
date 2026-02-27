@@ -213,11 +213,31 @@ function extractCode(response: string): string | null {
     }
   }
 
-  // Try to find inline JSON object
-  const inlineJson = response.match(/\{(?:[^{}]|\{[^{}]*\})*\}/);
+  // Try to find inline JSON object using balanced brace extraction
+  const extractJson = (text: string): string | null => {
+    const start = text.indexOf("{");
+    if (start === -1) return null;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = start; i < text.length; i++) {
+      const ch = text[i];
+      if (escape) { escape = false; continue; }
+      if (ch === "\\") { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+    }
+    return null;
+  };
+  const inlineJson = extractJson(response);
   if (inlineJson) {
     try {
-      const parsed = JSON.parse(inlineJson[0]);
+      const parsed = JSON.parse(inlineJson);
       const converted = jsonToSexp(parsed);
       if (converted) {
         return converted;

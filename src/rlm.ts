@@ -890,7 +890,12 @@ Try again with proper formatting.`;
         }
 
         if (result.result !== undefined && result.result !== null) {
-          const resultStr = JSON.stringify(result.result, null, 2);
+          let resultStr: string;
+          try {
+            resultStr = JSON.stringify(result.result, null, 2);
+          } catch {
+            resultStr = String(result.result);
+          }
           log(`[Turn ${turn}] Result: ${resultStr}`);
           feedback += `Result: ${truncate(resultStr)}\n`;
         }

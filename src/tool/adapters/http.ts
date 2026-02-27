@@ -151,7 +151,9 @@ export class HttpAdapter {
       this.server.on("error", reject);
 
       this.server.listen(this.port, this.host, () => {
-        console.log(`Lattice HTTP server running at http://${this.host}:${this.port}`);
+        const addr = this.server!.address() as { port: number };
+        const boundPort = addr?.port ?? this.port;
+        console.log(`Lattice HTTP server running at http://${this.host}:${boundPort}`);
         console.log(`Session timeout: ${this.timeoutMs / 1000} seconds`);
         console.log("Endpoints:");
         console.log("  POST /load      - Load a document (starts session)");

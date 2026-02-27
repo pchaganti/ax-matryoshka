@@ -790,6 +790,32 @@ export function parse(input: string): ParseResult {
       return { success: false, error: "Empty input" };
     }
 
+    // Check for unbalanced parentheses/brackets before parsing
+    let parenDepth = 0;
+    let bracketDepth = 0;
+    for (const tok of tokens) {
+      if (tok.type === "lparen") parenDepth++;
+      else if (tok.type === "rparen") {
+        parenDepth--;
+        if (parenDepth < 0) {
+          return { success: false, error: "Unbalanced parentheses: unexpected ')'" };
+        }
+      }
+      else if (tok.type === "lbracket") bracketDepth++;
+      else if (tok.type === "rbracket") {
+        bracketDepth--;
+        if (bracketDepth < 0) {
+          return { success: false, error: "Unbalanced brackets: unexpected ']'" };
+        }
+      }
+    }
+    if (parenDepth > 0) {
+      return { success: false, error: "Unbalanced parentheses: unclosed '('" };
+    }
+    if (bracketDepth > 0) {
+      return { success: false, error: "Unbalanced brackets: unclosed '['" };
+    }
+
     const state: ParserState = { tokens, pos: 0 };
     const term = parseTerm(state);
 

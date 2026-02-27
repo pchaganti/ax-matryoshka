@@ -45,7 +45,7 @@ function createSolverTools(context: string): SolverTools {
       start: lines.slice(0, 5).join("\n"),
       middle: lines
         .slice(
-          Math.floor(lines.length / 2) - 2,
+          Math.max(0, Math.floor(lines.length / 2) - 2),
           Math.floor(lines.length / 2) + 3
         )
         .join("\n"),

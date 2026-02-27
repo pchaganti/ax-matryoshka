@@ -204,7 +204,7 @@ export class SessionDB {
     if (!this.db) return [];
 
     // Sanitize FTS5 special characters to prevent query injection
-    const sanitized = query.replace(/['"*(){}:^~\-]/g, " ").replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ").trim();
+    const sanitized = query.replace(/['"*(){}:^~]/g, " ").replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ").trim();
     if (!sanitized) return [];
 
     return this.searchRaw(sanitized);
