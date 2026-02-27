@@ -47,6 +47,7 @@ const DANGEROUS_PATTERNS = [
   /\bvar\b/,
   /\blet\b/,
   /\bconst\b/,
+  /\bvoid\b/,
 ];
 
 export type PredicateFn = (item: unknown) => boolean;
@@ -141,6 +142,16 @@ export class PredicateCompiler {
     // Block .call(), .apply(), .bind() (prevents invoking functions with arbitrary context)
     if (/\.call\s*\(|\.apply\s*\(|\.bind\s*\(/.test(code)) {
       throw new Error("Function invocation methods (.call, .apply, .bind) are not allowed in predicates");
+    }
+
+    // Block increment/decrement operators (prevents mutation via item.x++ or --item.x)
+    if (/\+\+|--/.test(code)) {
+      throw new Error("Increment/decrement operators are not allowed in predicates");
+    }
+
+    // Block spread operator (prevents triggering iterators/getters via [...item] or {...item})
+    if (/\.\.\./.test(code)) {
+      throw new Error("Spread operator is not allowed in predicates");
     }
 
     // Block comma operator (prevents side-effect chaining: (item.x.sort(), item.y))

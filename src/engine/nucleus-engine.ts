@@ -84,6 +84,8 @@ function createSolverTools(context: string): SolverTools {
 
     grep: (pattern: string) => {
       const MAX_GREP_MATCHES = 10000;
+      const MAX_PATTERN_LENGTH = 1000;
+      if (pattern.length > MAX_PATTERN_LENGTH) return [];
       const validation = validateRegex(pattern);
       if (!validation.valid) return [];
       const flags = "gmi";

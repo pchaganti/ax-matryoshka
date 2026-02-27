@@ -1440,7 +1440,8 @@ function parseNumber(str: string): number | null {
 
   // Handle scientific notation
   if (/^-?\d+\.?\d*e[+-]?\d+$/i.test(cleaned)) {
-    return parseFloat(cleaned);
+    const sci = parseFloat(cleaned);
+    return isFinite(sci) ? sci : null;
   }
 
   // Use currency parser logic for formatted numbers

@@ -65,7 +65,7 @@ export function compile(extractor: Extractor): string {
 
     case "parseFloat": {
       const strCode = compile(extractor.str);
-      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) ? null : _r; })(${strCode})`;
+      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${strCode})`;
     }
 
     case "add": {

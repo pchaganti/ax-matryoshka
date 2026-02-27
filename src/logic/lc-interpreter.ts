@@ -515,10 +515,10 @@ export function evaluate(
       log(`Coercing to ${term.targetType}`);
       switch (term.targetType) {
         case "number": {
-          if (typeof val === "number") return val;
+          if (typeof val === "number") return isFinite(val) ? val : null;
           if (typeof val === "string") {
             const n = parseFloat(val);
-            return isNaN(n) ? null : n;
+            return isNaN(n) || !isFinite(n) ? null : n;
           }
           return null;
         }

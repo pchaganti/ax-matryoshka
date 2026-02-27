@@ -50,6 +50,8 @@ function compile(term: LCTerm): string {
     }
 
     case "replace": {
+      const replaceValidation = validateRegex(term.from);
+      if (!replaceValidation.valid) return "null";
       const str = compile(term.str);
       const from = escapeRegex(term.from);
       // Escape $ to $$ to prevent backreference injection in replacement
@@ -74,7 +76,7 @@ function compile(term: LCTerm): string {
 
     case "parseFloat": {
       const str = compile(term.str);
-      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) ? null : _r; })(${str})`;
+      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${str})`;
     }
 
     case "if": {
