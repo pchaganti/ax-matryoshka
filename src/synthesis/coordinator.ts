@@ -5,9 +5,32 @@
 
 import { synthesizeRegex } from "./regex/synthesis.js";
 import { synthesizeExtractor, Extractor } from "./extractor/synthesis.js";
-import { KnowledgeBase, SynthesizedComponent } from "./knowledge-base.js";
+import { KnowledgeBase } from "./knowledge-base.js";
 import { EvolutionarySynthesizer } from "./evolutionary.js";
 import { synthesizeProgram, exprToCode, testProgram, type Example } from "./relational/interpreter.js";
+
+/**
+ * Safely evaluate synthesized code by validating it contains only safe operations.
+ * Rejects code containing dangerous patterns before evaluation.
+ */
+function safeEvalSynthesized(code: string): (input: string) => unknown {
+  // Block dangerous patterns in synthesized code
+  const dangerous = [
+    /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+    /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+    /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+  ];
+  for (const pattern of dangerous) {
+    if (pattern.test(code)) {
+      throw new Error(`Synthesized code contains blocked pattern: ${pattern}`);
+    }
+  }
+  const fn = new Function("return " + code)();
+  if (typeof fn !== "function") {
+    throw new Error("Synthesized code did not produce a function");
+  }
+  return fn as (input: string) => unknown;
+}
 
 /**
  * Example collected from sandbox execution
@@ -373,10 +396,7 @@ export class SynthesisCoordinator {
     if (solutions.length > 0) {
       const code = solutions[0];
       try {
-        const fn = new Function("return " + code)();
-        if (typeof fn !== "function") {
-          throw new Error("Synthesized code did not produce a function");
-        }
+        const fn = safeEvalSynthesized(code);
         return {
           success: true,
           synthesisTimeMs: Date.now() - startTime,
@@ -434,7 +454,7 @@ export class SynthesisCoordinator {
         if (testProgram(program, relationalExamples)) {
           const code = `(input) => ${exprToCode(program)}`;
           try {
-            const fn = new Function("return " + code)();
+            const fn = safeEvalSynthesized(code);
             return {
               name: "minikanren_synthesized",
               description: "Synthesized via miniKanren relational search",

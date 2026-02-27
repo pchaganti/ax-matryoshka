@@ -273,7 +273,7 @@ describe("HttpAdapter", () => {
       });
 
       expect(response.status).toBe(204);
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost");
     });
 
   });

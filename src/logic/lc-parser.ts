@@ -813,10 +813,52 @@ export function parse(input: string): ParseResult {
  */
 export function parseAll(input: string): ParseResult[] {
   const results: ParseResult[] = [];
-  const lines = input.split("\n").filter((l) => l.trim());
+  // Join lines and parse complete S-expressions instead of splitting on newlines
+  const trimmed = input.trim();
+  if (!trimmed) return results;
 
-  for (const line of lines) {
-    results.push(parse(line.trim()));
+  // Find top-level S-expressions by tracking parenthesis depth
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === "(") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === ")") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        const expr = trimmed.slice(start, i + 1);
+        results.push(parse(expr));
+        start = -1;
+      }
+    }
+  }
+
+  // If no parenthesized expressions found, try parsing as a single term
+  if (results.length === 0) {
+    results.push(parse(trimmed));
   }
 
   return results;

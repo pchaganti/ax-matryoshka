@@ -100,9 +100,15 @@ export class LatticeTool {
         error: `Invalid path: directory traversal not allowed`,
       };
     }
-    // The ".." check above already handles directory traversal.
-    // No additional resolve/normalize check needed — it incorrectly
-    // rejects all relative paths since resolve() always differs from normalize().
+    // Reject absolute paths outside the current working directory
+    const resolved = path.resolve(filePath);
+    const cwd = process.cwd();
+    if (path.isAbsolute(filePath) && !resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
+      return {
+        success: false,
+        error: `Invalid path: absolute paths outside working directory not allowed`,
+      };
+    }
     try {
       await this.engine.loadFile(filePath);
       this.documentPath = filePath;

@@ -49,7 +49,7 @@ export function validateRegex(pattern: string): { valid: boolean; error?: string
 
   // Reject nested quantifiers that cause catastrophic backtracking
   // Patterns like (a+)+, (a*)+, (a+)*, (a{1,})+, etc.
-  if (/(\((?:[^()]*[+*])[^()]*\))[+*]|\(\?[^)]*[+*][^)]*\)[+*]/.test(pattern)) {
+  if (/(\((?:[^()]*[+*{])[^()]*\))[+*{]|\(\?[^)]*[+*{][^)]*\)[+*{]/.test(pattern)) {
     return { valid: false, error: "Regex contains nested quantifiers which may cause catastrophic backtracking" };
   }
 
@@ -1317,8 +1317,9 @@ function parseCurrency(str: string): number | null {
   let cleaned = str.trim();
 
   // Handle negative: (1,234) or -1,234 or -$1,234 or $-1,234
-  const isNegative = cleaned.startsWith("(") && cleaned.endsWith(")") ||
+  const isNegative = (cleaned.startsWith("(") && cleaned.endsWith(")")) ||
                      cleaned.startsWith("-") ||
+                     cleaned.endsWith("-") ||
                      /^-[\$€£¥₹₽₿]/.test(cleaned) ||
                      /^[\$€£¥₹₽₿]-/.test(cleaned);
 

@@ -358,8 +358,10 @@ describe("verifyInvariant", () => {
   });
 
   it("should evaluate type checks", () => {
-    expect(verifyInvariant(42, "typeof result === 'number'")).toBe(true);
-    expect(verifyInvariant("hello", "typeof result === 'string'")).toBe(true);
+    // Quotes are now blocked in invariants to prevent string-concatenation bypass of keyword blocklist
+    // typeof checks with quotes should return false (blocked by safety check)
+    expect(verifyInvariant(42, "typeof result === 'number'")).toBe(false);
+    expect(verifyInvariant("hello", "typeof result === 'string'")).toBe(false);
   });
 
   it("should return false for invalid expressions", () => {

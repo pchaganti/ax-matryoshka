@@ -422,7 +422,7 @@ export async function createSandbox(
         // Run declarations at context level first (persists across turns)
         if (declarations.length > 0) {
           const declScript = new vm.Script(declarations.join('\n'));
-          declScript.runInContext(vmContext);
+          declScript.runInContext(vmContext, { timeout: timeoutMs });
         }
 
         // Then run main code in async IIFE for proper async handling

@@ -133,15 +133,16 @@ export class SynthesisIntegrator {
     }
 
     // Check for conflicting examples
-    const inputMap = new Map<string, unknown>();
+    const inputMap = new Map<string, string>();
     for (const ex of examples) {
-      if (inputMap.has(ex.input) && inputMap.get(ex.input) !== ex.output) {
+      const outputKey = JSON.stringify(ex.output);
+      if (inputMap.has(ex.input) && inputMap.get(ex.input) !== outputKey) {
         return {
           success: false,
           error: "Conflicting examples: same input with different outputs",
         };
       }
-      inputMap.set(ex.input, ex.output);
+      inputMap.set(ex.input, outputKey);
     }
 
     // Generate cache key
@@ -438,27 +439,43 @@ export class SynthesisIntegrator {
           return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
         };
       } else {
-        // Full year format: DD/MM/YYYY
+        // Full year format: try MM/DD/YYYY first (US), then DD/MM/YYYY (EU)
         code = `(s) => {
           ${DAYS_IN_MONTH_JS}
           const match = s.match(/(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})/);
           if (!match) return null;
-          const [_, day, month, year] = match;
-          const m = parseInt(month, 10);
-          const d = parseInt(day, 10);
+          const [_, p1, p2, year] = match;
           const yr = parseInt(year, 10);
-          if (m < 1 || m > 12 || d < 1 || d > _maxDays(m, yr)) return null;
-          return \`\${year}-\${month.padStart(2, '0')}-\${day.padStart(2, '0')}\`;
+          const m1 = parseInt(p1, 10);
+          const d1 = parseInt(p2, 10);
+          if (m1 >= 1 && m1 <= 12 && d1 >= 1 && d1 <= _maxDays(m1, yr)) {
+            return \`\${year}-\${p1.padStart(2, '0')}-\${p2.padStart(2, '0')}\`;
+          }
+          const d2 = parseInt(p1, 10);
+          const m2 = parseInt(p2, 10);
+          if (m2 >= 1 && m2 <= 12 && d2 >= 1 && d2 <= _maxDays(m2, yr)) {
+            return \`\${year}-\${p2.padStart(2, '0')}-\${p1.padStart(2, '0')}\`;
+          }
+          return null;
         }`;
         fn = (s: string) => {
           const match = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
           if (!match) return null;
-          const [_, day, month, year] = match;
-          const m = parseInt(month, 10);
-          const d = parseInt(day, 10);
+          const [_, p1, p2, year] = match;
           const yr = parseInt(year, 10);
-          if (m < 1 || m > 12 || d < 1 || d > maxDaysInMonth(m, yr)) return null;
-          return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+          // Try MM/DD/YYYY (US) first
+          const m1 = parseInt(p1, 10);
+          const d1 = parseInt(p2, 10);
+          if (m1 >= 1 && m1 <= 12 && d1 >= 1 && d1 <= maxDaysInMonth(m1, yr)) {
+            return `${year}-${p1.padStart(2, "0")}-${p2.padStart(2, "0")}`;
+          }
+          // Fall back to DD/MM/YYYY (EU)
+          const d2 = parseInt(p1, 10);
+          const m2 = parseInt(p2, 10);
+          if (m2 >= 1 && m2 <= 12 && d2 >= 1 && d2 <= maxDaysInMonth(m2, yr)) {
+            return `${year}-${p2.padStart(2, "0")}-${p1.padStart(2, "0")}`;
+          }
+          return null;
         };
       }
     } else {
@@ -773,7 +790,16 @@ export class SynthesisIntegrator {
         if (testProgram(program, relationalExamples)) {
           const code = `(input) => ${exprToCode(program)}`;
           try {
-            const fn = new Function("input", `return ${exprToCode(program)}`) as (
+            const generatedCode = exprToCode(program);
+            // Validate synthesized code before execution
+            const dangerousPatterns = [
+              /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+              /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+              /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+            ];
+            const hasDangerous = dangerousPatterns.some(p => p.test(generatedCode));
+            if (hasDangerous) continue;
+            const fn = new Function("input", `return ${generatedCode}`) as (
               input: string
             ) => unknown;
 

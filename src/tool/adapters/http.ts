@@ -192,7 +192,7 @@ export class HttpAdapter {
   ): Promise<void> {
     // CORS headers
     if (this.cors) {
-      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Origin", "http://localhost");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 

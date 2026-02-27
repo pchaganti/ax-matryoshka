@@ -260,9 +260,10 @@ describe("Issue #8: History prune should remove pairs not singles", () => {
     const pruneBody = pruneMatch![0];
 
     // It should splice 2 entries at a time (pair removal), not 1
-    // Buggy: splice(2, 1) — removes one entry, breaks alternation
-    // Fixed: splice(2, 2) — removes a user+assistant pair
+    // Fixed: splice(2, 2) removes a user+assistant pair after validating roles
+    // Fallback splice(2, 1) is acceptable as safety against infinite loop when roles are misaligned
     expect(pruneBody).toContain("splice(2, 2)");
-    expect(pruneBody).not.toContain("splice(2, 1)");
+    // Should validate role before splicing
+    expect(pruneBody).toMatch(/role.*assistant|assistant.*role/);
   });
 });

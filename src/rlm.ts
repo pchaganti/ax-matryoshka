@@ -569,7 +569,13 @@ export async function runRLM(
   const pruneHistory = () => {
     while (history.length > MAX_HISTORY_ENTRIES) {
       // Remove one assistant+user pair (2 entries) at index 2, preserving system prompt and initial user message
-      history.splice(2, 2);
+      // Validate we're removing an assistant+user pair to maintain alternating roles
+      if (history.length > 3 && history[2]?.role === "assistant") {
+        history.splice(2, 2);
+      } else {
+        // Safety: if roles are misaligned, remove from index 2 anyway to prevent infinite loop
+        history.splice(2, 1);
+      }
     }
   };
 
@@ -833,8 +839,8 @@ Try again with proper formatting.`;
             // Look for any substantial numeric data (4+ digits) or structured output
             const hasRawData = logsText.match(/[\d,]{4,}|"[^"]+"\s*:/);
 
-            if (computedMatch) {
-              // Look for the answer line
+            if (computedMatch && turn > 1) {
+              // Look for the answer line (only auto-terminate after initial exploration)
               const answerLine = result.logs.find(line =>
                 /(?:total|sum|result|answer|count|average|mean)[^:]*:/i.test(line)
               );
@@ -916,13 +922,19 @@ Try again with proper formatting.`;
             let resultToReturn: unknown;
             if (typeof finalAnswer === "object" && finalAnswer.type === "var") {
               log(`[Turn ${turn}] Returning variable: ${finalAnswer.name}`);
-              const mem = sandbox.getMemory();
-              // If memory is empty but we have meaningful output, return that instead
-              if (mem.length === 0 && lastMeaningfulOutput) {
-                log(`[Turn ${turn}] Memory empty, returning last meaningful output instead`);
-                resultToReturn = lastMeaningfulOutput;
+              // Check solver bindings first (preferred), then sandbox memory
+              const solverValue = solverBindings?.get(finalAnswer.name) ?? solverBindings?.get("RESULTS");
+              if (solverValue !== undefined) {
+                log(`[Turn ${turn}] Found variable in solver bindings`);
+                resultToReturn = solverValue;
               } else {
-                resultToReturn = mem;
+                const mem = sandbox.getMemory();
+                if (mem.length === 0 && lastMeaningfulOutput) {
+                  log(`[Turn ${turn}] Memory empty, returning last meaningful output instead`);
+                  resultToReturn = lastMeaningfulOutput;
+                } else {
+                  resultToReturn = mem;
+                }
               }
             } else {
               resultToReturn = finalAnswer;
@@ -976,7 +988,8 @@ Try again with proper formatting.`;
           let resultToReturn: unknown;
           if (typeof finalAnswer === "object" && finalAnswer.type === "var") {
             log(`[Turn ${turn}] Returning variable: ${finalAnswer.name}`);
-            resultToReturn = sandbox.getMemory();
+            const solverValue = solverBindings?.get(finalAnswer.name) ?? solverBindings?.get("RESULTS");
+            resultToReturn = solverValue !== undefined ? solverValue : sandbox.getMemory();
           } else {
             resultToReturn = finalAnswer;
           }

@@ -718,21 +718,21 @@ type AnyFunction = (...args: any[]) => any;
 export function deriveFunction(name: string): AnyFunction | null {
   switch (name) {
     case "filter":
-      // filter = reduce with conditional cons
+      // filter = reduce with conditional cons (push for O(n) instead of spread O(n^2))
       return <T>(arr: T[], predicate: (x: T) => boolean): T[] => {
         return reduce(
           arr,
-          (acc: T[], item: T) => (predicate(item) ? [...acc, item] : acc),
+          (acc: T[], item: T) => { if (predicate(item)) acc.push(item); return acc; },
           [] as T[]
         );
       };
 
     case "map":
-      // map = reduce with transform + cons
+      // map = reduce with transform + cons (push for O(n) instead of spread O(n^2))
       return <T, R>(arr: T[], transform: (x: T) => R): R[] => {
         return reduce(
           arr,
-          (acc: R[], item: T) => [...acc, transform(item)],
+          (acc: R[], item: T) => { acc.push(transform(item)); return acc; },
           [] as R[]
         );
       };

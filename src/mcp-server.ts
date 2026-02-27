@@ -128,6 +128,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
   const MAX_ENGINE_SESSIONS = 20;
   const engineSessions = new Map<string, NucleusEngine>();
   const engineMtimes = new Map<string, number>();
+  const engineFilePaths = new Map<string, string>();
 
   const ensureLLMClient = async (): Promise<LLMQueryFn> => {
     if (llmClient) {
@@ -153,6 +154,17 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
     const key = sessionId || filePath;
 
     let engine = engineSessions.get(key);
+    const cachedFilePath = engineFilePaths.get(key);
+
+    // If sessionId is reused with a different file, dispose old engine
+    if (engine && cachedFilePath && cachedFilePath !== filePath) {
+      engine.dispose();
+      engineSessions.delete(key);
+      engineMtimes.delete(key);
+      engineFilePaths.delete(key);
+      engine = undefined;
+    }
+
     if (engine && engine.isLoaded()) {
       // Check if file was modified since cached
       try {
@@ -164,6 +176,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
           await engine.loadFile(filePath);
           engineSessions.delete(key);
           engineSessions.set(key, engine);
+          engineFilePaths.set(key, filePath);
           engineMtimes.set(key, fileStat.mtimeMs);
           return engine;
         }
@@ -172,6 +185,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
       // Move to end for LRU ordering (most recently accessed = last)
       engineSessions.delete(key);
       engineSessions.set(key, engine);
+      engineFilePaths.set(key, filePath);
       return engine;
     }
 
@@ -182,6 +196,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
         const oldEngine = engineSessions.get(oldestKey);
         engineSessions.delete(oldestKey);
         engineMtimes.delete(oldestKey);
+        engineFilePaths.delete(oldestKey);
         oldEngine?.dispose();
       }
     }
@@ -189,6 +204,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
     engine = new NucleusEngine();
     await engine.loadFile(filePath);
     engineSessions.set(key, engine);
+    engineFilePaths.set(key, filePath);
     try {
       const fileStat = await stat(filePath);
       engineMtimes.set(key, fileStat.mtimeMs);

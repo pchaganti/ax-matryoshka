@@ -379,8 +379,9 @@ function isSafeInvariant(expr: string): boolean {
   }
 
   // Only allow: result, numbers, strings, comparisons, typeof, length, basic operators, dot property access, grouping parens
+  // Reject quotes to prevent string concatenation bypass of keyword blocklist
   const safePattern =
-    /^[\s\w.<>=!+\-*/%&|?:'"()]+$/;
+    /^[\s\w.<>=!+\-*/%&|?:()]+$/;
 
   if (!safePattern.test(expr)) return false;
 
