@@ -135,4 +135,21 @@ export class HandleRegistry {
     const meta = this.db.getHandleMetadata(handle);
     return meta?.count ?? 0;
   }
+
+  /**
+   * Get the number of active handles
+   */
+  handleCount(): number {
+    return this.db.listHandles().length;
+  }
+
+  /**
+   * Evict the oldest handle to free space
+   */
+  evictOldest(): void {
+    const handles = this.db.listHandles();
+    if (handles.length > 0) {
+      this.delete(handles[0]);
+    }
+  }
 }

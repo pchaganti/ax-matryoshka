@@ -112,9 +112,15 @@ export async function createSandboxWithSynthesis(
     synthesize_extractor: (
       examples: Array<{ input: string; output: unknown }>
     ): ((s: string) => unknown) | null => {
+      const MAX_EXAMPLES = 50;
       if (!examples || examples.length === 0) {
         log(`[Synthesis] synthesize_extractor called with empty examples`);
         return null;
+      }
+
+      // Cap examples to prevent excessive synthesis time
+      if (examples.length > MAX_EXAMPLES) {
+        examples = examples.slice(0, MAX_EXAMPLES);
       }
 
       log(`[Synthesis] synthesize_extractor called with ${examples.length} constraints:`);
@@ -378,7 +384,7 @@ export async function createSandboxWithSynthesis(
       if (pattern.length > 500) return [];
       if (/(\\((?:[^()]*[+*])[^()]*\\))[+*]/.test(pattern)) return [];
       try { new RegExp(pattern); } catch(e) { return []; }
-      let f = flags || '';
+      let f = (flags || '').replace(/[^gimsuy]/g, '');
       if (!f.includes('g')) f += 'g';
       if (!f.includes('m')) f += 'm';
       if (!f.includes('i')) f += 'i';
@@ -454,6 +460,9 @@ export async function createSandboxWithSynthesis(
         startIdx = endIdx;
         endIdx = tmp;
       }
+
+      // Clamp startIdx to 0 after swap (could be negative from swap with negative endIdx)
+      startIdx = Math.max(0, startIdx);
 
       return __linesArray.slice(startIdx, endIdx + 1).join('\\n');
     }

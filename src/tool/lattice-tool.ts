@@ -94,6 +94,13 @@ export class LatticeTool {
    * Load a document from file (async)
    */
   async loadAsync(filePath: string): Promise<LatticeResponse> {
+    // Reject null bytes which can bypass path checks
+    if (filePath.includes("\0")) {
+      return {
+        success: false,
+        error: "Invalid path: null bytes are not allowed",
+      };
+    }
     // Resolve first, then dereference symlinks with realpathSync to prevent bypass
     const resolved = path.resolve(filePath);
     const cwd = process.cwd();

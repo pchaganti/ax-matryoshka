@@ -117,6 +117,8 @@ function createSolverTools(context: string): SolverTools {
     },
 
     fuzzy_search: (query: string, limit: number = 10) => {
+      const MAX_QUERY_LENGTH = 500;
+      if (query.length > MAX_QUERY_LENGTH) return [];
       const results: Array<{ line: string; lineNum: number; score: number }> = [];
 
       for (let i = 0; i < lines.length; i++) {

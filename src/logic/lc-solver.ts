@@ -1480,7 +1480,7 @@ function coerceValue(value: unknown, targetType: CoercionType): unknown {
       const lower = str.toLowerCase().trim();
       if (["true", "yes", "1", "on"].includes(lower)) return true;
       if (["false", "no", "0", "off", ""].includes(lower)) return false;
-      return Boolean(str);
+      return null;
     }
 
     case "string":

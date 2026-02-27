@@ -478,7 +478,7 @@ export function evaluate(
         cleaned = cleaned.replace(/,/g, "");
       }
       const num = parseFloat(cleaned);
-      if (isNaN(num)) return null;
+      if (isNaN(num) || !isFinite(num)) return null;
       return isNegative ? -num : num;
     }
 

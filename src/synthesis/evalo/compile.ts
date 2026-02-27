@@ -120,6 +120,7 @@ export function compileToFunctionString(extractor: Extractor): string {
 function escapeStringForLiteral(str: string): string {
   return str
     .replace(/\\/g, "\\\\")
+    .replace(/\0/g, "\\0")
     .replace(/"/g, '\\"')
     .replace(/`/g, "\\`")
     .replace(/\$/g, "\\$")
