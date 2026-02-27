@@ -20,11 +20,24 @@ function safeEvalSynthesized(code: string): (input: string) => unknown {
     /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
     /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
     /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
+    /\bwindow\b/, /\bdocument\b/, /\bprototype\b/,
   ];
   for (const pattern of dangerous) {
     if (pattern.test(code)) {
       throw new Error(`Synthesized code contains blocked pattern: ${pattern}`);
     }
+  }
+  // Block bracket notation with strings (dynamic property access bypass)
+  if (/\[\s*['"]/.test(code)) {
+    throw new Error("Synthesized code contains bracket notation with strings");
+  }
+  // Block template literals (can bypass blocklist via interpolation)
+  if (/`/.test(code)) {
+    throw new Error("Synthesized code contains template literals");
+  }
+  // Block unicode/hex escape sequences (can bypass word-boundary checks)
+  if (/\\u[0-9a-fA-F]{4}|\\u\{[0-9a-fA-F]+\}|\\x[0-9a-fA-F]{2}/.test(code)) {
+    throw new Error("Synthesized code contains unicode/hex escape sequences");
   }
   const fn = new Function("return " + code)();
   if (typeof fn !== "function") {
@@ -234,7 +247,7 @@ export class SynthesisCoordinator {
           // Try to parse as number
           const ctx = e.context as string;
           const num = parseFloat(ctx);
-          return isNaN(num) ? ctx : num;
+          return isNaN(num) || !isFinite(num) ? ctx : num;
         });
 
       if (expectedOutputs.length === 0) {

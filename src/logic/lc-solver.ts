@@ -189,8 +189,9 @@ function evaluate(
     }
 
     case "fuzzy_search": {
-      log(`[Solver] Executing fuzzy_search("${term.query}", ${term.limit ?? 10})`);
-      const results = tools.fuzzy_search(term.query, term.limit ?? 10);
+      const fuzzyLimit = Math.min(Math.max(1, term.limit ?? 10), 1000);
+      log(`[Solver] Executing fuzzy_search("${term.query}", ${fuzzyLimit})`);
+      const results = tools.fuzzy_search(term.query, fuzzyLimit);
       log(`[Solver] Found ${results.length} fuzzy matches`);
       return results;
     }
@@ -409,7 +410,7 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
       }
-      if (term.group < 0) return null;
+      if (!Number.isInteger(term.group) || term.group < 0) return null;
       const matchValidation = validateRegex(term.pattern);
       if (!matchValidation.valid) {
         throw new Error(`match: ${matchValidation.error}`);
@@ -443,7 +444,7 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`split: expected string, got ${typeof str}`);
       }
-      if (term.index < 0) return null;
+      if (!Number.isInteger(term.index) || term.index < 0) return null;
       if (!term.delim || term.delim.length === 0) return null;
       const parts = str.split(term.delim);
       return parts[term.index] ?? null;
@@ -549,7 +550,7 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`extract: expected string, got ${typeof str}`);
       }
-      if (term.group < 0) return null;
+      if (!Number.isInteger(term.group) || term.group < 0) return null;
       const extractValidation = validateRegex(term.pattern);
       if (!extractValidation.valid) {
         throw new Error(`extract: ${extractValidation.error}`);
@@ -847,7 +848,7 @@ function evaluatePredicate(
 ): boolean {
   // Simple pattern: (match var "pattern" 0)
   if (body.tag === "match") {
-    if (body.group < 0) return false;
+    if (!Number.isInteger(body.group) || body.group < 0) return false;
     const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, depth + 1));
     const patternValidation = validateRegex(body.pattern);
     if (!patternValidation.valid) return false;
@@ -956,7 +957,7 @@ function evaluateWithBinding(
       if (!matchVal.valid) {
         throw new Error(`match: ${matchVal.error}`);
       }
-      if (body.group < 0) return null;
+      if (!Number.isInteger(body.group) || body.group < 0) return null;
       const regex = new RegExp(body.pattern);
       const result = str.match(regex);
       return result ? (result[body.group] ?? null) : null;
@@ -975,7 +976,7 @@ function evaluateWithBinding(
     }
 
     case "split": {
-      if (body.index < 0) return null;
+      if (!Number.isInteger(body.index) || body.index < 0) return null;
       if (!body.delim || body.delim.length === 0) return null;
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
@@ -1074,7 +1075,7 @@ function evaluateWithBinding(
     }
 
     case "extract": {
-      if (body.group < 0) return null;
+      if (!Number.isInteger(body.group) || body.group < 0) return null;
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") return null;
       const extractPatternValidation = validateRegex(body.pattern);

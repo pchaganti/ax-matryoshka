@@ -403,6 +403,7 @@ export function evaluate(
     }
 
     case "lines": {
+      if (!Number.isFinite(term.start) || !Number.isFinite(term.end)) return "";
       const lines = tools.context.split("\n");
       const start = Math.max(1, term.start);
       const end = Math.min(lines.length, term.end);

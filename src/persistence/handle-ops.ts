@@ -114,6 +114,9 @@ export class HandleOps {
    * Sort items by field, return new handle
    */
   sort(handle: string, field: string, direction: "asc" | "desc" = "asc"): string {
+    if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(field) || field.length > 256) {
+      throw new Error("Invalid field name");
+    }
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
@@ -141,11 +144,13 @@ export class HandleOps {
    * Get first N items (for limited inspection)
    */
   preview(handle: string, n: number): unknown[] {
+    const MAX_PREVIEW = 10000;
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
     }
     if (n <= 0) return [];
+    n = Math.min(n, MAX_PREVIEW);
     return data.slice(0, n);
   }
 
@@ -153,12 +158,14 @@ export class HandleOps {
    * Get random N items
    */
   sample(handle: string, n: number): unknown[] {
+    const MAX_SAMPLE = 10000;
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
     }
 
     if (n <= 0) return [];
+    n = Math.min(n, MAX_SAMPLE);
     if (data.length <= n) {
       return [...data];
     }

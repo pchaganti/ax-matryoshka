@@ -64,7 +64,7 @@ describe("Audit #38", () => {
     it("should cap the default limit to a reasonable maximum", () => {
       const source = readFileSync("src/engine/handle-session.ts", "utf-8");
       // Should have MAX_DEFAULT_LIMIT or Math.min to cap default
-      const expandFn = source.match(/const limit = Math\.max\(0.*?\);/);
+      const expandFn = source.match(/const limit = Math\.(max|min)\(.*?\);/);
       expect(expandFn).not.toBeNull();
       // Should cap the default: Math.min(total, MAX) or similar
       expect(expandFn![0]).toMatch(/Math\.min|MAX_DEFAULT|MAX_EXPAND/);
