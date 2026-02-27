@@ -81,7 +81,8 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
     if (!fromValidation.valid) return null;
     try {
       const regex = new RegExp(from, "g");
-      return input.replace(regex, to);
+      const safeTo = to.replace(/\$/g, "$$$$");
+      return input.replace(regex, safeTo);
     } catch {
       return null;
     }

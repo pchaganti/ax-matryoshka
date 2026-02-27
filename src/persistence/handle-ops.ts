@@ -49,7 +49,7 @@ export class HandleOps {
     return data.reduce((acc: number, item) => {
       if (typeof item === "object" && item !== null && field in item) {
         const value = (item as Record<string, unknown>)[field];
-        if (typeof value === "number") {
+        if (typeof value === "number" && Number.isFinite(value)) {
           return acc + value;
         }
       }
@@ -73,7 +73,7 @@ export class HandleOps {
         const match = line.match(/\$?([\d,]+(?:\.\d+)?)/);
         if (match) {
           const num = parseFloat(match[1].replace(/,/g, ""));
-          if (!isNaN(num)) {
+          if (!isNaN(num) && isFinite(num)) {
             return acc + num;
           }
         }

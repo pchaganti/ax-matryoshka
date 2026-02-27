@@ -293,8 +293,9 @@ export class HttpAdapter {
 
       this.sendResponse(res, response);
     } catch (err) {
+      console.error("[HTTP] Request handler error:", err instanceof Error ? err.message : String(err));
       if (!res.headersSent) {
-        this.sendError(res, 500, err instanceof Error ? err.message : String(err));
+        this.sendError(res, 500, "Internal server error");
       }
     }
   }

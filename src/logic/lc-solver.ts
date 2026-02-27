@@ -299,7 +299,10 @@ function evaluate(
       log(`[Solver] Summing ${collection.length} values`);
       let skippedCount = 0;
       const total = collection.reduce((acc: number, val: unknown) => {
-        if (typeof val === "number") return acc + val;
+        if (typeof val === "number") {
+          if (!Number.isFinite(val)) { skippedCount++; return acc; }
+          return acc + val;
+        }
         if (typeof val === "string") {
           // Try to parse numeric string (handles "$1,000" format)
           const cleaned = val.replace(/[$,]/g, "");
@@ -436,6 +439,7 @@ function evaluate(
         throw new Error(`split: expected string, got ${typeof str}`);
       }
       if (term.index < 0) return null;
+      if (!term.delim || term.delim.length === 0) return null;
       const parts = str.split(term.delim);
       return parts[term.index] ?? null;
     }
@@ -964,6 +968,7 @@ function evaluateWithBinding(
 
     case "split": {
       if (body.index < 0) return null;
+      if (!body.delim || body.delim.length === 0) return null;
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
         : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));

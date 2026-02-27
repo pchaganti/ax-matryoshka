@@ -171,7 +171,7 @@ export class PipeAdapter {
     } catch {
       return {
         success: false,
-        error: `Invalid JSON: ${input}`,
+        error: `Invalid JSON: ${input.slice(0, 200)}`,
       };
     }
 

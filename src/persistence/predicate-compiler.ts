@@ -98,6 +98,12 @@ export class PredicateCompiler {
       throw new Error("String concatenation is not allowed in predicates");
     }
 
+    // Block string reconstruction methods that could bypass the blocklist
+    // e.g., ['con','structor'].join(''), 'con'.concat('structor'), String.fromCharCode(99,111,110)
+    if (/\.join\s*\(/.test(code) || /\.concat\s*\(/.test(code) || /fromCharCode/.test(code)) {
+      throw new Error("String reconstruction methods are not allowed in predicates");
+    }
+
     // Block bracket notation with strings (prevents dynamic property access)
     if (/\[\s*['"]/.test(code)) {
       throw new Error("Bracket notation with strings is not allowed in predicates");

@@ -51,6 +51,7 @@ export async function createSandboxWithSynthesis(
   };
 
   // Persistent state across executions
+  const MAX_LOGS = 5000;
   const logs: string[] = [];
   const memory: unknown[] = [];
   let subCallCount = 0;
@@ -65,7 +66,7 @@ export async function createSandboxWithSynthesis(
       start: lines.slice(0, 5).join("\n"),
       middle: lines
         .slice(
-          Math.floor(lines.length / 2) - 2,
+          Math.max(0, Math.floor(lines.length / 2) - 2),
           Math.floor(lines.length / 2) + 3
         )
         .join("\n"),
@@ -306,7 +307,19 @@ export async function createSandboxWithSynthesis(
     Math,
     Date,
     Array,
-    Object,
+    Object: Object.freeze(Object.create(null, {
+      keys: { value: Object.keys, enumerable: true },
+      values: { value: Object.values, enumerable: true },
+      entries: { value: Object.entries, enumerable: true },
+      assign: { value: Object.assign, enumerable: true },
+      freeze: { value: Object.freeze, enumerable: true },
+      fromEntries: { value: Object.fromEntries, enumerable: true },
+      getOwnPropertyNames: { value: Object.getOwnPropertyNames, enumerable: true },
+      hasOwn: { value: Object.hasOwn, enumerable: true },
+      is: { value: Object.is, enumerable: true },
+      create: { value: Object.create, enumerable: true },
+      defineProperty: { value: Object.defineProperty, enumerable: true },
+    })),
     String,
     Number,
     Boolean,
@@ -673,6 +686,9 @@ export async function createSandboxWithSynthesis(
         sandboxGlobals.console.log = originalLog;
         sandboxGlobals.console.error = originalError;
         sandboxGlobals.console.warn = originalWarn;
+        if (logs.length > MAX_LOGS) {
+          logs.splice(0, logs.length - MAX_LOGS);
+        }
       }
     },
 
