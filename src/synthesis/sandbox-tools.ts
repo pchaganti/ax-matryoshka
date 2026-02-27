@@ -340,6 +340,13 @@ export async function createSandboxWithSynthesis(
     Symbol,
   };
 
+  // Lock down constructor to prevent VM escape via this.constructor.constructor
+  Object.defineProperty(sandboxGlobals, 'constructor', {
+    value: undefined,
+    writable: false,
+    configurable: false,
+  });
+
   // Create VM context
   const vmContext = vm.createContext(sandboxGlobals);
 

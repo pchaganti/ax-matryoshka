@@ -307,7 +307,7 @@ function evaluate(
           // Try to parse numeric string (handles "$1,000" format)
           const cleaned = val.replace(/[$,]/g, "");
           const num = parseFloat(cleaned);
-          if (isNaN(num)) {
+          if (!Number.isFinite(num)) {
             skippedCount++;
             return acc;
           }
@@ -321,7 +321,7 @@ function evaluate(
           if (numMatch) {
             const cleaned = numMatch[1].replace(/,/g, "");
             const num = parseFloat(cleaned);
-            if (isNaN(num)) {
+            if (!Number.isFinite(num)) {
               skippedCount++;
               return acc;
             }
@@ -648,6 +648,9 @@ function evaluate(
       const right = evaluate(term.right, tools, bindings, log, depth + 1);
       if (typeof left !== "number" || typeof right !== "number") {
         throw new Error(`add: expected numbers, got ${typeof left} and ${typeof right}`);
+      }
+      if (!Number.isFinite(left) || !Number.isFinite(right)) {
+        return null;
       }
       return left + right;
     }
@@ -994,6 +997,9 @@ function evaluateWithBinding(
       if (typeof left !== "number" || typeof right !== "number") {
         throw new Error(`add: expected numbers, got ${typeof left} and ${typeof right}`);
       }
+      if (!Number.isFinite(left) || !Number.isFinite(right)) {
+        return null;
+      }
       return left + right;
     }
 
@@ -1283,7 +1289,7 @@ function parseDate(str: string, formatHint?: string): string | null {
     jun: "06", june: "06",
     jul: "07", july: "07",
     aug: "08", august: "08",
-    sep: "09", september: "09",
+    sep: "09", sept: "09", september: "09",
     oct: "10", october: "10",
     nov: "11", november: "11",
     dec: "12", december: "12",

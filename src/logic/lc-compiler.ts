@@ -40,6 +40,7 @@ function compile(term: LCTerm): string {
 })()`;
 
     case "match": {
+      if (term.group < 0) return "null";
       const str = compile(term.str);
       const pattern = escapeRegex(term.pattern);
       return `(${str}).match(/${pattern}/)?.[${term.group}] ?? null`;
@@ -48,7 +49,8 @@ function compile(term: LCTerm): string {
     case "replace": {
       const str = compile(term.str);
       const from = escapeRegex(term.from);
-      const to = escapeString(term.to);
+      // Escape $ to $$ to prevent backreference injection in replacement
+      const to = escapeString(term.to.replace(/\$/g, "$$$$"));
       return `(${str}).replace(/${from}/g, "${to}")`;
     }
 
@@ -60,12 +62,12 @@ function compile(term: LCTerm): string {
 
     case "parseInt": {
       const str = compile(term.str);
-      return `parseInt(${str}, 10)`;
+      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) ? null : _r; })(${str})`;
     }
 
     case "parseFloat": {
       const str = compile(term.str);
-      return `parseFloat(${str})`;
+      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) ? null : _r; })(${str})`;
     }
 
     case "if": {
@@ -117,6 +119,10 @@ function compile(term: LCTerm): string {
       return compile(term.term);
 
     case "var":
+      // Validate variable name is a safe JS identifier to prevent code injection
+      if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(term.name)) {
+        return "undefined";
+      }
       return term.name;
 
     case "app": {
@@ -126,6 +132,10 @@ function compile(term: LCTerm): string {
     }
 
     case "lambda":
+      // Validate lambda param is a safe JS identifier to prevent code injection
+      if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(term.param)) {
+        return "((_) => null)";
+      }
       return `((${term.param}) => ${compile(term.body)})`;
 
     default:

@@ -31,6 +31,7 @@ const DANGEROUS_PATTERNS = [
   /\bSharedArrayBuffer\b/,
   /\bWebAssembly\b/,
   /\bBuffer\b/,
+  /\barguments\b/,
 ];
 
 export type PredicateFn = (item: unknown) => boolean;
