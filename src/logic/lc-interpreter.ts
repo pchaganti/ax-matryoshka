@@ -139,7 +139,7 @@ export function evaluate(
 
     case "fuzzy_search": {
       log(`Fuzzy searching for: "${term.query}"`);
-      const limit = term.limit ?? 10;
+      const limit = Math.min(Math.max(1, term.limit ?? 10), 1000);
       const results = tools.fuzzy_search(term.query, limit);
       log(`Found ${results.length} fuzzy matches`);
       return results as LCValue;
@@ -262,7 +262,7 @@ export function evaluate(
       if (typeof str !== "string") {
         throw new Error(`split: expected string, got ${typeof str}`);
       }
-      if (term.index < 0) return null;
+      if (!Number.isInteger(term.index) || term.index < 0) return null;
       if (!term.delim.length) return null;
       const parts = str.split(term.delim);
       return parts[term.index] ?? null;
@@ -388,6 +388,7 @@ export function evaluate(
             }
           }
         }
+        if (!isFinite(total)) return null;
       }
       return total;
     }

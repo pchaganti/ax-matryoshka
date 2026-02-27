@@ -138,6 +138,17 @@ export class PredicateCompiler {
       throw new Error("Assignment operators are not allowed in predicates");
     }
 
+    // Block .call(), .apply(), .bind() (prevents invoking functions with arbitrary context)
+    if (/\.call\s*\(|\.apply\s*\(|\.bind\s*\(/.test(code)) {
+      throw new Error("Function invocation methods (.call, .apply, .bind) are not allowed in predicates");
+    }
+
+    // Block comma operator (prevents side-effect chaining: (item.x.sort(), item.y))
+    // Allow commas inside function argument lists but block top-level comma operator
+    if (/,/.test(code.replace(/\([^)]*\)/g, ""))) {
+      throw new Error("Comma operator is not allowed in predicates");
+    }
+
     // Block arrow functions (prevents IIFE execution: (()=>code)())
     // Use negative lookbehind to avoid matching >= and <=
     if (/(?<![><!])=>/.test(code)) {

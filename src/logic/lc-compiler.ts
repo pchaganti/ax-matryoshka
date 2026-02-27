@@ -7,6 +7,7 @@
 
 import type { LCTerm } from "./types.js";
 import { resolveConstraints } from "./constraint-resolver.js";
+import { validateRegex } from "./lc-solver.js";
 
 /**
  * Compile an LC term to JavaScript code for sandbox execution
@@ -40,7 +41,9 @@ function compile(term: LCTerm): string {
 })()`;
 
     case "match": {
-      if (term.group < 0) return "null";
+      if (!Number.isInteger(term.group) || term.group < 0) return "null";
+      const matchValidation = validateRegex(term.pattern);
+      if (!matchValidation.valid) return "null";
       const str = compile(term.str);
       const pattern = escapeRegex(term.pattern);
       return `(${str}).match(/${pattern}/)?.[${term.group}] ?? null`;

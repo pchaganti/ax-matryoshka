@@ -71,7 +71,7 @@ export function compile(extractor: Extractor): string {
     case "add": {
       const leftCode = compile(extractor.left);
       const rightCode = compile(extractor.right);
-      return `((_l, _r) => (typeof _l !== "number" || typeof _r !== "number" || isNaN(_l) || isNaN(_r)) ? null : _l + _r)(${leftCode}, ${rightCode})`;
+      return `((_l, _r) => (typeof _l !== "number" || typeof _r !== "number" || isNaN(_l) || isNaN(_r)) ? null : (isFinite(_l + _r) ? _l + _r : null))(${leftCode}, ${rightCode})`;
     }
 
     case "if": {

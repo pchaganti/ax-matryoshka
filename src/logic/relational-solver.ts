@@ -518,7 +518,11 @@ function searchComposition(examples: Example[]): Composition | null {
       for (const { input, output } of examples) {
         try {
           const result = evaluateComposition(candidate, input);
-          if (result !== output) {
+          // Use epsilon comparison for floats to handle IEEE 754 precision issues (e.g., 0.1+0.2 !== 0.3)
+          const matches = typeof result === "number" && typeof output === "number"
+            ? Math.abs(result - output) < 1e-9
+            : result === output;
+          if (!matches) {
             allMatch = false;
             break;
           }
