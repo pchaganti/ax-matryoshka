@@ -34,7 +34,7 @@ function resolveEnvVar(value: string | undefined): string | undefined {
 
   return value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
     const resolved = process.env[varName];
-    if (!resolved) {
+    if (resolved === undefined) {
       throw new Error(
         `Environment variable ${varName} not set`
       );

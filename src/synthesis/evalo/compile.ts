@@ -38,18 +38,18 @@ export function compile(extractor: Extractor): string {
       const strCode = compile(extractor.str);
       // Escape $ as $$ for replacement string to prevent backreference injection
       const to = escapeStringForLiteral(extractor.to.replace(/\$/g, "$$$$"));
-      return `(${strCode}).replace(new RegExp(${JSON.stringify(extractor.from)}, "g"), "${to}")`;
+      return `((_s) => _s == null ? null : _s.replace(new RegExp(${JSON.stringify(extractor.from)}, "g"), "${to}"))(${strCode})`;
     }
 
     case "slice": {
       const strCode = compile(extractor.str);
-      return `(${strCode}).slice(${extractor.start}, ${extractor.end})`;
+      return `((_s) => _s == null ? null : _s.slice(${extractor.start}, ${extractor.end}))(${strCode})`;
     }
 
     case "split": {
       const strCode = compile(extractor.str);
       const delim = escapeStringForLiteral(extractor.delim);
-      return `(${strCode}).split("${delim}")?.[${extractor.index}] ?? null`;
+      return `((_s) => _s == null ? null : _s.split("${delim}")?.[${extractor.index}] ?? null)(${strCode})`;
     }
 
     case "parseInt": {

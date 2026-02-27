@@ -359,6 +359,201 @@ export function evaluate(
       };
     }
 
+    case "sum": {
+      const collection = evaluate(term.collection, tools, env, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`sum: expected array, got ${typeof collection}`);
+      }
+      log(`Summing ${collection.length} items`);
+      let total = 0;
+      for (const item of collection) {
+        if (typeof item === "number") {
+          total += item;
+        } else if (typeof item === "object" && item !== null) {
+          // Try to extract numeric values from objects
+          const vals = Object.values(item as Record<string, unknown>);
+          for (const v of vals) {
+            if (typeof v === "number") {
+              total += v;
+              break;
+            }
+          }
+        }
+      }
+      return total;
+    }
+
+    case "count": {
+      const collection = evaluate(term.collection, tools, env, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`count: expected array, got ${typeof collection}`);
+      }
+      log(`Counting: ${collection.length} items`);
+      return collection.length;
+    }
+
+    case "lines": {
+      const lines = tools.context.split("\n");
+      const start = Math.max(1, term.start);
+      const end = Math.min(lines.length, term.end);
+      log(`Getting lines ${start}-${end}`);
+      return lines.slice(start - 1, end).join("\n");
+    }
+
+    case "reduce": {
+      const collection = evaluate(term.collection, tools, env, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`reduce: expected array, got ${typeof collection}`);
+      }
+      const init = evaluate(term.init, tools, env, log, depth + 1);
+      const fn = evaluate(term.fn, tools, env, log, depth + 1);
+      log(`Reducing ${collection.length} items`);
+      let acc = init;
+      for (const item of collection) {
+        if (isClosure(fn)) {
+          const newEnv = new Map(fn.env);
+          newEnv.set(fn.param, acc);
+          // For two-arg lambda, we need a closure that captures acc
+          const innerResult = evaluate(fn.body, tools, newEnv, log, depth + 1);
+          if (isClosure(innerResult)) {
+            const innerEnv = new Map(innerResult.env);
+            innerEnv.set(innerResult.param, item);
+            acc = evaluate(innerResult.body, tools, innerEnv, log, depth + 1);
+          } else {
+            acc = innerResult;
+          }
+        } else if (typeof fn === "function") {
+          acc = (fn as (arg: unknown) => unknown)(acc) as LCValue;
+          if (typeof acc === "function") {
+            acc = (acc as (arg: unknown) => unknown)(item) as LCValue;
+          }
+        } else {
+          throw new Error(`reduce: fn must be a function`);
+        }
+      }
+      return acc;
+    }
+
+    case "parseCurrency": {
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      if (typeof str !== "string") return null;
+      log(`Parsing currency: "${str}"`);
+      // Remove currency symbols and whitespace
+      let cleaned = str.replace(/[^0-9.,\-()]/g, "");
+      const isNegative = cleaned.startsWith("(") || cleaned.startsWith("-") || cleaned.endsWith("-");
+      cleaned = cleaned.replace(/[()]/g, "").replace(/^-|-$/g, "");
+      // Handle comma as thousands separator
+      cleaned = cleaned.replace(/,/g, "");
+      const num = parseFloat(cleaned);
+      if (isNaN(num)) return null;
+      return isNegative ? -num : num;
+    }
+
+    case "parseDate": {
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      if (typeof str !== "string") return null;
+      log(`Parsing date: "${str}"`);
+      // ISO format
+      const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      if (isoMatch) return str;
+      // Try Date.parse fallback
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) {
+        const y = d.getUTCFullYear();
+        const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+        const day = String(d.getUTCDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      }
+      return null;
+    }
+
+    case "parseNumber": {
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      if (typeof str !== "string") return null;
+      log(`Parsing number: "${str}"`);
+      let cleaned = str.replace(/[^0-9.,\-]/g, "");
+      cleaned = cleaned.replace(/,/g, "");
+      const num = parseFloat(cleaned);
+      return isNaN(num) ? null : num;
+    }
+
+    case "coerce": {
+      const val = evaluate(term.term, tools, env, log, depth + 1);
+      log(`Coercing to ${term.targetType}`);
+      switch (term.targetType) {
+        case "number": {
+          if (typeof val === "number") return val;
+          if (typeof val === "string") {
+            const n = parseFloat(val);
+            return isNaN(n) ? null : n;
+          }
+          return null;
+        }
+        case "string":
+          return val == null ? null : String(val);
+        case "boolean":
+          return Boolean(val);
+        default:
+          return val;
+      }
+    }
+
+    case "extract": {
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      if (typeof str !== "string") return null;
+      log(`Extracting pattern from string`);
+      const extractValidation = validateRegex(term.pattern);
+      if (!extractValidation.valid) return null;
+      const regex = new RegExp(term.pattern);
+      const m = str.match(regex);
+      return m ? (m[term.group] ?? null) : null;
+    }
+
+    case "synthesize":
+      log(`Synthesize: ${term.examples.length} examples`);
+      return null;
+
+    case "predicate": {
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      log(`Evaluating predicate`);
+      return str != null;
+    }
+
+    case "define-fn":
+      log(`Defining function: ${term.name}`);
+      return null;
+
+    case "apply-fn": {
+      const arg = evaluate(term.arg, tools, env, log, depth + 1);
+      log(`Applying function: ${term.name}`);
+      if (env.has(term.name)) {
+        const fn = env.get(term.name)!;
+        if (typeof fn === "function") {
+          return (fn as (a: unknown) => unknown)(arg) as LCValue;
+        }
+        if (isClosure(fn)) {
+          const newEnv = new Map(fn.env);
+          newEnv.set(fn.param, arg);
+          return evaluate(fn.body, tools, newEnv, log, depth + 1);
+        }
+      }
+      return null;
+    }
+
+    case "list_symbols":
+      log(`Listing symbols${term.kind ? ` of kind ${term.kind}` : ""}`);
+      return [] as LCValue;
+
+    case "get_symbol_body": {
+      const sym = evaluate(term.symbol, tools, env, log, depth + 1);
+      log(`Getting symbol body: ${sym}`);
+      return null;
+    }
+
+    case "find_references":
+      log(`Finding references for: ${term.name}`);
+      return tools.grep(term.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) as LCValue;
+
     case "constrained":
       // Constraints should be resolved before evaluation
       return evaluate(term.term, tools, env, log, depth + 1);

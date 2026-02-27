@@ -281,7 +281,8 @@ describe("evalExtractor (forward mode)", () => {
 describe("evalo (relational mode)", () => {
   describe("forward mode", () => {
     it("should unify output with evaluation result", () => {
-      const results = evalo({ tag: "input" }, "hello", null);
+      // Omit expectedOutput to mean "no constraint" (undefined)
+      const results = evalo({ tag: "input" }, "hello");
       expect(results).toContain("hello");
     });
 

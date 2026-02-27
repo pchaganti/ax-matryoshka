@@ -82,6 +82,27 @@ export class PredicateCompiler {
       }
     }
 
+    // Block semicolons (prevents statement injection via ); ... ;()
+    if (/;/.test(code)) {
+      throw new Error("Semicolons are not allowed in predicates");
+    }
+
+    // Block template literals (prevent blocklist bypass)
+    if (/`/.test(code)) {
+      throw new Error("Template literals are not allowed in predicates");
+    }
+
+    // Block string concatenation patterns that could bypass the blocklist
+    // e.g., 'con' + 'structor' or "con" + "structor"
+    if (/['"][^'"]*['"]\s*\+\s*['"]/.test(code)) {
+      throw new Error("String concatenation is not allowed in predicates");
+    }
+
+    // Block bracket notation with strings (prevents dynamic property access)
+    if (/\[\s*['"]/.test(code)) {
+      throw new Error("Bracket notation with strings is not allowed in predicates");
+    }
+
     try {
       // eslint-disable-next-line @typescript-eslint/no-implied-eval
       return new Function("item", `"use strict"; return (${code});`);

@@ -141,12 +141,12 @@ const COMMON_PATTERNS = [
 export function evalo(
   extractor: Extractor,
   input: string,
-  expectedOutput: Value | null
+  expectedOutput?: Value | null
 ): Value[] {
   const result = evalExtractor(extractor, input);
 
   // If expectedOutput is provided, check if it matches
-  if (expectedOutput !== null) {
+  if (expectedOutput !== undefined) {
     if (Object.is(result, expectedOutput)) {
       return [result];
     }

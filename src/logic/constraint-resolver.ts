@@ -101,6 +101,36 @@ export function resolveConstraints(term: LCTerm): ResolvedTerm {
       case "lambda":
         return { ...t, body: resolve(t.body) };
 
+      case "sum":
+        return { ...t, collection: resolve(t.collection) };
+
+      case "count":
+        return { ...t, collection: resolve(t.collection) };
+
+      case "parseCurrency":
+      case "parseDate":
+      case "parseNumber":
+      case "predicate":
+        return { ...t, str: resolve(t.str) };
+
+      case "coerce":
+        return { ...t, term: resolve(t.term) };
+
+      case "apply-fn":
+        return { ...t, arg: resolve(t.arg) };
+
+      case "get_symbol_body":
+        return { ...t, symbol: resolve(t.symbol) };
+
+      case "synthesize":
+      case "define-fn":
+      case "lines":
+      case "fuzzy_search":
+      case "text_stats":
+      case "find_references":
+      case "list_symbols":
+        return t;
+
       default:
         return t;
     }
@@ -246,6 +276,25 @@ export function hasConstraints(term: LCTerm): boolean {
     case "lambda":
       return hasConstraints(term.body);
 
+    case "sum":
+    case "count":
+      return hasConstraints(term.collection);
+
+    case "parseCurrency":
+    case "parseDate":
+    case "parseNumber":
+    case "predicate":
+      return hasConstraints(term.str);
+
+    case "coerce":
+      return hasConstraints(term.term);
+
+    case "apply-fn":
+      return hasConstraints(term.arg);
+
+    case "get_symbol_body":
+      return hasConstraints(term.symbol);
+
     default:
       return false;
   }
@@ -311,6 +360,30 @@ export function extractConstraints(term: LCTerm): ConstraintOp[] {
 
       case "lambda":
         extract(t.body);
+        break;
+
+      case "sum":
+      case "count":
+        extract(t.collection);
+        break;
+
+      case "parseCurrency":
+      case "parseDate":
+      case "parseNumber":
+      case "predicate":
+        extract(t.str);
+        break;
+
+      case "coerce":
+        extract(t.term);
+        break;
+
+      case "apply-fn":
+        extract(t.arg);
+        break;
+
+      case "get_symbol_body":
+        extract(t.symbol);
         break;
     }
   }

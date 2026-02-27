@@ -92,21 +92,25 @@ function parseArgs(args: string[]): CLIOptions {
       console.log(`rlm v${getVersion()}`);
       process.exit(0);
     } else if (arg === "--max-turns") {
-      options.maxTurns = parseInt(args[++i], 10);
+      const val = parseInt(args[++i], 10);
+      if (isNaN(val)) throw new Error("--max-turns requires a valid number");
+      options.maxTurns = val;
     } else if (arg === "--timeout") {
-      options.timeout = parseInt(args[++i], 10);
+      const val = parseInt(args[++i], 10);
+      if (isNaN(val)) throw new Error("--timeout requires a valid number");
+      options.timeout = val;
     } else if (arg === "--model") {
-      options.model = args[++i];
+      options.model = args[++i] || "";
     } else if (arg === "--provider") {
-      options.provider = args[++i];
+      options.provider = args[++i] || "";
     } else if (arg === "--adapter") {
-      options.adapter = args[++i];
+      options.adapter = args[++i] || "";
     } else if (arg === "--output-type") {
-      options.outputType = args[++i];
+      options.outputType = args[++i] || "";
     } else if (arg === "--constraints") {
-      options.constraints = args[++i];
+      options.constraints = args[++i] || "";
     } else if (arg === "--config") {
-      options.config = args[++i];
+      options.config = args[++i] || "";
     } else if (arg === "--verbose") {
       options.verbose = true;
     } else if (arg === "--dry-run") {
