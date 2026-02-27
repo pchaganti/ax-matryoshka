@@ -96,7 +96,9 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
       const left = evalExtractor(extractor.left, input);
       const right = evalExtractor(extractor.right, input);
       if (typeof left !== "number" || typeof right !== "number" || isNaN(left) || isNaN(right)) return null;
-      return left + right;
+      const result = left + right;
+      if (!isFinite(result)) return null;
+      return result;
     }
 
     case "if": {

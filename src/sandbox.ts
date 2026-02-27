@@ -443,7 +443,7 @@ export async function createSandbox(
 
         // Run declarations at context level first (persists across turns)
         if (declarations.length > 0) {
-          const DECL_TIMEOUT = Math.min(5000, timeoutMs);
+          const DECL_TIMEOUT = Math.max(100, Math.min(5000, timeoutMs));
           const declScript = new vm.Script(declarations.join('\n'));
           declScript.runInContext(vmContext, { timeout: DECL_TIMEOUT });
         }

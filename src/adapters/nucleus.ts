@@ -54,11 +54,18 @@ ${hints?.hintsText || ""}${hints?.selfCorrectionText || ""}`;
  * Handles common cases when model outputs JSON instead of S-expressions
  */
 /** Validate collection name is a safe S-expression identifier (RESULTS, _N, etc.) */
+const DANGEROUS_COLLECTION_NAMES = new Set([
+  "__proto__", "constructor", "prototype", "eval", "Function",
+  "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
+]);
+
 function validateCollectionName(name: unknown): string | null {
   if (typeof name !== "string") return null;
   // Only allow known safe identifiers: RESULTS, _1, _2, ..., or simple alphanumeric names
-  if (/^(RESULTS|_\d+|[A-Za-z]\w*)$/.test(name)) return name;
-  return null;
+  if (!/^(RESULTS|_\d+|[A-Za-z]\w*)$/.test(name)) return null;
+  // Block dangerous JS property names
+  if (DANGEROUS_COLLECTION_NAMES.has(name)) return null;
+  return name;
 }
 
 /** Escape a string for embedding in an S-expression string literal */
@@ -217,13 +224,16 @@ function extractCode(response: string): string | null {
   }
 
   // Try to find inline JSON object using balanced brace extraction
+  const MAX_JSON_EXTRACTION_CHARS = 100_000;
   const extractJson = (text: string): string | null => {
     const start = text.indexOf("{");
     if (start === -1) return null;
+    // Limit processing to prevent CPU exhaustion on huge LLM responses
+    const maxEnd = Math.min(text.length, start + MAX_JSON_EXTRACTION_CHARS);
     let depth = 0;
     let inString = false;
     let escape = false;
-    for (let i = start; i < text.length; i++) {
+    for (let i = start; i < maxEnd; i++) {
       const ch = text[i];
       if (escape) { escape = false; continue; }
       if (ch === "\\") { escape = true; continue; }

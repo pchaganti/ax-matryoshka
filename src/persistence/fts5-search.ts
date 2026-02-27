@@ -160,6 +160,7 @@ export class FTS5Search {
       const validation = validateRegex(pattern);
       if (!validation.valid) return [];
 
+      const MAX_FALLBACK_RESULTS = 10000;
       const regex = new RegExp(pattern, "i");
       const totalLines = this.db.getLineCount();
       const CHUNK_SIZE = 5000;
@@ -171,6 +172,7 @@ export class FTS5Search {
         for (const line of chunk) {
           if (regex.test(line.content)) {
             results.push(line);
+            if (results.length >= MAX_FALLBACK_RESULTS) return results;
           }
         }
       }

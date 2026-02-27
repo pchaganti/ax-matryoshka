@@ -140,7 +140,9 @@ export class HttpAdapter {
       this.server = http.createServer((req, res) => {
         this.handleRequest(req, res).catch((err) => {
           if (!res.headersSent) {
-            this.sendError(res, 500, err instanceof Error ? err.message : String(err));
+            // Sanitize: send generic message to client, log full error internally
+            console.error("[HTTP] Internal server error:", err instanceof Error ? err.message : String(err));
+            this.sendError(res, 500, "Internal server error");
           }
         });
       });
@@ -209,7 +211,9 @@ export class HttpAdapter {
 
     res.setHeader("Content-Type", "application/json");
 
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
+    // Use socket port instead of untrusted Host header to prevent host header injection
+    const localPort = (this.server?.address() as { port: number })?.port ?? this.port;
+    const url = new URL(req.url || "/", `http://127.0.0.1:${localPort}`);
     const path = url.pathname;
 
     try {
