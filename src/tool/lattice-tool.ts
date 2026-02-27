@@ -93,20 +93,13 @@ export class LatticeTool {
    * Load a document from file (async)
    */
   async loadAsync(filePath: string): Promise<LatticeResponse> {
-    // Reject paths with directory traversal
-    if (filePath.includes("..")) {
-      return {
-        success: false,
-        error: `Invalid path: directory traversal not allowed`,
-      };
-    }
-    // Reject absolute paths outside the current working directory
+    // Resolve first, then validate the resolved path is within CWD
     const resolved = path.resolve(filePath);
     const cwd = process.cwd();
-    if (path.isAbsolute(filePath) && !resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
+    if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
       return {
         success: false,
-        error: `Invalid path: absolute paths outside working directory not allowed`,
+        error: `Invalid path: paths outside working directory not allowed`,
       };
     }
     try {

@@ -154,6 +154,7 @@ export async function createSandbox(
   const { maxSubCalls = 10 } = options;
 
   // Persistent state across executions
+  const MAX_LOGS = 5000;
   const logs: string[] = [];
   const memory: unknown[] = [];
   let subCallCount = 0;
@@ -496,6 +497,10 @@ export async function createSandbox(
         sandboxGlobals.console.log = originalLog;
         sandboxGlobals.console.error = originalError;
         sandboxGlobals.console.warn = originalWarn;
+        // Cap persistent logs to prevent unbounded growth
+        if (logs.length > MAX_LOGS) {
+          logs.splice(0, logs.length - MAX_LOGS);
+        }
       }
     },
 

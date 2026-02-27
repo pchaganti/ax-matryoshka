@@ -392,6 +392,12 @@ export class HttpAdapter {
    */
   private readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
     const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+    // Pre-check content-length header to reject oversized requests immediately
+    const contentLength = parseInt(req.headers["content-length"] || "", 10);
+    if (!isNaN(contentLength) && contentLength > MAX_BODY_SIZE) {
+      req.destroy();
+      return Promise.reject(new Error("Request body too large"));
+    }
     return new Promise((resolve, reject) => {
       const chunks: Buffer[] = [];
       let totalBytes = 0;
@@ -445,7 +451,13 @@ export class HttpAdapter {
    * Validate Content-Type header for POST endpoints that require JSON
    */
   private validateJsonContentType(req: http.IncomingMessage, res: http.ServerResponse): boolean {
-    const contentType = (req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+    const MAX_HEADER_LENGTH = 256;
+    const rawContentType = req.headers["content-type"] || "";
+    if (rawContentType.length > MAX_HEADER_LENGTH) {
+      this.sendError(res, 400, "Content-Type header too long");
+      return false;
+    }
+    const contentType = rawContentType.split(";")[0].trim().toLowerCase();
     if (contentType !== "application/json") {
       this.sendError(res, 415, "Content-Type must be application/json");
       return false;

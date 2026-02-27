@@ -229,7 +229,7 @@ describe("Issue #14: lattice-tool path traversal check", () => {
     // Path with ../ traversal
     const result = await tool.executeAsync({ type: "load", filePath: "/tmp/../etc/passwd" });
     expect(result.success).toBe(false);
-    expect(result.error).toContain("traversal");
+    expect(result.error).toMatch(/traversal|outside working directory/i);
   });
 });
 

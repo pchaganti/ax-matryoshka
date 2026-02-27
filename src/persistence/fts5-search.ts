@@ -78,12 +78,12 @@ export class FTS5Search {
     query: string,
     options: HighlightOptions = {}
   ): HighlightResult[] {
-    // Sanitize tags to prevent XSS — strip script tags, event handlers, and JS URIs
-    const sanitizeTag = (tag: string) => tag
-      .replace(/<script\b[^>]*>/gi, "")
-      .replace(/<\/script>/gi, "")
-      .replace(/on\w+\s*=/gi, "")
-      .replace(/javascript\s*:/gi, "");
+    // Sanitize tags to prevent XSS — strip all HTML tags except safe allowlist, event handlers, and JS URIs
+    const ALLOWED_TAGS = /^<\/?(mark|b|i|em|strong|u|span|code|pre|small|sub|sup)(\s+class="[a-zA-Z0-9 _-]*")?\s*>$/i;
+    const sanitizeTag = (tag: string) => {
+      // Strip all HTML tags that aren't in our allowlist
+      return tag.replace(/<[^>]*>/gi, (match) => ALLOWED_TAGS.test(match) ? match : "");
+    };
     const openTag = sanitizeTag(options.openTag ?? "<mark>");
     const closeTag = sanitizeTag(options.closeTag ?? "</mark>");
     const results = this.db.searchRaw(query);

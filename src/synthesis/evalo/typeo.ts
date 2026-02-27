@@ -18,7 +18,9 @@ import type { Extractor, Type } from "./types.js";
  * This is a static analysis - we don't run the extractor,
  * we just analyze its structure to determine what type it produces.
  */
-export function inferType(extractor: Extractor): Type {
+export function inferType(extractor: Extractor, depth: number = 0): Type {
+  const MAX_DEPTH = 100;
+  if (depth >= MAX_DEPTH) return "unknown";
   switch (extractor.tag) {
     case "input":
       // Input is always a string
@@ -60,8 +62,8 @@ export function inferType(extractor: Extractor): Type {
 
     case "if": {
       // If returns the common type of both branches
-      const thenType = inferType(extractor.then);
-      const elseType = inferType(extractor.else);
+      const thenType = inferType(extractor.then, depth + 1);
+      const elseType = inferType(extractor.else, depth + 1);
 
       if (thenType === elseType) {
         return thenType;

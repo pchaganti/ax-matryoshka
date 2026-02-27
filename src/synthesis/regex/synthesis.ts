@@ -95,7 +95,7 @@ export function nodeToRegex(node: RegexNode): string {
 
     case "repeat": {
       const childRegex = nodeToRegex(node.child);
-      const needsGroup = node.child.type === "sequence" || node.child.type === "alt";
+      const needsGroup = node.child.type === "sequence" || node.child.type === "alt" || node.child.type === "repeat";
       const wrapped = needsGroup ? `(?:${childRegex})` : childRegex;
 
       if (node.min === 0 && node.max === Infinity) {

@@ -367,13 +367,13 @@ export function evaluate(
       log(`Summing ${collection.length} items`);
       let total = 0;
       for (const item of collection) {
-        if (typeof item === "number") {
+        if (typeof item === "number" && isFinite(item)) {
           total += item;
         } else if (typeof item === "object" && item !== null) {
           // Try to extract numeric values from objects
           const vals = Object.values(item as Record<string, unknown>);
           for (const v of vals) {
-            if (typeof v === "number") {
+            if (typeof v === "number" && isFinite(v)) {
               total += v;
               break;
             }

@@ -61,6 +61,11 @@ function validateCollectionName(name: unknown): string | null {
   return null;
 }
 
+/** Escape a string for embedding in an S-expression string literal */
+function escapeForSexp(s: string): string {
+  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 function jsonToSexp(json: unknown): string | null {
   if (typeof json !== "object" || json === null) return null;
 
@@ -75,7 +80,7 @@ function jsonToSexp(json: unknown): string | null {
     case "search": {
       const pattern = obj.pattern || obj.query || obj.term;
       if (typeof pattern === "string") {
-        return `(grep "${pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}")`;
+        return `(grep "${escapeForSexp(pattern)}")`;
       }
       break;
     }
@@ -85,8 +90,7 @@ function jsonToSexp(json: unknown): string | null {
       const collection = validateCollectionName(rawCollection);
       const pattern = obj.pattern || obj.predicate || obj.match;
       if (collection && typeof pattern === "string") {
-        const escaped = pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-        return `(filter ${collection} (lambda x (match x "${escaped}" 0)))`;
+        return `(filter ${collection} (lambda x (match x "${escapeForSexp(pattern)}" 0)))`;
       }
       break;
     }
@@ -98,8 +102,7 @@ function jsonToSexp(json: unknown): string | null {
       const pattern = obj.pattern || obj.regex;
       const group = typeof obj.group === "number" && obj.group >= 0 ? obj.group : 0;
       if (collection && typeof pattern === "string") {
-        const escaped = pattern.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-        return `(map ${collection} (lambda x (match x "${escaped}" ${group})))`;
+        return `(map ${collection} (lambda x (match x "${escapeForSexp(pattern)}" ${group})))`;
       }
       break;
     }
@@ -109,7 +112,7 @@ function jsonToSexp(json: unknown): string | null {
       const query = obj.query || obj.term;
       const limit = typeof obj.limit === "number" ? obj.limit : 10;
       if (typeof query === "string") {
-        return `(fuzzy_search "${query.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}" ${limit})`;
+        return `(fuzzy_search "${escapeForSexp(query)}" ${limit})`;
       }
       break;
     }

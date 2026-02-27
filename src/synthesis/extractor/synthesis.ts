@@ -181,6 +181,7 @@ function deepEqual(a: unknown, b: unknown, depth: number = 0): boolean {
   if (a === b) return true;
   if (typeof a !== typeof b) return false;
   if (typeof a === "number" && typeof b === "number") {
+    if (Number.isNaN(a) && Number.isNaN(b)) return true;
     return Math.abs(a - b) < 0.0001; // Float tolerance
   }
   if (Array.isArray(a) && Array.isArray(b)) {

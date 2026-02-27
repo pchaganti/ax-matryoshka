@@ -310,8 +310,8 @@ export class HandleSession {
     }
 
     const total = meta.count;
-    const offset = options.offset ?? 0;
-    const limit = options.limit ?? total;
+    const offset = Math.max(0, options.offset ?? 0);
+    const limit = Math.max(0, options.limit ?? total);
 
     // Use database-level pagination instead of loading all data then slicing
     let sliced = this.db.getHandleDataSlice(handle, limit, offset);
