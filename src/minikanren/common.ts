@@ -36,12 +36,15 @@ export function walk(x: Term, s: Subst): Term {
 // `walkAll` behaves exactly like `walk`, except that it recursively
 // walks variable terms found within compound terms. It is used
 // exclusively in the reification process.
-export function walkAll(x: Term, s: Subst): Term {
+const MAX_WALKALL_DEPTH = 200;
+
+export function walkAll(x: Term, s: Subst, depth: number = 0): Term {
+  if (depth > MAX_WALKALL_DEPTH) return x;
   const walked = walk(x, s);
   if (isComp(walked)) {
     const x1 = Object.create(Object.getPrototypeOf(walked));
     for (const k of keysIn(walked)) {
-      x1[k] = walkAll(walked[k], s);
+      x1[k] = walkAll(walked[k], s, depth + 1);
     }
     return x1;
   } else {

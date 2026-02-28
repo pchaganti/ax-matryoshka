@@ -521,7 +521,7 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
   if (conflicts.length > 0) {
     return {
       success: false,
-      error: `Conflicting examples: ${conflicts.join(", ")}`,
+      error: `Conflicting examples: ${conflicts.slice(0, 10).join(", ")}${conflicts.length > 10 ? "..." : ""}`,
     };
   }
 

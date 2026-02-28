@@ -129,7 +129,7 @@ export class HandleOps {
       let cmp = 0;
       if (typeof aVal === "number" && typeof bVal === "number") {
         cmp = aVal - bVal;
-        if (Number.isNaN(cmp)) cmp = 0;
+        if (!Number.isFinite(cmp)) cmp = 0;
       } else {
         cmp = String(aVal).localeCompare(String(bVal));
       }

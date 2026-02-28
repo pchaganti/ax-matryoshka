@@ -453,13 +453,13 @@ function evaluate(
     case "parseInt": {
       const str = evaluate(term.str, tools, bindings, log, depth + 1);
       const intResult = parseInt(String(str), 10);
-      return isNaN(intResult) ? null : intResult;
+      return isNaN(intResult) || !isFinite(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
       const str = evaluate(term.str, tools, bindings, log, depth + 1);
       const floatResult = parseFloat(String(str));
-      return isNaN(floatResult) ? null : floatResult;
+      return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
     case "parseDate": {
@@ -988,7 +988,7 @@ function evaluateWithBinding(
     case "parseInt": {
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const intResult = parseInt(String(str), 10);
-      return isNaN(intResult) ? null : intResult;
+      return isNaN(intResult) || !isFinite(intResult) ? null : intResult;
     }
 
     case "parseFloat": {

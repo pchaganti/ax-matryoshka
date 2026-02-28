@@ -274,7 +274,6 @@ export class LatticeTool {
       data: {
         ...stats,
         documentName: this.documentName,
-        documentPath: this.documentPath,
       },
       message: `Document: ${this.documentName} (${stats?.lineCount?.toLocaleString() ?? "?"} lines, ${stats?.length?.toLocaleString() ?? "?"} chars)`,
     };

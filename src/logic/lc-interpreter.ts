@@ -274,7 +274,7 @@ export function evaluate(
         throw new Error(`parseInt: expected string or number, got ${typeof str}`);
       }
       const intResult = parseInt(String(str), 10);
-      return isNaN(intResult) ? null : intResult;
+      return isNaN(intResult) || !isFinite(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
@@ -449,6 +449,7 @@ export function evaluate(
     case "parseCurrency": {
       const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") return null;
+      if (str.length > 200) return null;
       log(`Parsing currency: "${str}"`);
       // Remove currency symbols and whitespace
       let cleaned = str.replace(/[^0-9.,\-()]/g, "");
@@ -486,6 +487,7 @@ export function evaluate(
     case "parseDate": {
       const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") return null;
+      if (str.length > 200) return null;
       log(`Parsing date: "${str}"`);
       // ISO format
       const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);

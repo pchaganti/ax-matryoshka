@@ -102,8 +102,9 @@ function extractFinalAnswer(
   }
 
   // Check for FINAL_VAR(variableName)
+  const DANGEROUS_VAR_NAMES = /^(__proto__|constructor|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__)$/i;
   const varMatch = response.match(/FINAL_VAR\((\w+)\)/);
-  if (varMatch) {
+  if (varMatch && !DANGEROUS_VAR_NAMES.test(varMatch[1])) {
     return { type: "var", name: varMatch[1] };
   }
 

@@ -117,7 +117,7 @@ describe("Audit #41", () => {
       // Capture past the subtraction to include the NaN guard
       const sortBlock = source.match(/sort\(\(a, b\)[\s\S]*?aVal - bVal[\s\S]*?cmp/);
       expect(sortBlock).not.toBeNull();
-      expect(sortBlock![0]).toMatch(/isNaN|NaN/);
+      expect(sortBlock![0]).toMatch(/isNaN|NaN|isFinite/);
     });
   });
 
