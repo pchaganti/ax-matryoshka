@@ -209,6 +209,8 @@ export class SessionDB {
    */
   search(query: string): DocumentLine[] {
     if (!this.db) return [];
+    const MAX_QUERY_LENGTH = 10_000;
+    if (query.length > MAX_QUERY_LENGTH) query = query.slice(0, MAX_QUERY_LENGTH);
 
     // Sanitize FTS5 special characters to prevent query injection
     const sanitized = query.replace(/['"*()\-|{}:^~\[\]]/g, " ").replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ").trim();
@@ -302,8 +304,9 @@ export class SessionDB {
    */
   getHandleDataSlice(handle: string, limit: number, offset: number = 0): unknown[] {
     if (!this.db) return [];
+    const MAX_SLICE_LIMIT = 100_000;
     if (!Number.isFinite(limit)) limit = 0;
-    limit = Math.floor(limit);
+    limit = Math.min(Math.floor(limit), MAX_SLICE_LIMIT);
     if (limit <= 0) return [];
     if (!Number.isFinite(offset)) offset = 0;
     offset = Math.max(0, Math.floor(offset));

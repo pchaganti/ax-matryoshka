@@ -71,6 +71,7 @@ export function keysIn(x: CompoundTerm): string[] {
 const MAX_IOTA = 10_000;
 
 export function iota(n: number): number[] {
+  if (!Number.isFinite(n)) return [];
   const limit = Math.min(Math.max(0, Math.floor(n)), MAX_IOTA);
   let res = [];
   for (let i = 0; i < limit; i++) res.push(i);

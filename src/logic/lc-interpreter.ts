@@ -406,8 +406,10 @@ export function evaluate(
       if (!Number.isFinite(term.start) || !Number.isFinite(term.end)) return "";
       const lines = tools.context.split("\n");
       const start = Math.max(1, Math.floor(term.start));
-      const end = Math.min(lines.length, Math.floor(term.end));
+      let end = Math.min(lines.length, Math.floor(term.end));
       if (end < start) return "";
+      const MAX_LINES_RETURNED = 10_000;
+      if (end - start > MAX_LINES_RETURNED) end = start + MAX_LINES_RETURNED;
       log(`Getting lines ${start}-${end}`);
       return lines.slice(start - 1, end).join("\n");
     }

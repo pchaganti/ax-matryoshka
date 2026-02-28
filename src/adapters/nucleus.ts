@@ -317,7 +317,7 @@ function extractFinalAnswer(
   }
 
   // Also check for FINAL_VAR pattern
-  const DANGEROUS_VAR_NAMES = /^(__proto__|constructor|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__)$/i;
+  const DANGEROUS_VAR_NAMES = /^(__proto__|constructor|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|hasOwnProperty|toString|valueOf|toLocaleString|isPrototypeOf|propertyIsEnumerable)$/i;
   const varMatch = response.match(/FINAL_VAR\((\w+)\)/);
   if (varMatch && !DANGEROUS_VAR_NAMES.test(varMatch[1].toLowerCase())) {
     return { type: "var", name: varMatch[1] };

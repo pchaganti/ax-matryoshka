@@ -308,6 +308,7 @@ export class SymbolExtractor {
 
     if (functionTypes.includes(node.type)) {
       if (!node.text || typeof node.text !== "string") return undefined;
+      if (node.text.length > 50_000) return undefined;
       const text = node.text;
       const lines = text.split("\n");
       if (lines.length > 0) {

@@ -202,7 +202,8 @@ function tokenize(input: string): Token[] {
     // Symbol (including special characters for constraints and hyphen for compound names)
     if (/[a-zA-Z_Σμε⚡φ∞\/]/.test(ch)) {
       let sym = "";
-      while (i < input.length && /[a-zA-Z_0-9Σμε⚡φ∞\/\-]/.test(input[i])) {
+      const MAX_SYM_LENGTH = 200;
+      while (i < input.length && /[a-zA-Z_0-9Σμε⚡φ∞\/\-]/.test(input[i]) && sym.length < MAX_SYM_LENGTH) {
         sym += input[i];
         i++;
       }
