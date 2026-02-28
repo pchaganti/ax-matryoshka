@@ -291,6 +291,7 @@ export function exprToCode(expr: Expr): string {
       return `(String(${exprToCode(expr.left)}) + String(${exprToCode(expr.right)}))`;
 
     case "match": {
+      if (!Number.isInteger(expr.group) || expr.group < 0) return "(null)";
       // Use RegExp constructor with JSON.stringify to safely embed pattern
       // This avoids regex literal delimiter issues with backslashes and forward slashes
       return `((_s) => _s == null ? null : _s.match(new RegExp(${JSON.stringify(expr.pattern)}))?.[${expr.group}])(${exprToCode(expr.str)})`;

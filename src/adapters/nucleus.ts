@@ -112,7 +112,7 @@ function jsonToSexp(json: unknown): string | null {
       const rawCollection = obj.collection || obj.input || "RESULTS";
       const collection = validateCollectionName(rawCollection);
       const pattern = obj.pattern || obj.regex;
-      const group = typeof obj.group === "number" && obj.group >= 0 ? obj.group : 0;
+      const group = typeof obj.group === "number" && Number.isInteger(obj.group) && obj.group >= 0 ? Math.min(obj.group, 99) : 0;
       if (collection && typeof pattern === "string") {
         return `(map ${collection} (lambda x (match x "${escapeForSexp(pattern)}" ${group})))`;
       }

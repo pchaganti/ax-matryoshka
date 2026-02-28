@@ -204,7 +204,7 @@ export class SessionDB {
     if (!this.db) return [];
 
     // Sanitize FTS5 special characters to prevent query injection
-    const sanitized = query.replace(/['"*(){}:^~]/g, " ").replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ").trim();
+    const sanitized = query.replace(/['"*()\-|{}:^~\[\]]/g, " ").replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ").trim();
     if (!sanitized) return [];
 
     return this.searchRaw(sanitized);
@@ -290,8 +290,11 @@ export class SessionDB {
    */
   getHandleDataSlice(handle: string, limit: number, offset: number = 0): unknown[] {
     if (!this.db) return [];
+    if (!Number.isFinite(limit)) limit = 0;
+    limit = Math.floor(limit);
     if (limit <= 0) return [];
-    if (offset < 0) offset = Math.max(0, offset);
+    if (!Number.isFinite(offset)) offset = 0;
+    offset = Math.max(0, Math.floor(offset));
     const stmt = this.db.prepare(`
       SELECT data FROM handle_data
       WHERE handle = ?

@@ -301,11 +301,14 @@ export async function createSandbox(
      */
     function grep(pattern, flags) {
       var MAX_GREP_MATCHES = 10000;
+      var MAX_PATTERN_LENGTH = 1000;
+      if (!pattern || pattern.length > MAX_PATTERN_LENGTH) return [];
       // Default to global + multiline + case-insensitive for line-based searching
-      let f = flags || '';
+      let f = (flags || '').replace(/[^gimsuy]/g, '');
       if (!f.includes('g')) f += 'g';
       if (!f.includes('m')) f += 'm';
       if (!f.includes('i')) f += 'i';  // Case-insensitive by default
+      try { new RegExp(pattern); } catch(e) { return []; }
       const regex = new RegExp(pattern, f);
       const results = [];
       let match;

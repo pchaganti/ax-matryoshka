@@ -181,7 +181,7 @@ export class EvolutionarySynthesizer {
       // Direct parseInt for simple numbers (with NaN guard)
       strategies.push(`(s) => { const r = parseInt(s.replace(/[^\\d.-]/g, ''), 10); return isNaN(r) ? null : r; }`);
 
-      strategies.push(`(s) => { const r = parseFloat(s.replace(/[^\\d.-]/g, '')); return isNaN(r) ? null : r; }`);
+      strategies.push(`(s) => { const r = parseFloat(s.replace(/[^\\d.-]/g, '')); return isNaN(r) || !isFinite(r) ? null : r; }`);
     } else if (typeof sampleOutput === "string") {
       const safePattern = JSON.stringify(pattern);
       strategies.push(
@@ -258,7 +258,8 @@ export class EvolutionarySynthesizer {
       /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
       /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
       /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
-      /\bReflect\b/, /\bProxy\b/,
+      /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
+      /\bwindow\b/, /\bdocument\b/, /\bprototype\b/,
       // Block Object.constructor/Object.getPrototypeOf but allow Object.keys/values/entries
       /\bObject\s*\.\s*(?:constructor|getPrototypeOf|setPrototypeOf|defineProperty|__proto__)\b/,
     ];
@@ -267,6 +268,12 @@ export class EvolutionarySynthesizer {
         return false;
       }
     }
+    // Block bracket notation with strings (dynamic property access bypass)
+    if (/\[\s*['"]/.test(code)) return false;
+    // Block template literals
+    if (/`/.test(code)) return false;
+    // Block unicode/hex escape sequences
+    if (/\\u[0-9a-fA-F]{4}|\\u\{[0-9a-fA-F]+\}|\\x[0-9a-fA-F]{2}/.test(code)) return false;
 
     try {
       const fn = new Function("return " + code)();

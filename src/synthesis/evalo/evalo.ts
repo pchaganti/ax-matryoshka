@@ -41,6 +41,7 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
         const regex = new RegExp(extractor.pattern);
         const match = str.match(regex);
         if (!match) return null;
+        if (!Number.isInteger(extractor.group) || extractor.group < 0) return null;
         return match[extractor.group] ?? null;
       } catch {
         return null;
