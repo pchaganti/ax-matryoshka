@@ -118,7 +118,7 @@ export class LatticeTool {
     } catch {
       return {
         success: false,
-        error: `Invalid path: cannot resolve ${filePath}`,
+        error: `Invalid path: cannot resolve file`,
       };
     }
     if (!realResolved.startsWith(cwd + path.sep) && realResolved !== cwd) {
@@ -141,7 +141,7 @@ export class LatticeTool {
     } catch (err) {
       return {
         success: false,
-        error: `Failed to load ${filePath}: ${err instanceof Error ? err.message : err}`,
+        error: `Failed to load ${this.documentName || "document"}: ${err instanceof Error ? err.message : "unknown error"}`,
       };
     }
   }

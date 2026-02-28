@@ -176,6 +176,9 @@ export class SessionDB {
    */
   getLines(start: number, end: number): DocumentLine[] {
     if (!this.db) return [];
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+    start = Math.floor(start);
+    end = Math.floor(end);
     if (end < 1) return [];
     if (start > end) return [];
     if (start < 1) start = 1;

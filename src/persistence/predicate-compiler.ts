@@ -98,7 +98,7 @@ export class PredicateCompiler {
     // Check for dangerous patterns
     for (const pattern of DANGEROUS_PATTERNS) {
       if (pattern.test(code)) {
-        throw new Error(`Dangerous operation detected: ${pattern}`);
+        throw new Error("Dangerous operation detected in predicate");
       }
     }
 

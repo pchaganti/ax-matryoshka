@@ -119,6 +119,7 @@ function createSolverTools(context: string): SolverTools {
     fuzzy_search: (query: string, limit: number = 10) => {
       const MAX_QUERY_LENGTH = 500;
       if (query.length > MAX_QUERY_LENGTH) return [];
+      const clampedLimit = Math.max(1, Math.min(Math.floor(limit), 1000));
       const results: Array<{ line: string; lineNum: number; score: number }> = [];
 
       for (let i = 0; i < lines.length; i++) {
@@ -133,7 +134,7 @@ function createSolverTools(context: string): SolverTools {
       }
 
       results.sort((a, b) => b.score - a.score);
-      return results.slice(0, limit);
+      return results.slice(0, clampedLimit);
     },
 
     text_stats: () => ({ ...textStats }),

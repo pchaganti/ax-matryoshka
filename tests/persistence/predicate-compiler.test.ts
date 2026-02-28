@@ -210,11 +210,11 @@ describe("PredicateCompiler", () => {
 
   describe("constructor property access blacklist", () => {
     it("should reject item.constructor.name", () => {
-      expect(() => compiler.compile("item.constructor.name === 'Array'")).toThrow(/constructor/i);
+      expect(() => compiler.compile("item.constructor.name === 'Array'")).toThrow(/Dangerous operation/i);
     });
 
     it("should reject item.constructor === Array", () => {
-      expect(() => compiler.compile("item.constructor === Array")).toThrow(/constructor/i);
+      expect(() => compiler.compile("item.constructor === Array")).toThrow(/Dangerous operation/i);
     });
   });
 

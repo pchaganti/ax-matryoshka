@@ -122,7 +122,8 @@ function jsonToSexp(json: unknown): string | null {
     case "fuzzy":
     case "fuzzy_search": {
       const query = obj.query || obj.term;
-      const limit = typeof obj.limit === "number" ? obj.limit : 10;
+      const rawLimit = typeof obj.limit === "number" ? obj.limit : 10;
+      const limit = Math.max(1, Math.min(Math.floor(rawLimit), 1000));
       if (typeof query === "string") {
         return `(fuzzy_search "${escapeForSexp(query)}" ${limit})`;
       }

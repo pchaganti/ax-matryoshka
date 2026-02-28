@@ -102,7 +102,12 @@ export class ParserRegistry {
 
     // Extract the grammar (some modules export multiple languages)
     let lang: TreeSitterLanguage;
+    const DANGEROUS_EXPORT_NAMES = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
     if (config.moduleExport) {
+      // Guard against prototype pollution via moduleExport
+      if (DANGEROUS_EXPORT_NAMES.has(config.moduleExport)) {
+        throw new Error(`Unsafe module export name: '${config.moduleExport}'`);
+      }
       // Use specific export (e.g., "typescript" from tree-sitter-typescript)
       lang = grammarModule[config.moduleExport];
       if (!lang) {

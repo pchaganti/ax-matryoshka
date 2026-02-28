@@ -319,19 +319,19 @@ function parseNumberImpl(str: string): number | null {
   const percentMatch = trimmed.match(/^([\d.,]+)%$/);
   if (percentMatch) {
     const num = parseFloat(percentMatch[1].replace(/,/g, ""));
-    return isNaN(num) ? null : num / 100;
+    return isNaN(num) || !isFinite(num) ? null : num / 100;
   }
 
   // Handle scientific notation
   if (/^[\d.]+e[+-]?\d+$/i.test(trimmed)) {
     const result = parseFloat(trimmed);
-    return isNaN(result) ? null : result;
+    return isNaN(result) || !isFinite(result) ? null : result;
   }
 
   // Standard number with commas
   const cleaned = trimmed.replace(/,/g, "");
   const result = parseFloat(cleaned);
-  return isNaN(result) ? null : result;
+  return isNaN(result) || !isFinite(result) ? null : result;
 }
 
 // ============================================================================
@@ -709,10 +709,13 @@ export function composeToMatch(
 /**
  * The primitive reduce function - all other list operations can be derived from this
  */
+const MAX_REDUCE_LENGTH = 1_000_000;
+
 function reduce<T, R>(arr: T[], fn: (acc: R, item: T) => R, initial: R): R {
   let acc = initial;
-  for (const item of arr) {
-    acc = fn(acc, item);
+  const limit = Math.min(arr.length, MAX_REDUCE_LENGTH);
+  for (let i = 0; i < limit; i++) {
+    acc = fn(acc, arr[i]);
   }
   return acc;
 }
