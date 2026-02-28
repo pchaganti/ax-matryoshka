@@ -315,9 +315,11 @@ function parseConstraintObject(state: ParserState): Record<string, unknown> | nu
     }
 
     // Expect :key value pairs
+    const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
     if (next?.type === "keyword") {
       consume(state);
       const key = next.value;
+      if (DANGEROUS_KEYS.has(key)) continue;
       const value = parseTerm(state);
       if (value && value.tag === "lit") {
         constraints[key] = value.value;

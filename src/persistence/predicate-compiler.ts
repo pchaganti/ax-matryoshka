@@ -159,7 +159,14 @@ export class PredicateCompiler {
 
     // Block comma operator (prevents side-effect chaining: (item.x.sort(), item.y))
     // Allow commas inside function argument lists but block top-level comma operator
-    if (/,/.test(code.replace(/\([^)]*\)/g, ""))) {
+    // Loop to handle nested parentheses: ((a), b) -> strip inner first
+    let stripped = code;
+    let prev = "";
+    while (prev !== stripped) {
+      prev = stripped;
+      stripped = stripped.replace(/\([^()]*\)/g, "");
+    }
+    if (/,/.test(stripped)) {
       throw new Error("Comma operator is not allowed in predicates");
     }
 

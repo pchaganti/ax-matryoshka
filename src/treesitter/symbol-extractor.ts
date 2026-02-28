@@ -168,8 +168,10 @@ export class SymbolExtractor {
       }
     }
 
-    // Recurse into children
-    for (let i = 0; i < node.childCount; i++) {
+    // Recurse into children (limit horizontal breadth to prevent DoS from pathologically wide trees)
+    const MAX_CHILDREN = 10_000;
+    const childLimit = Math.min(node.childCount, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
       const child = node.child(i);
       if (child) {
         this.walkTree(child, language, symbolMappings, symbols, currentParentId, depth + 1);

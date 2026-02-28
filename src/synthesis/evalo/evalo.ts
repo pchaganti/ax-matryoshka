@@ -67,6 +67,8 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
     case "slice": {
       const str = evalExtractor(extractor.str, input);
       if (typeof str !== "string") return null;
+      if (!Number.isInteger(extractor.start) || extractor.start < 0) return null;
+      if (!Number.isInteger(extractor.end)) return null;
       return str.slice(extractor.start, extractor.end);
     }
 

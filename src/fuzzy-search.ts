@@ -10,6 +10,7 @@ export const FUZZY_SEARCH_IMPL = `
  */
 function fuzzySearch(lines, query, limit = 10) {
   if (!query || query.length === 0) return [];
+  limit = Math.min(Math.max(1, Math.floor(limit)), 1000);
 
   const results = [];
   const queryLower = query.toLowerCase();

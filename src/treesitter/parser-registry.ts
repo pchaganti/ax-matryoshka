@@ -132,9 +132,16 @@ export class ParserRegistry {
    * @param ext File extension (e.g., ".ts", ".py")
    * @returns Syntax tree or throws if extension not supported
    */
+  private static readonly MAX_PARSE_CONTENT_LENGTH = 10_000_000; // 10MB
+
   async parseDocument(content: string, ext: string): Promise<TreeSitterTree | null> {
     if (!this.initialized || !this.parser) {
       throw new Error("ParserRegistry not initialized. Call init() first.");
+    }
+
+    // Limit content size to prevent memory exhaustion
+    if (content.length > ParserRegistry.MAX_PARSE_CONTENT_LENGTH) {
+      throw new Error(`Content too large to parse: ${content.length} chars exceeds limit of ${ParserRegistry.MAX_PARSE_CONTENT_LENGTH}`);
     }
 
     // Get language for extension

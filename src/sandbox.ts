@@ -384,9 +384,9 @@ export async function createSandbox(
     function locate_line(start, end) {
       const totalLines = __linesArray.length;
 
-      // Convert to 0-based index, handle negative
-      let startIdx = start < 0 ? totalLines + start : start - 1;
-      let endIdx = end === undefined ? startIdx : (end < 0 ? totalLines + end : end - 1);
+      // Convert to 0-based index, handle negative (clamp to 0)
+      let startIdx = start < 0 ? Math.max(0, totalLines + start) : start - 1;
+      let endIdx = end === undefined ? startIdx : (end < 0 ? Math.max(0, totalLines + end) : end - 1);
 
       // Bounds check
       if (startIdx < 0 || startIdx >= totalLines) return '';
