@@ -58,12 +58,15 @@ export function walkAll(x: Term, s: Subst, depth: number = 0): Term {
 // We allow symbols to be used as keys in compound terms (in order to
 // facilitate the desugaring process); this lets us easily collect all
 // "normal" and symbol keys of an object.
+const MAX_KEYS_IN = 10_000;
+
 export function keysIn(x: CompoundTerm): string[] {
-  return [
+  const keys = [
     ...Object.keys(x),
     // Type Hack
     ...((Object.getOwnPropertySymbols(x) as any) as string[]),
   ];
+  return keys.length > MAX_KEYS_IN ? keys.slice(0, MAX_KEYS_IN) : keys;
 }
 
 // `iota` constructs an array containing the numbers 0..n. We use it to

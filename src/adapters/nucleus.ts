@@ -251,8 +251,11 @@ function extractCode(response: string): string | null {
       if (ch === "\\") { escape = true; continue; }
       if (ch === '"') { inString = !inString; continue; }
       if (inString) continue;
-      if (ch === "{") depth++;
-      else if (ch === "}") {
+      const MAX_DEPTH = 100;
+      if (ch === "{") {
+        depth++;
+        if (depth > MAX_DEPTH) return null;
+      } else if (ch === "}") {
         depth--;
         if (depth === 0) return text.slice(start, i + 1);
       }

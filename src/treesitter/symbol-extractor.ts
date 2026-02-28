@@ -262,6 +262,8 @@ export class SymbolExtractor {
    * Get the name of a node
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static readonly MAX_NAME_LENGTH = 10_000;
+
   private getNodeName(node: any): string | null {
     if (!node) return null;
     const fields = NAME_FIELDS[node.type];
@@ -269,7 +271,7 @@ export class SymbolExtractor {
     if (fields) {
       for (const field of fields) {
         const nameNode = node.childForFieldName(field);
-        if (nameNode && nameNode.text) {
+        if (nameNode && nameNode.text && nameNode.text.length <= SymbolExtractor.MAX_NAME_LENGTH) {
           return nameNode.text ?? null;
         }
       }
@@ -283,7 +285,9 @@ export class SymbolExtractor {
         child &&
         (child.type === "identifier" ||
           child.type === "type_identifier" ||
-          child.type === "property_identifier")
+          child.type === "property_identifier") &&
+        child.text &&
+        child.text.length <= SymbolExtractor.MAX_NAME_LENGTH
       ) {
         return child.text ?? null;
       }

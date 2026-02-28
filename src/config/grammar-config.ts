@@ -85,7 +85,12 @@ export function getCustomGrammars(): Record<string, GrammarConfig> {
 /**
  * Add a custom grammar to config
  */
+const DANGEROUS_LANG_NAMES = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
+
 export function addCustomGrammar(language: string, grammar: GrammarConfig): void {
+  if (DANGEROUS_LANG_NAMES.has(language) || !/^[a-zA-Z0-9_-]+$/.test(language)) {
+    throw new Error(`Invalid language name: '${language}'`);
+  }
   const config = loadConfig();
   config.grammars = config.grammars ?? {};
   config.grammars[language] = grammar;

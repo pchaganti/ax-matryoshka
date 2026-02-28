@@ -444,6 +444,9 @@ export class SessionDB {
    */
   storeSymbol(symbol: Omit<Symbol, "id">): number {
     if (!this.db) throw new Error("Database not open");
+    if (!Number.isFinite(symbol.startLine) || !Number.isFinite(symbol.endLine)) {
+      throw new Error("Invalid line numbers");
+    }
 
     const stmt = this.db.prepare(`
       INSERT INTO symbols (name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId)
@@ -506,6 +509,8 @@ export class SessionDB {
    */
   getSymbolsAtLine(line: number): Symbol[] {
     if (!this.db) return [];
+    if (!Number.isFinite(line)) return [];
+    line = Math.floor(line);
     const stmt = this.db.prepare(`
       SELECT id, name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId
       FROM symbols WHERE startLine <= ? AND endLine >= ? ORDER BY startLine, startCol

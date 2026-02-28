@@ -56,7 +56,7 @@ export function compile(extractor: Extractor): string {
       if (!Number.isInteger(idx) || idx < 0) {
         return `null`;
       }
-      return `((_s) => _s == null ? null : _s.split("${delim}")?.[${idx}] ?? null)(${strCode})`;
+      return `((_s) => typeof _s !== "string" ? null : _s.split("${delim}")?.[${idx}] ?? null)(${strCode})`;
     }
 
     case "parseInt": {

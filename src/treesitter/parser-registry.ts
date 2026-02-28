@@ -106,7 +106,7 @@ export class ParserRegistry {
 
     // Extract the grammar (some modules export multiple languages)
     let lang: TreeSitterLanguage;
-    const DANGEROUS_EXPORT_NAMES = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
+    const DANGEROUS_EXPORT_NAMES = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "hasOwnProperty", "toString", "valueOf", "toLocaleString", "isPrototypeOf", "propertyIsEnumerable"]);
     if (config.moduleExport) {
       // Guard against prototype pollution via moduleExport
       if (DANGEROUS_EXPORT_NAMES.has(config.moduleExport)) {

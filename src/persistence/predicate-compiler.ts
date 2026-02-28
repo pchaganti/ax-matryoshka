@@ -188,7 +188,7 @@ export class PredicateCompiler {
    * Validate a field name is a safe SQL identifier
    */
   private isValidFieldName(field: string): boolean {
-    return /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field);
+    return field.length <= 256 && /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(field);
   }
 
   /**
