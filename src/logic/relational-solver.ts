@@ -60,6 +60,7 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
     if (typeof input !== "string") return null;
     const pattern = args.pattern as string;
     const group = (args.group as number) ?? 0;
+    if (group < 0) return null;
     const validation = validateRegex(pattern);
     if (!validation.valid) return null;
     try {
@@ -147,6 +148,7 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
   index: (input, args) => {
     if (!Array.isArray(input)) return null;
     const idx = args.index as number;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= input.length) return null;
     return input[idx] ?? null;
   },
 };

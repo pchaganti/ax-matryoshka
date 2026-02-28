@@ -19,9 +19,12 @@ const unifyComp = (x: CompoundTerm, y: CompoundTerm, s: Subst): Subst | false =>
 
 const extendS = (v: Term, x: Term, s: Subst): Subst | false => !occursIn(v, x, s) && new Map(s).set(v as any, x);
 
-const occursIn = (v: Term, x: Term, s: Subst): boolean => {
+const MAX_OCCURS_DEPTH = 200;
+
+const occursIn = (v: Term, x: Term, s: Subst, depth: number = 0): boolean => {
+  if (depth > MAX_OCCURS_DEPTH) return true; // Assume occurs to be safe
   const xWalked = walk(x, s) as Term;
   if (v === xWalked) return true;
-  else if (isComp(xWalked)) return keysIn(xWalked as CompoundTerm).some((k: string) => occursIn(v, (xWalked as CompoundTerm)[k], s));
+  else if (isComp(xWalked)) return keysIn(xWalked as CompoundTerm).some((k: string) => occursIn(v, (xWalked as CompoundTerm)[k], s, depth + 1));
   else return false;
 };

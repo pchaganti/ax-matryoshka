@@ -94,7 +94,7 @@ describe("Audit #37", () => {
     it("should handle empty array in Math.max spread", () => {
       const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
       // Find the specific Math.max line in the delimiter extraction function
-      const maxLine = source.match(/const maxFields = Math\.max\([^)]+\)/);
+      const maxLine = source.match(/const maxFields = [\s\S]*?Math\.max\(0[^;]+/);
       expect(maxLine).not.toBeNull();
       // Should guard against empty spread: Math.max(0, ...) or check examples.length
       expect(maxLine![0]).toMatch(/Math\.max\(0/);

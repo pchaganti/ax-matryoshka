@@ -28,8 +28,11 @@ export function isVar(x: unknown): x is Var {
 // until we come to a term that is not associated in the substitution.
 export type Subst = Map<Var, Term>;
 
-export function walk(x: Term, s: Subst): Term {
-  if (isVar(x) && s.has(x)) return walk(s.get(x)!, s);
+const MAX_WALK_DEPTH = 1000;
+
+export function walk(x: Term, s: Subst, depth: number = 0): Term {
+  if (depth > MAX_WALK_DEPTH) return x;
+  if (isVar(x) && s.has(x)) return walk(s.get(x)!, s, depth + 1);
   else return x;
 }
 

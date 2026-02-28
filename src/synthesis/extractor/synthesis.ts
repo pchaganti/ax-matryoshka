@@ -46,8 +46,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Extract integer from dollar currency",
     inputPattern: /^\$[\d,]+$/,
     outputType: "number",
-    code: '(s) => parseInt(s.replace(/[$,]/g, ""), 10)',
-    testFn: (s) => parseInt(s.replace(/[$,]/g, ""), 10),
+    code: '(s) => { const n = parseInt(s.replace(/[$,]/g, ""), 10); return isNaN(n) ? null : n; }',
+    testFn: (s) => { const n = parseInt(s.replace(/[$,]/g, ""), 10); return isNaN(n) ? null : n; },
   },
 
   // Currency with decimals: $1,234.56 -> number
@@ -56,8 +56,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Extract decimal from dollar currency",
     inputPattern: /^\$[\d,]+\.\d+$/,
     outputType: "number",
-    code: '(s) => parseFloat(s.replace(/[$,]/g, ""))',
-    testFn: (s) => parseFloat(s.replace(/[$,]/g, "")),
+    code: '(s) => { const n = parseFloat(s.replace(/[$,]/g, "")); return isFinite(n) ? n : null; }',
+    testFn: (s) => { const n = parseFloat(s.replace(/[$,]/g, "")); return isFinite(n) ? n : null; },
   },
 
   // Plain integer: 123 -> number
@@ -86,8 +86,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Convert percentage to decimal",
     inputPattern: /^\d+(\.\d+)?%$/,
     outputType: "number",
-    code: '(s) => parseFloat(s.replace("%", "")) / 100',
-    testFn: (s) => parseFloat(s.replace("%", "")) / 100,
+    code: '(s) => { const n = parseFloat(s.replace("%", "")) / 100; return isFinite(n) ? n : null; }',
+    testFn: (s) => { const n = parseFloat(s.replace("%", "")) / 100; return isFinite(n) ? n : null; },
   },
 
   // Key: Value -> Value (string)
@@ -413,7 +413,8 @@ function tryDelimiterFieldExtraction(
 
     // Find which field index produces the output
     if (examples.length === 0) continue;
-    const maxFields = Math.max(0, ...examples.map((e) => e.input.split(delim).length));
+    const MAX_FIELDS = 1000;
+    const maxFields = Math.min(MAX_FIELDS, Math.max(0, ...examples.map((e) => e.input.split(delim).length)));
     for (let fieldIdx = 0; fieldIdx < maxFields; fieldIdx++) {
       const allMatch = examples.every((e) => {
         const fields = e.input.split(delim).map((f) => f.trim());

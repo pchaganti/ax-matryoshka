@@ -229,7 +229,9 @@ export class PredicateCompiler {
       const [, field, op, value] = numMatch;
       if (!this.isValidFieldName(field)) return null;
       const sqlOp = op === "===" || op === "==" ? "=" : op === "!==" || op === "!=" ? "!=" : op;
-      return { sql: `CAST(json_extract(data, '$.${field}') AS REAL) ${sqlOp} ?`, params: [Number(value)] };
+      const numValue = Number(value);
+      if (!Number.isFinite(numValue)) return null;
+      return { sql: `CAST(json_extract(data, '$.${field}') AS REAL) ${sqlOp} ?`, params: [numValue] };
     }
 
     // Can't convert - use JS evaluation
