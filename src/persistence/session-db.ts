@@ -244,6 +244,11 @@ export class SessionDB {
   createHandle(data: unknown[]): string {
     if (!this.db) throw new Error("Database not open");
 
+    const MAX_HANDLE_ITEMS = 1_000_000;
+    if (data.length > MAX_HANDLE_ITEMS) {
+      data = data.slice(0, MAX_HANDLE_ITEMS);
+    }
+
     const nextId = this.handleCounter + 1;
     const handle = `$res${nextId}`;
     const now = Date.now();

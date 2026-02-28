@@ -1418,7 +1418,7 @@ function parseCurrency(str: string): number | null {
   }
 
   const value = parseFloat(normalized);
-  if (isNaN(value)) return null;
+  if (isNaN(value) || !isFinite(value)) return null;
 
   return isNegative ? -value : value;
 }

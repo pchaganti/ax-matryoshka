@@ -190,8 +190,8 @@ function tokenize(input: string): Token[] {
         i++;
       }
       const parsed = parseFloat(num);
-      if (isNaN(parsed)) {
-        // Malformed number (e.g. bare "-"), skip
+      if (isNaN(parsed) || !isFinite(parsed)) {
+        // Malformed number (e.g. bare "-") or Infinity, skip
         continue;
       }
       tokens.push({ type: "number", value: parsed });

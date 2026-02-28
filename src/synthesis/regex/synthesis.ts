@@ -331,8 +331,11 @@ const TEMPLATES: TemplatePattern[] = [
   },
 ];
 
+const MAX_EXAMPLE_LENGTH = 10_000;
+
 export function matchTemplate(examples: string[]): RegexNode | null {
   if (examples.length === 0) return null;
+  if (examples.some((e) => e.length > MAX_EXAMPLE_LENGTH)) return null;
 
   for (const template of TEMPLATES) {
     if (template.test(examples)) {
@@ -505,11 +508,14 @@ export interface SynthesisResult {
   error?: string;
 }
 
+const MAX_EXAMPLES = 10_000;
+
 export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
   if (!input || !input.positives) {
     return { success: false, error: "Invalid input: positives required" };
   }
-  const { positives, negatives } = input;
+  let positives = input.positives.slice(0, MAX_EXAMPLES);
+  const negatives = input.negatives ? input.negatives.slice(0, MAX_EXAMPLES) : [];
 
   // Validation
   if (positives.length === 0) {

@@ -10,6 +10,8 @@ import { ParserRegistry } from "./parser-registry.js";
 import type { Symbol, SymbolKind, SupportedLanguage } from "./types.js";
 import { getSymbolMappings } from "./language-map.js";
 
+const MAX_CHILDREN = 10_000;
+
 /**
  * Name field mappings for different node types
  */
@@ -169,7 +171,6 @@ export class SymbolExtractor {
     }
 
     // Recurse into children (limit horizontal breadth to prevent DoS from pathologically wide trees)
-    const MAX_CHILDREN = 10_000;
     const childLimit = Math.min(node.childCount, MAX_CHILDREN);
     for (let i = 0; i < childLimit; i++) {
       const child = node.child(i);
@@ -214,7 +215,8 @@ export class SymbolExtractor {
   private extractGoTypeDeclaration(node: any, parentId: number | null): Symbol | null {
     // Find the type_spec child
     let typeSpec = null;
-    for (let i = 0; i < node.childCount; i++) {
+    const childLimit = Math.min(node.childCount, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
       const child = node.child(i);
       if (child && child.type === "type_spec") {
         typeSpec = child;
@@ -230,7 +232,8 @@ export class SymbolExtractor {
 
     // Check if it's a struct or interface
     let kind: SymbolKind = "type";
-    for (let i = 0; i < typeSpec.childCount; i++) {
+    const typeSpecChildLimit = Math.min(typeSpec.childCount, MAX_CHILDREN);
+    for (let i = 0; i < typeSpecChildLimit; i++) {
       const child = typeSpec.child(i);
       if (child && child.type === "struct_type") {
         kind = "struct";
@@ -272,7 +275,8 @@ export class SymbolExtractor {
     }
 
     // Fallback: look for identifier or type_identifier child
-    for (let i = 0; i < node.childCount; i++) {
+    const nameChildLimit = Math.min(node.childCount, MAX_CHILDREN);
+    for (let i = 0; i < nameChildLimit; i++) {
       const child = node.child(i);
       if (
         child &&
