@@ -68,9 +68,12 @@ export function keysIn(x: CompoundTerm): string[] {
 
 // `iota` constructs an array containing the numbers 0..n. We use it to
 // generate arrays containing a certain number of elements.
+const MAX_IOTA = 10_000;
+
 export function iota(n: number): number[] {
+  const limit = Math.min(Math.max(0, Math.floor(n)), MAX_IOTA);
   let res = [];
-  for (let i = 0; i < n; i++) res.push(i);
+  for (let i = 0; i < limit; i++) res.push(i);
   return res;
 }
 

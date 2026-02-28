@@ -48,6 +48,7 @@ function createSolverTools(context: string): SolverTools {
   // Fuzzy search implementation
   // Adapted from FUZZY_SEARCH_IMPL for direct use
   function fuzzyMatch(str: string, query: string): number {
+    if (!query || query.length > 1000) return 0;
     const strLower = str.toLowerCase();
     const queryLower = query.toLowerCase();
 
@@ -115,6 +116,7 @@ function createSolverTools(context: string): SolverTools {
     },
 
     fuzzy_search: (query: string, limit: number = 10) => {
+      limit = Math.max(1, Math.min(Math.floor(limit) || 10, 1000));
       const results: Array<{ line: string; lineNum: number; score: number }> = [];
 
       for (let i = 0; i < lines.length; i++) {

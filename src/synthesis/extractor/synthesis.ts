@@ -458,15 +458,18 @@ function tryStructuredExtraction(
       const match = e.input.match(currencyPattern);
       if (!match) return false;
       const value = parseFloat(match[0].replace(/[$,]/g, ""));
+      if (!isFinite(value)) return false;
       return deepEqual(value, e.output);
     });
 
     if (allMatch) {
       const code =
-        '(s) => { const m = s.match(/\\$[\\d,]+(\\.[\\d]+)?/); return m ? parseFloat(m[0].replace(/[$,]/g, "")) : null; }';
+        '(s) => { const m = s.match(/\\$[\\d,]+(\\.[\\d]+)?/); if (!m) return null; const n = parseFloat(m[0].replace(/[$,]/g, "")); return isFinite(n) ? n : null; }';
       const testFn = (s: string) => {
         const m = s.match(/\$[\d,]+(\.\d+)?/);
-        return m ? parseFloat(m[0].replace(/[$,]/g, "")) : null;
+        if (!m) return null;
+        const n = parseFloat(m[0].replace(/[$,]/g, ""));
+        return isFinite(n) ? n : null;
       };
 
       return {
@@ -485,15 +488,18 @@ function tryStructuredExtraction(
     const match = e.input.match(numberPattern);
     if (!match) return false;
     const value = parseFloat(match[0]);
+    if (!isFinite(value)) return false;
     return deepEqual(value, e.output);
   });
 
   if (allMatch) {
     const code =
-      "(s) => { const m = s.match(/\\d+(\\.\\d+)?/); return m ? parseFloat(m[0]) : null; }";
+      "(s) => { const m = s.match(/\\d+(\\.\\d+)?/); if (!m) return null; const n = parseFloat(m[0]); return isFinite(n) ? n : null; }";
     const testFn = (s: string) => {
       const m = s.match(/\d+(\.\d+)?/);
-      return m ? parseFloat(m[0]) : null;
+      if (!m) return null;
+      const n = parseFloat(m[0]);
+      return isFinite(n) ? n : null;
     };
 
     return {

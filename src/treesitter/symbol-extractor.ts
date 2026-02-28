@@ -199,10 +199,10 @@ export class SymbolExtractor {
       id: this.symbolIdCounter,
       name,
       kind,
-      startLine: node.startPosition.row + 1, // Convert to 1-indexed
-      endLine: node.endPosition.row + 1,
-      startCol: node.startPosition.column,
-      endCol: node.endPosition.column,
+      startLine: node.startPosition?.row != null ? node.startPosition.row + 1 : 1,
+      endLine: node.endPosition?.row != null ? node.endPosition.row + 1 : 1,
+      startCol: node.startPosition?.column ?? 0,
+      endCol: node.endPosition?.column ?? 0,
       signature: this.getSignature(node, language),
       parentSymbolId: parentId,
     };
@@ -250,10 +250,10 @@ export class SymbolExtractor {
       id: this.symbolIdCounter,
       name,
       kind,
-      startLine: node.startPosition.row + 1,
-      endLine: node.endPosition.row + 1,
-      startCol: node.startPosition.column,
-      endCol: node.endPosition.column,
+      startLine: node.startPosition?.row != null ? node.startPosition.row + 1 : 1,
+      endLine: node.endPosition?.row != null ? node.endPosition.row + 1 : 1,
+      startCol: node.startPosition?.column ?? 0,
+      endCol: node.endPosition?.column ?? 0,
       parentSymbolId: parentId,
     };
   }
@@ -268,8 +268,8 @@ export class SymbolExtractor {
     if (fields) {
       for (const field of fields) {
         const nameNode = node.childForFieldName(field);
-        if (nameNode) {
-          return nameNode.text;
+        if (nameNode && nameNode.text) {
+          return nameNode.text ?? null;
         }
       }
     }
@@ -284,7 +284,7 @@ export class SymbolExtractor {
           child.type === "type_identifier" ||
           child.type === "property_identifier")
       ) {
-        return child.text;
+        return child.text ?? null;
       }
     }
 
@@ -306,7 +306,8 @@ export class SymbolExtractor {
     ];
 
     if (functionTypes.includes(node.type)) {
-      const text = node.text as string;
+      if (!node.text || typeof node.text !== "string") return undefined;
+      const text = node.text;
       const lines = text.split("\n");
       if (lines.length > 0) {
         let firstLine = lines[0];

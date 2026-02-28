@@ -77,7 +77,7 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
       if (typeof str !== "string") return null;
 
       const parts = str.split(extractor.delim);
-      if (extractor.index < 0 || extractor.index >= parts.length) return null;
+      if (!Number.isInteger(extractor.index) || extractor.index < 0 || extractor.index >= parts.length) return null;
       return parts[extractor.index];
     }
 
@@ -85,7 +85,7 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
       const str = evalExtractor(extractor.str, input);
       if (str === null) return null;
       const intResult = parseInt(String(str), 10);
-      return isNaN(intResult) ? null : intResult;
+      return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {

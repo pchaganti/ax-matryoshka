@@ -71,7 +71,7 @@ function compile(term: LCTerm): string {
 
     case "parseInt": {
       const str = compile(term.str);
-      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) ? null : _r; })(${str})`;
+      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${str})`;
     }
 
     case "parseFloat": {
