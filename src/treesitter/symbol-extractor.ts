@@ -263,6 +263,7 @@ export class SymbolExtractor {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private getNodeName(node: any): string | null {
+    if (!node) return null;
     const fields = NAME_FIELDS[node.type];
 
     if (fields) {

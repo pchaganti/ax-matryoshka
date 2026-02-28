@@ -154,7 +154,11 @@ export class SessionDB {
       return 0;
     }
 
-    const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    const MAX_LINES = 500_000;
+    let lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    if (lines.length > MAX_LINES) {
+      lines = lines.slice(0, MAX_LINES);
+    }
     const insert = this.db.prepare(
       "INSERT INTO document_lines (lineNum, content) VALUES (?, ?)"
     );
@@ -217,9 +221,9 @@ export class SessionDB {
    * Search with a raw FTS5 query (for trusted internal callers only)
    * WARNING: Do not pass user input directly to this method
    */
-  searchRaw(ftsQuery: string): DocumentLine[] {
+  searchRaw(query: string): DocumentLine[] {
     if (!this.db) return [];
-    if (!ftsQuery.trim()) return [];
+    if (!query.trim()) return [];
 
     // Use FTS5 MATCH query
     const stmt = this.db.prepare(`
@@ -231,9 +235,9 @@ export class SessionDB {
     `);
 
     try {
-      return stmt.all(ftsQuery) as DocumentLine[];
+      return stmt.all(query) as DocumentLine[];
     } catch (err) {
-      console.error("[SessionDB] FTS5 query failed:", err instanceof Error ? err.message : String(err), "| Query:", ftsQuery);
+      console.error("[SessionDB] FTS5 query failed:", err instanceof Error ? err.message : String(err));
       return [];
     }
   }

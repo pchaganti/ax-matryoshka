@@ -181,7 +181,8 @@ function tokenize(input: string): Token[] {
         i++;
       }
       let hasDecimal = false;
-      while (i < input.length && /[\d.]/.test(input[i])) {
+      const MAX_NUM_LENGTH = 50;
+      while (i < input.length && /[\d.]/.test(input[i]) && num.length < MAX_NUM_LENGTH) {
         if (input[i] === ".") {
           if (hasDecimal) break; // Stop at second decimal point
           hasDecimal = true;
@@ -303,7 +304,7 @@ function parseConstraintObject(state: ParserState): Record<string, unknown> | nu
 
   consume(state); // {
 
-  const constraints: Record<string, unknown> = {};
+  const constraints: Record<string, unknown> = Object.create(null);
 
   while (peek(state)) {
     const next = peek(state);

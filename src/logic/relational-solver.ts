@@ -312,7 +312,7 @@ function parseCurrencyImpl(str: string, depth: number = 0): number | null {
   }
 
   const result = parseFloat(cleaned);
-  return isNaN(result) ? null : result;
+  return isNaN(result) || !isFinite(result) ? null : result;
 }
 
 function parseNumberImpl(str: string): number | null {

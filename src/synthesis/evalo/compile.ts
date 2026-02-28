@@ -39,14 +39,14 @@ export function compile(extractor: Extractor): string {
       const strCode = compile(extractor.str);
       // Escape $ as $$ for replacement string to prevent backreference injection
       const to = escapeStringForLiteral(extractor.to.replace(/\$/g, "$$$$"));
-      return `((_s) => _s == null ? null : _s.replace(new RegExp(${JSON.stringify(extractor.from)}, "g"), "${to}"))(${strCode})`;
+      return `((_s) => typeof _s !== "string" ? null : _s.replace(new RegExp(${JSON.stringify(extractor.from)}, "g"), "${to}"))(${strCode})`;
     }
 
     case "slice": {
       if (!Number.isInteger(extractor.start) || !Number.isInteger(extractor.end)) return "null";
       if (extractor.start < 0) return "null";
       const strCode = compile(extractor.str);
-      return `((_s) => _s == null ? null : _s.slice(${extractor.start}, ${extractor.end}))(${strCode})`;
+      return `((_s) => typeof _s !== "string" ? null : _s.slice(${extractor.start}, ${extractor.end}))(${strCode})`;
     }
 
     case "split": {
@@ -61,7 +61,7 @@ export function compile(extractor: Extractor): string {
 
     case "parseInt": {
       const strCode = compile(extractor.str);
-      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) ? null : _r; })(${strCode})`;
+      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) || !Number.isSafeInteger(_r) ? null : _r; })(${strCode})`;
     }
 
     case "parseFloat": {
