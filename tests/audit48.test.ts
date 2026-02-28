@@ -113,8 +113,8 @@ describe("Audit #48", () => {
       const source = readFileSync("src/engine/handle-session.ts", "utf-8");
       const expandSection = source.match(/MAX_DEFAULT_EXPAND_LIMIT[\s\S]*?options\.limit[\s\S]*?getHandleDataSlice/);
       expect(expandSection).not.toBeNull();
-      // Should clamp options.limit so it can't exceed MAX_DEFAULT_EXPAND_LIMIT
-      expect(expandSection![0]).toMatch(/Math\.min\([^)]*options\.limit[^)]*MAX_DEFAULT|Math\.min\([^)]*MAX_DEFAULT[^)]*options\.limit/);
+      // Should clamp limit so it can't exceed MAX_DEFAULT_EXPAND_LIMIT
+      expect(expandSection![0]).toMatch(/Math\.min\([^)]*MAX_DEFAULT_EXPAND_LIMIT/);
     });
   });
 

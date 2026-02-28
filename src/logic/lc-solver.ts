@@ -854,7 +854,7 @@ function evaluatePredicate(
     if (!patternValidation.valid) return false;
     const regex = new RegExp(body.pattern);
     const result = str.match(regex);
-    return result !== null && result[body.group] !== undefined;
+    return result !== null && body.group < result.length && result[body.group] !== undefined;
   }
 
   // Variable reference - check if value is truthy
@@ -994,7 +994,7 @@ function evaluateWithBinding(
     case "parseFloat": {
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const floatResult = parseFloat(String(str));
-      return isNaN(floatResult) ? null : floatResult;
+      return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
     case "add": {

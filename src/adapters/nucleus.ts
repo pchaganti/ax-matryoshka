@@ -70,7 +70,12 @@ function validateCollectionName(name: unknown): string | null {
 
 /** Escape a string for embedding in an S-expression string literal */
 function escapeForSexp(s: string): string {
-  return s.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
 }
 
 function jsonToSexp(json: unknown): string | null {

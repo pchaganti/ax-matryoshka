@@ -145,6 +145,8 @@ export class HandleOps {
    */
   preview(handle: string, n: number): unknown[] {
     const MAX_PREVIEW = 10000;
+    if (!Number.isFinite(n)) n = 0;
+    n = Math.floor(n);
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
@@ -159,6 +161,8 @@ export class HandleOps {
    */
   sample(handle: string, n: number): unknown[] {
     const MAX_SAMPLE = 10000;
+    if (!Number.isFinite(n)) n = 0;
+    n = Math.floor(n);
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);

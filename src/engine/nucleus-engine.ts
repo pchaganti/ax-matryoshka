@@ -339,6 +339,9 @@ export class NucleusEngine {
    * Set a binding manually
    */
   setBinding(name: string, value: unknown): void {
+    if (!name || name.length > 256 || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+      throw new Error("Invalid binding name");
+    }
     this.bindings.set(name, value);
   }
 

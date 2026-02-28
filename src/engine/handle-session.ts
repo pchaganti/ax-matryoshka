@@ -316,8 +316,10 @@ export class HandleSession {
 
     const MAX_DEFAULT_EXPAND_LIMIT = 1000;
     const total = meta.count;
-    const offset = Math.max(0, options.offset ?? 0);
-    const limit = Math.min(Math.max(0, options.limit ?? Math.min(total, MAX_DEFAULT_EXPAND_LIMIT)), MAX_DEFAULT_EXPAND_LIMIT);
+    const rawOffset = options.offset ?? 0;
+    const offset = Math.max(0, Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0);
+    const rawLimit = options.limit ?? Math.min(total, MAX_DEFAULT_EXPAND_LIMIT);
+    const limit = Math.min(Math.max(0, Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 0), MAX_DEFAULT_EXPAND_LIMIT);
 
     // Use database-level pagination instead of loading all data then slicing
     let sliced = this.db.getHandleDataSlice(handle, limit, offset);

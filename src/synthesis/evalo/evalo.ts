@@ -89,7 +89,7 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
       const str = evalExtractor(extractor.str, input);
       if (str === null) return null;
       const floatResult = parseFloat(String(str));
-      return isNaN(floatResult) ? null : floatResult;
+      return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
     case "add": {

@@ -304,7 +304,7 @@ export function exprToCode(expr: Expr): string {
       return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) ? null : _r; })(${exprToCode(expr.str)})`;
 
     case "parseFloat":
-      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) ? null : _r; })(${exprToCode(expr.str)})`;
+      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${exprToCode(expr.str)})`;
 
     case "if":
       return `(${exprToCode(expr.cond)} ? ${exprToCode(expr.then)} : ${exprToCode(expr.else)})`;
