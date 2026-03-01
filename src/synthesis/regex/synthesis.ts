@@ -529,8 +529,9 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
     return { success: false, error: "No positive examples provided" };
   }
 
-  // Check for conflicts
-  const conflicts = positives.filter((p) => negatives.includes(p));
+  // Check for conflicts — use Set for O(1) lookup
+  const negativeSet = new Set(negatives);
+  const conflicts = positives.filter((p) => negativeSet.has(p));
   if (conflicts.length > 0) {
     return {
       success: false,
@@ -566,7 +567,7 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
   if (failedPositives.length > 0) {
     return {
       success: false,
-      error: `Pattern fails to match positives: ${failedPositives.join(", ")}`,
+      error: `Pattern fails to match positives: ${failedPositives.slice(0, 10).join(", ")}${failedPositives.length > 10 ? "..." : ""}`,
     };
   }
 
@@ -591,7 +592,7 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
 
     return {
       success: false,
-      error: `Pattern incorrectly matches negatives: ${matchedNegatives.join(", ")}`,
+      error: `Pattern incorrectly matches negatives: ${matchedNegatives.slice(0, 10).join(", ")}${matchedNegatives.length > 10 ? "..." : ""}`,
     };
   }
 

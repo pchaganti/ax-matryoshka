@@ -120,10 +120,10 @@ describe("Audit #56", () => {
     it("should check startPosition exists before accessing row", () => {
       const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
       // Find the first startPosition usage in symbol creation
-      const posBlock = source.match(/startLine:\s*node\.startPosition[^\n]+/);
+      const posBlock = source.match(/startLine:\s*(?:node\.startPosition|typeof\s+\w+Row)/);
       expect(posBlock).not.toBeNull();
-      // Should have a guard — optional chaining or explicit check
-      expect(posBlock![0]).toMatch(/\?\.|startPosition\s*&&|startPosition\s*!=/);
+      // Should have a guard — optional chaining, typeof check, or isFinite
+      expect(posBlock![0]).toMatch(/\?\.|startPosition\s*&&|startPosition\s*!=|typeof|isFinite/);
     });
   });
 

@@ -47,7 +47,7 @@ describe("Audit #43", () => {
   describe("#4 — lc-interpreter add should guard against Infinity", () => {
     it("should check isFinite in add case", () => {
       const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const addCase = source.match(/case "add"[\s\S]*?return left \+ right/);
+      const addCase = source.match(/case "add"[\s\S]*?(?:return left \+ right|addResult.*left \+ right)/);
       expect(addCase).not.toBeNull();
       expect(addCase![0]).toMatch(/isFinite|Number\.isFinite/);
     });

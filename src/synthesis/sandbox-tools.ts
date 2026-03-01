@@ -123,9 +123,12 @@ export async function createSandboxWithSynthesis(
         examples = examples.slice(0, MAX_EXAMPLES);
       }
 
+      const MAX_JSON_LOG_LENGTH = 1000;
       log(`[Synthesis] synthesize_extractor called with ${examples.length} constraints:`);
       examples.slice(0, 3).forEach((ex, i) => {
-        log(`  [${i + 1}] "${ex.input}" -> ${JSON.stringify(ex.output)}`);
+        const jsonStr = JSON.stringify(ex.output);
+        const safeJson = jsonStr.length > MAX_JSON_LOG_LENGTH ? jsonStr.slice(0, MAX_JSON_LOG_LENGTH) + "..." : jsonStr;
+        log(`  [${i + 1}] "${ex.input}" -> ${safeJson}`);
       });
       if (examples.length > 3) {
         log(`  ... and ${examples.length - 3} more`);
@@ -191,7 +194,9 @@ export async function createSandboxWithSynthesis(
         if (inputMap.has(ex.input)) {
           const existing = inputMap.get(ex.input);
           if (existing !== ex.output) {
-            log(`[Synthesis] CONFLICT: Same input "${ex.input}" has different outputs: ${JSON.stringify(existing)} vs ${JSON.stringify(ex.output)}`);
+            const existJson = JSON.stringify(existing);
+            const outJson = JSON.stringify(ex.output);
+            log(`[Synthesis] CONFLICT: Same input "${ex.input}" has different outputs: ${existJson.length > 1000 ? existJson.slice(0, 1000) + "..." : existJson} vs ${outJson.length > 1000 ? outJson.slice(0, 1000) + "..." : outJson}`);
             return null; // Conflicting outputs for same input
           }
         }

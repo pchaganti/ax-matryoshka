@@ -194,8 +194,11 @@ function extractCode(response: string): string | null {
   // Find opening paren and balance to closing
   const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references"];
 
+  const MAX_SEXP_ITERATIONS = 200;
+  let sexpIterations = 0;
   let searchFrom = firstParen;
-  while (searchFrom >= 0 && searchFrom < response.length) {
+  while (searchFrom >= 0 && searchFrom < response.length && sexpIterations < MAX_SEXP_ITERATIONS) {
+    sexpIterations++;
     const parenIdx = response.indexOf("(", searchFrom);
     if (parenIdx < 0) break;
 

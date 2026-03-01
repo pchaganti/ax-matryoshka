@@ -196,14 +196,19 @@ export class SymbolExtractor {
     if (this.symbolIdCounter >= Number.MAX_SAFE_INTEGER - 1) return null;
     this.symbolIdCounter++;
 
+    const startRow = node.startPosition?.row;
+    const endRow = node.endPosition?.row;
+    const startColumn = node.startPosition?.column;
+    const endColumn = node.endPosition?.column;
+
     return {
       id: this.symbolIdCounter,
       name,
       kind,
-      startLine: node.startPosition?.row != null ? node.startPosition.row + 1 : 1,
-      endLine: node.endPosition?.row != null ? node.endPosition.row + 1 : 1,
-      startCol: node.startPosition?.column ?? 0,
-      endCol: node.endPosition?.column ?? 0,
+      startLine: typeof startRow === "number" && Number.isFinite(startRow) ? startRow + 1 : 1,
+      endLine: typeof endRow === "number" && Number.isFinite(endRow) ? endRow + 1 : 1,
+      startCol: typeof startColumn === "number" && Number.isFinite(startColumn) ? startColumn : 0,
+      endCol: typeof endColumn === "number" && Number.isFinite(endColumn) ? endColumn : 0,
       signature: this.getSignature(node, language),
       parentSymbolId: parentId,
     };
@@ -247,14 +252,19 @@ export class SymbolExtractor {
 
     this.symbolIdCounter++;
 
+    const goStartRow = node.startPosition?.row;
+    const goEndRow = node.endPosition?.row;
+    const goStartCol = node.startPosition?.column;
+    const goEndCol = node.endPosition?.column;
+
     return {
       id: this.symbolIdCounter,
       name,
       kind,
-      startLine: node.startPosition?.row != null ? node.startPosition.row + 1 : 1,
-      endLine: node.endPosition?.row != null ? node.endPosition.row + 1 : 1,
-      startCol: node.startPosition?.column ?? 0,
-      endCol: node.endPosition?.column ?? 0,
+      startLine: typeof goStartRow === "number" && Number.isFinite(goStartRow) ? goStartRow + 1 : 1,
+      endLine: typeof goEndRow === "number" && Number.isFinite(goEndRow) ? goEndRow + 1 : 1,
+      startCol: typeof goStartCol === "number" && Number.isFinite(goStartCol) ? goStartCol : 0,
+      endCol: typeof goEndCol === "number" && Number.isFinite(goEndCol) ? goEndCol : 0,
       parentSymbolId: parentId,
     };
   }

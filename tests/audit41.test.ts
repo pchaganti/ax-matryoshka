@@ -65,10 +65,10 @@ describe("Audit #41", () => {
     it("should check isFinite in evaluateWithBinding add", () => {
       const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
       // Find the second add case (in evaluateWithBinding)
-      const allAddCases = source.match(/case "add":\s*\{[\s\S]*?return left \+ right[\s\S]*?case "add":\s*\{[\s\S]*?return left \+ right/);
+      const allAddCases = source.match(/case "add":\s*\{[\s\S]*?(?:return left \+ right|addResult.*left \+ right)[\s\S]*?case "add":\s*\{[\s\S]*?(?:return left \+ right|addResult.*left \+ right)/);
       expect(allAddCases).not.toBeNull();
       // The second add case should also have isFinite
-      const secondAdd = allAddCases![0].match(/case "add":\s*\{[\s\S]*?return left \+ right$/);
+      const secondAdd = allAddCases![0].match(/case "add":\s*\{[\s\S]*?(?:return left \+ right|addResult.*left \+ right)$/);
       expect(secondAdd).not.toBeNull();
       expect(secondAdd![0]).toMatch(/isFinite|Number\.isFinite/);
     });

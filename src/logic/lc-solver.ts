@@ -984,7 +984,9 @@ function evaluateWithBinding(
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
         : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
+      const MAX_EVAL_SPLIT_PARTS = 10_000;
       const parts = str.split(body.delim);
+      if (parts.length > MAX_EVAL_SPLIT_PARTS) return null;
       return parts[body.index] ?? null;
     }
 
@@ -1009,7 +1011,8 @@ function evaluateWithBinding(
       if (!Number.isFinite(left) || !Number.isFinite(right)) {
         return null;
       }
-      return left + right;
+      const addResult = left + right;
+      return Number.isFinite(addResult) ? addResult : null;
     }
 
     case "parseDate": {
@@ -1436,10 +1439,23 @@ function parseNumber(str: string): number | null {
 
   const cleaned = str.trim();
 
-  // Handle percentage
+  // Handle percentage — strip iteratively to avoid recursive stack overflow
   if (cleaned.endsWith("%")) {
-    const num = parseNumber(cleaned.slice(0, -1));
-    return num !== null ? num / 100 : null;
+    let pct = cleaned;
+    let percentCount = 0;
+    const MAX_PERCENT_DEPTH = 10;
+    while (pct.endsWith("%") && percentCount < MAX_PERCENT_DEPTH) {
+      pct = pct.slice(0, -1);
+      percentCount++;
+    }
+    if (pct.endsWith("%")) return null; // too many nested %
+    const num = parseNumber(pct);
+    if (num === null) return null;
+    let result = num;
+    for (let i = 0; i < percentCount; i++) {
+      result = result / 100;
+    }
+    return Number.isFinite(result) ? result : null;
   }
 
   // Handle scientific notation

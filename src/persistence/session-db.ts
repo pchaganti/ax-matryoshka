@@ -422,6 +422,7 @@ export class SessionDB {
    */
   deleteCheckpoint(turn: number): void {
     if (!this.db) return;
+    if (!Number.isSafeInteger(turn) || turn < 0) return;
     const stmt = this.db.prepare("DELETE FROM checkpoints WHERE turn = ?");
     stmt.run(turn);
   }
@@ -489,6 +490,7 @@ export class SessionDB {
    */
   getSymbol(id: number): Symbol | null {
     if (!this.db) return null;
+    if (!Number.isSafeInteger(id)) return null;
     const stmt = this.db.prepare(`
       SELECT id, name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId
       FROM symbols WHERE id = ?
