@@ -197,7 +197,7 @@ export class PredicateCompiler {
    */
   toSQLCondition(predicate: string): { sql: string; params: unknown[] } | null {
     // Simple equality: item.field === 'value' or item.field === "value"
-    const eqMatch = predicate.match(/^item\.(\w+)\s*===?\s*(['"])([^'"]*)\2\s*$/);
+    const eqMatch = predicate.match(/^item\.(\w+)\s*===?\s*(['"])([^'"\n\r]*)\2\s*$/);
     if (eqMatch) {
       const field = eqMatch[1];
       const value = eqMatch[3];
@@ -206,7 +206,7 @@ export class PredicateCompiler {
     }
 
     // Also match double-quoted values containing single quotes: item.field === "O'Reilly"
-    const eqMatchDQ = predicate.match(/^item\.(\w+)\s*===?\s*"([^"]*)"\s*$/);
+    const eqMatchDQ = predicate.match(/^item\.(\w+)\s*===?\s*"([^"\n\r]*)"\s*$/);
     if (eqMatchDQ) {
       const [, field, value] = eqMatchDQ;
       if (!this.isValidFieldName(field)) return null;
@@ -214,7 +214,7 @@ export class PredicateCompiler {
     }
 
     // String includes: item.field.includes('value')
-    const includesMatch = predicate.match(/^item\.(\w+)\.includes\s*\(\s*['"]([^'"]+)['"]\s*\)$/);
+    const includesMatch = predicate.match(/^item\.(\w+)\.includes\s*\(\s*['"]([^'"\n\r]+)['"]\s*\)$/);
     if (includesMatch) {
       const [, field, value] = includesMatch;
       if (!this.isValidFieldName(field)) return null;

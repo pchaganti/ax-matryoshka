@@ -76,7 +76,9 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
       const str = evalExtractor(extractor.str, input);
       if (typeof str !== "string") return null;
 
+      const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(extractor.delim);
+      if (parts.length > MAX_SPLIT_PARTS) return null;
       if (!Number.isInteger(extractor.index) || extractor.index < 0 || extractor.index >= parts.length) return null;
       return parts[extractor.index];
     }

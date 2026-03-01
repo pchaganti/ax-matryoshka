@@ -45,9 +45,12 @@ export function unsweeten(x: Term, depth: number = 0): Term {
   else return x;
 }
 
+const MAX_ARRAY_LENGTH = 5000;
+
 function unsweetenArray(xs: Term[], depth: number = 0): Term {
   if (depth > MAX_SUGAR_DEPTH) return NIL;
   if (xs.length === 0) return NIL;
+  if (xs.length > MAX_ARRAY_LENGTH) return NIL;
   else return cons(unsweeten(xs[0], depth + 1), unsweetenArray(xs.slice(1), depth + 1));
 }
 
@@ -73,8 +76,11 @@ function isPair(x: Term) {
 
 // Here we only re-sugar a cons-pair as a JavaScript array if it
 // represents a proper list.
-function sweetenPair(p: Pair<any, any>, depth: number = 0): Term {
+const MAX_LIST_LENGTH = 5000;
+
+function sweetenPair(p: Pair<any, any>, depth: number = 0, listLen: number = 0): Term {
   if (depth > MAX_SUGAR_DEPTH) return p;
+  if (listLen > MAX_LIST_LENGTH) return p;
   const f = sweeten(first(p), depth + 1);
   const r = sweeten(rest(p), depth + 1);
   return Array.isArray(r) ? [f, ...r] : cons(f, r);

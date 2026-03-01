@@ -816,6 +816,7 @@ function evaluate(
 
       // Use word boundary matching to find whole-word references
       const escaped = term.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (escaped.length > 1000) return [];
       const pattern = `\\b${escaped}\\b`;
       const patternValidation = validateRegex(pattern);
       if (!patternValidation.valid) {

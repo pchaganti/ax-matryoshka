@@ -373,7 +373,7 @@ export class SessionDB {
    */
   saveCheckpoint(turn: number, bindings: Map<string, string>): void {
     if (!this.db) return;
-    if (!Number.isInteger(turn) || turn < 0) {
+    if (!Number.isSafeInteger(turn) || turn < 0) {
       throw new Error("Turn must be a non-negative integer");
     }
     const bindingsJson = JSON.stringify(Object.fromEntries(bindings));
@@ -446,6 +446,12 @@ export class SessionDB {
     if (!this.db) throw new Error("Database not open");
     if (!Number.isFinite(symbol.startLine) || !Number.isFinite(symbol.endLine)) {
       throw new Error("Invalid line numbers");
+    }
+    if (symbol.startCol != null && !Number.isFinite(symbol.startCol)) {
+      throw new Error("Invalid column numbers");
+    }
+    if (symbol.endCol != null && !Number.isFinite(symbol.endCol)) {
+      throw new Error("Invalid column numbers");
     }
 
     const stmt = this.db.prepare(`

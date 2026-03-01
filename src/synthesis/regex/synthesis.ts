@@ -109,6 +109,8 @@ export function nodeToRegex(node: RegexNode): string {
         return `${wrapped}+`;
       } else if (node.min === 0 && node.max === 1) {
         return `${wrapped}?`;
+      } else if (node.min > 1000 || (node.max !== Infinity && node.max > 1000)) {
+        return wrapped; // Cap unreasonable quantifier bounds
       } else if (node.min === node.max) {
         return `${wrapped}{${node.min}}`;
       } else if (node.max === Infinity) {

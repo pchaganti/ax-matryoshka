@@ -79,7 +79,7 @@ export function compile(extractor: Extractor): string {
       const condCode = compile(extractor.cond);
       const thenCode = compile(extractor.then);
       const elseCode = compile(extractor.else);
-      return `(${condCode}) ? (${thenCode}) : (${elseCode})`;
+      return `((_c) => (_c === null || _c === "" || _c === 0 || _c === false || (typeof _c === "number" && isNaN(_c))) ? (${elseCode}) : (${thenCode}))(${condCode})`;
     }
 
     default:
