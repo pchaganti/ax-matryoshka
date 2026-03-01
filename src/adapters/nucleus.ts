@@ -69,7 +69,12 @@ function validateCollectionName(name: unknown): string | null {
 }
 
 /** Escape a string for embedding in an S-expression string literal */
+const MAX_ESCAPE_INPUT_LENGTH = 100_000;
+
 function escapeForSexp(s: string): string {
+  if (s.length > MAX_ESCAPE_INPUT_LENGTH) {
+    s = s.slice(0, MAX_ESCAPE_INPUT_LENGTH);
+  }
   return s
     .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')

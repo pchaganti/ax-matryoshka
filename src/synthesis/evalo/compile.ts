@@ -30,7 +30,7 @@ export function compile(extractor: Extractor): string {
       if (!matchValidation.valid) return "null";
       if (!Number.isInteger(extractor.group) || extractor.group < 0) return "null";
       const strCode = compile(extractor.str);
-      return `(${strCode}).match(new RegExp(${JSON.stringify(extractor.pattern)}))?.[${extractor.group}] ?? null`;
+      return `((_s) => typeof _s !== "string" ? null : _s.match(new RegExp(${JSON.stringify(extractor.pattern)}))?.[${extractor.group}] ?? null)(${strCode})`;
     }
 
     case "replace": {

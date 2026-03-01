@@ -157,8 +157,12 @@ function generateClassifierGuidance(
   // First, try to find and parse multi-line JSON
   const fullLog = logs.join("\n");
 
+  // Cap fullLog length before regex match to prevent ReDoS on huge logs
+  const MAX_LOG_SEARCH = 100_000;
+  const searchLog = fullLog.length > MAX_LOG_SEARCH ? fullLog.slice(0, MAX_LOG_SEARCH) : fullLog;
+
   // Look for JSON array pattern in the combined logs
-  const jsonMatch = fullLog.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+  const jsonMatch = searchLog.match(/\[\s*\{[\s\S]*?\}\s*\]/);
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0]);

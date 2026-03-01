@@ -350,7 +350,10 @@ function parseExamplesKeyword(state: ParserState): Array<{ input: string; output
 /**
  * Parse a single term
  */
-function parseTerm(state: ParserState): LCTerm | null {
+const MAX_PARSE_DEPTH = 200;
+
+function parseTerm(state: ParserState, depth: number = 0): LCTerm | null {
+  if (depth > MAX_PARSE_DEPTH) return null;
   const token = peek(state);
   if (!token) return null;
 

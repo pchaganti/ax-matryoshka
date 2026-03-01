@@ -82,8 +82,14 @@ function sweetenPair(p: Pair<any, any>, depth: number = 0, listLen: number = 0):
   if (depth > MAX_SUGAR_DEPTH) return p;
   if (listLen > MAX_LIST_LENGTH) return p;
   const f = sweeten(first(p), depth + 1);
-  const r = sweeten(rest(p), depth + 1);
-  return Array.isArray(r) ? [f, ...r] : cons(f, r);
+  const r = rest(p);
+  if (r === NIL) return [f];
+  if (isPair(r)) {
+    const sweetR = sweetenPair(r as Pair<any, any>, depth + 1, listLen + 1);
+    return Array.isArray(sweetR) ? [f, ...sweetR] : cons(f, sweeten(r, depth + 1));
+  }
+  const sweetR = sweeten(r, depth + 1);
+  return Array.isArray(sweetR) ? [f, ...sweetR] : cons(f, sweetR);
 }
 
 function sweetenComp(x: CompoundTerm, depth: number = 0): Term {

@@ -314,7 +314,7 @@ export class SymbolExtractor {
       if (!node.text || typeof node.text !== "string") return undefined;
       if (node.text.length > 50_000) return undefined;
       const text = node.text;
-      const lines = text.split("\n");
+      const lines = text.split("\n", 50);
       if (lines.length > 0) {
         let firstLine = lines[0];
         // Clean up the signature

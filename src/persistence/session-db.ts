@@ -444,6 +444,14 @@ export class SessionDB {
    */
   storeSymbol(symbol: Omit<Symbol, "id">): number {
     if (!this.db) throw new Error("Database not open");
+    const MAX_NAME_LENGTH = 10_000;
+    const MAX_SIGNATURE_LENGTH = 50_000;
+    if (typeof symbol.name !== "string" || symbol.name.length > MAX_NAME_LENGTH) {
+      throw new Error("Invalid or too-long symbol name");
+    }
+    if (symbol.signature != null && (typeof symbol.signature !== "string" || symbol.signature.length > MAX_SIGNATURE_LENGTH)) {
+      throw new Error("Invalid or too-long signature");
+    }
     if (!Number.isFinite(symbol.startLine) || !Number.isFinite(symbol.endLine)) {
       throw new Error("Invalid line numbers");
     }
@@ -452,6 +460,9 @@ export class SessionDB {
     }
     if (symbol.endCol != null && !Number.isFinite(symbol.endCol)) {
       throw new Error("Invalid column numbers");
+    }
+    if (symbol.parentSymbolId != null && !Number.isFinite(symbol.parentSymbolId)) {
+      throw new Error("Invalid parentSymbolId");
     }
 
     const stmt = this.db.prepare(`

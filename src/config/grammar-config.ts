@@ -87,9 +87,19 @@ export function getCustomGrammars(): Record<string, GrammarConfig> {
  */
 const DANGEROUS_LANG_NAMES = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
 
+const MAX_EXTENSIONS = 50;
+
 export function addCustomGrammar(language: string, grammar: GrammarConfig): void {
   if (DANGEROUS_LANG_NAMES.has(language) || !/^[a-zA-Z0-9_-]+$/.test(language)) {
     throw new Error(`Invalid language name: '${language}'`);
+  }
+  if (!Array.isArray(grammar.extensions) || grammar.extensions.length === 0 || grammar.extensions.length > MAX_EXTENSIONS) {
+    throw new Error(`Extensions must be a non-empty array with at most ${MAX_EXTENSIONS} entries`);
+  }
+  for (const ext of grammar.extensions) {
+    if (typeof ext !== "string" || !/^\.[a-zA-Z0-9_-]+$/.test(ext)) {
+      throw new Error(`Invalid extension format: '${ext}'`);
+    }
   }
   const config = loadConfig();
   config.grammars = config.grammars ?? {};
