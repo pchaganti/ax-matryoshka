@@ -146,13 +146,13 @@ export function prettyPrint(extractor: Extractor): string {
       return `match(${prettyPrint(extractor.str)}, /${extractor.pattern}/, ${extractor.group})`;
 
     case "replace":
-      return `replace(${prettyPrint(extractor.str)}, "${extractor.from}", "${extractor.to}")`;
+      return `replace(${prettyPrint(extractor.str)}, ${JSON.stringify(extractor.from)}, ${JSON.stringify(extractor.to)})`;
 
     case "slice":
       return `slice(${prettyPrint(extractor.str)}, ${extractor.start}, ${extractor.end})`;
 
     case "split":
-      return `split(${prettyPrint(extractor.str)}, "${extractor.delim}", ${extractor.index})`;
+      return `split(${prettyPrint(extractor.str)}, ${JSON.stringify(extractor.delim)}, ${extractor.index})`;
 
     case "parseInt":
       return `parseInt(${prettyPrint(extractor.str)})`;

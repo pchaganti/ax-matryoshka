@@ -178,10 +178,14 @@ Error: ${failure.error}
    * @param record - The failure to record
    */
   recordFailure(record: FailureRecord): void {
-    // Cap code length to prevent memory exhaustion
+    // Cap code and error length to prevent memory exhaustion
     const MAX_CODE_LENGTH = 10_000;
+    const MAX_ERROR_LENGTH = 2_000;
     if (record.code && record.code.length > MAX_CODE_LENGTH) {
       record = { ...record, code: record.code.slice(0, MAX_CODE_LENGTH) };
+    }
+    if (record.error && record.error.length > MAX_ERROR_LENGTH) {
+      record = { ...record, error: record.error.slice(0, MAX_ERROR_LENGTH) };
     }
 
     // Auto-prune stale failures older than 10 minutes before adding

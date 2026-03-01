@@ -76,6 +76,7 @@ function buildExtensionMap(): Map<string, string> {
 
   for (const [lang, config] of Object.entries(configs)) {
     for (const ext of config.extensions) {
+      if (typeof ext !== "string") continue;
       map.set(ext.toLowerCase(), lang);
     }
   }
@@ -114,9 +115,12 @@ export function getLanguageForExtension(ext: string): SupportedLanguage | null {
 /**
  * Get the language configuration for a language
  */
+const DANGEROUS_CONFIG_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
+
 export function getLanguageConfig(language: string): LanguageConfig | null {
+  if (DANGEROUS_CONFIG_KEYS.has(language)) return null;
   const configs = getAllLanguageConfigs();
-  return configs[language] ?? null;
+  return Object.hasOwn(configs, language) ? configs[language] : null;
 }
 
 /**

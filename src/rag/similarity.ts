@@ -140,7 +140,10 @@ export function keywordMatchScore(
 
   // Score: full matches count more than partial
   const totalKeywords = keywordSet.size || 1;
-  return (matches * 2 + partialMatches) / (totalKeywords + queryTokens.length);
+  const denominator = totalKeywords + queryTokens.length;
+  if (denominator === 0) return 0;
+  const score = (matches * 2 + partialMatches) / denominator;
+  return Number.isFinite(score) ? score : 0;
 }
 
 /**

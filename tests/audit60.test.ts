@@ -43,7 +43,7 @@ describe("Audit #60", () => {
       const source = readFileSync("src/persistence/session-db.ts", "utf-8");
       const fnStart = source.indexOf("storeSymbol(");
       expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 900);
+      const block = source.slice(fnStart, fnStart + 1200);
       expect(block).toMatch(/isFinite.*startCol|startCol.*isFinite|isFinite.*Col/i);
     });
   });

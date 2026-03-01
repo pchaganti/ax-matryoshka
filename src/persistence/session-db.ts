@@ -453,7 +453,11 @@ export class SessionDB {
     if (symbol.signature != null && (typeof symbol.signature !== "string" || symbol.signature.length > MAX_SIGNATURE_LENGTH)) {
       throw new Error("Invalid or too-long signature");
     }
-    if (!Number.isFinite(symbol.startLine) || !Number.isFinite(symbol.endLine)) {
+    const VALID_KINDS = new Set(["function", "method", "class", "interface", "type", "struct", "variable", "constant", "property", "enum", "module", "namespace", "trait"]);
+    if (typeof symbol.kind !== "string" || !VALID_KINDS.has(symbol.kind)) {
+      throw new Error("Invalid symbol kind");
+    }
+    if (!Number.isFinite(symbol.startLine) || !Number.isFinite(symbol.endLine) || symbol.startLine < 1 || symbol.endLine < 1) {
       throw new Error("Invalid line numbers");
     }
     if (symbol.startCol != null && !Number.isFinite(symbol.startCol)) {

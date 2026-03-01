@@ -93,7 +93,7 @@ describe("Audit #62", () => {
       const source = readFileSync("src/config/grammar-config.ts", "utf-8");
       const fnStart = source.indexOf("function addCustomGrammar(");
       expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 1000);
+      const block = source.slice(fnStart, fnStart + 1200);
       expect(block).toMatch(/symbols.*keys|Object\.keys.*symbols|MAX_SYMBOLS/i);
     });
   });

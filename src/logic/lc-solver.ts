@@ -993,7 +993,7 @@ function evaluateWithBinding(
     case "parseInt": {
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const intResult = parseInt(String(str), 10);
-      return isNaN(intResult) || !isFinite(intResult) ? null : intResult;
+      return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {

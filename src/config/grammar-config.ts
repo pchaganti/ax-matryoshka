@@ -106,7 +106,7 @@ export function addCustomGrammar(language: string, grammar: GrammarConfig): void
   if (typeof grammar.package !== "string" || grammar.package.length === 0 || grammar.package.length > 256 || !/^[@a-zA-Z0-9][\w./@-]*$/.test(grammar.package)) {
     throw new Error(`Invalid package name: '${grammar.package}'`);
   }
-  if (grammar.symbols && typeof grammar.symbols === "object") {
+  if (grammar.symbols && typeof grammar.symbols === "object" && !Array.isArray(grammar.symbols)) {
     const symbolKeys = Object.keys(grammar.symbols);
     if (symbolKeys.length > MAX_SYMBOLS) {
       throw new Error(`Too many symbol mappings: ${symbolKeys.length} (max ${MAX_SYMBOLS})`);

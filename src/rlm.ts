@@ -374,7 +374,9 @@ export function extractFinalAnswer(
       if (parsed.answer) return typeof parsed.answer === "string" ? parsed.answer : String(parsed.answer);
       // Check for any field that looks like a final value (case-insensitive)
       const valueFields = ['total', 'result', 'value', 'totalsales', 'total_sales', 'count', 'sum', 'answer', 'totals'];
+      const MAX_JSON_KEYS = 1000;
       const keys = Object.keys(parsed);
+      if (keys.length > MAX_JSON_KEYS) return null;
       const foundKey = keys.find(k => valueFields.includes(k.toLowerCase().replace(/_/g, '')));
 
       if (foundKey !== undefined) {
