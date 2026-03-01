@@ -264,7 +264,9 @@ export function evaluate(
       }
       if (!Number.isInteger(term.index) || term.index < 0) return null;
       if (!term.delim.length) return null;
+      const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(term.delim);
+      if (parts.length > MAX_SPLIT_PARTS) return null;
       return parts[term.index] ?? null;
     }
 
@@ -274,7 +276,7 @@ export function evaluate(
         throw new Error(`parseInt: expected string or number, got ${typeof str}`);
       }
       const intResult = parseInt(String(str), 10);
-      return isNaN(intResult) || !isFinite(intResult) ? null : intResult;
+      return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {

@@ -446,14 +446,16 @@ function evaluate(
       }
       if (!Number.isInteger(term.index) || term.index < 0) return null;
       if (!term.delim || term.delim.length === 0) return null;
+      const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(term.delim);
+      if (parts.length > MAX_SPLIT_PARTS) return null;
       return parts[term.index] ?? null;
     }
 
     case "parseInt": {
       const str = evaluate(term.str, tools, bindings, log, depth + 1);
       const intResult = parseInt(String(str), 10);
-      return isNaN(intResult) || !isFinite(intResult) ? null : intResult;
+      return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {

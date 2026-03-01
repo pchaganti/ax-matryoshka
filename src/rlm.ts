@@ -27,7 +27,11 @@ import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } fr
  * These are the same tools the sandbox provides, but standalone for the solver
  */
 function createSolverTools(context: string): SolverTools {
-  const lines = context.split("\n");
+  const MAX_SOLVER_LINES = 500_000;
+  let lines = context.split("\n");
+  if (lines.length > MAX_SOLVER_LINES) {
+    lines = lines.slice(0, MAX_SOLVER_LINES);
+  }
 
   // Pre-compute text stats
   const textStats = {

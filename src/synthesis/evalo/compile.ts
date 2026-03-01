@@ -50,6 +50,7 @@ export function compile(extractor: Extractor): string {
     }
 
     case "split": {
+      if (!extractor.delim || extractor.delim.length > 1000) return "null";
       const strCode = compile(extractor.str);
       const delim = escapeStringForLiteral(extractor.delim);
       const idx = extractor.index;

@@ -23,7 +23,10 @@ import { validateRegex } from "../../logic/lc-solver.js";
  * Evaluate an extractor on an input string
  * This is the forward mode - given extractor + input, compute output
  */
-export function evalExtractor(extractor: Extractor, input: string): Value {
+const MAX_EVAL_DEPTH = 100;
+
+export function evalExtractor(extractor: Extractor, input: string, depth: number = 0): Value {
+  if (depth > MAX_EVAL_DEPTH) return null;
   switch (extractor.tag) {
     case "input":
       return input;
@@ -32,7 +35,7 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
       return extractor.value;
 
     case "match": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
 
       const matchValidation = validateRegex(extractor.pattern);
@@ -49,7 +52,7 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
     }
 
     case "replace": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
 
       const replaceValidation = validateRegex(extractor.from);
@@ -65,7 +68,7 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
     }
 
     case "slice": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
       if (!Number.isSafeInteger(extractor.start) || extractor.start < 0) return null;
       if (!Number.isSafeInteger(extractor.end)) return null;
@@ -73,7 +76,7 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
     }
 
     case "split": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
 
       const MAX_SPLIT_PARTS = 10_000;
@@ -84,22 +87,22 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
     }
 
     case "parseInt": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (str === null) return null;
       const intResult = parseInt(String(str), 10);
       return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (str === null) return null;
       const floatResult = parseFloat(String(str));
       return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
     case "add": {
-      const left = evalExtractor(extractor.left, input);
-      const right = evalExtractor(extractor.right, input);
+      const left = evalExtractor(extractor.left, input, depth + 1);
+      const right = evalExtractor(extractor.right, input, depth + 1);
       if (typeof left !== "number" || typeof right !== "number" || isNaN(left) || isNaN(right)) return null;
       const result = left + right;
       if (!isFinite(result)) return null;
@@ -107,12 +110,12 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
     }
 
     case "if": {
-      const cond = evalExtractor(extractor.cond, input);
+      const cond = evalExtractor(extractor.cond, input, depth + 1);
       // Falsy: null, "", 0, false, NaN
       const isFalsy = cond === null || cond === "" || cond === 0 || cond === false || (typeof cond === "number" && isNaN(cond));
       return isFalsy
-        ? evalExtractor(extractor.else, input)
-        : evalExtractor(extractor.then, input);
+        ? evalExtractor(extractor.else, input, depth + 1)
+        : evalExtractor(extractor.then, input, depth + 1);
     }
   }
 }

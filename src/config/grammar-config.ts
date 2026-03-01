@@ -89,6 +89,8 @@ const DANGEROUS_LANG_NAMES = new Set(["__proto__", "constructor", "prototype", "
 
 const MAX_EXTENSIONS = 50;
 
+const MAX_SYMBOLS = 500;
+
 export function addCustomGrammar(language: string, grammar: GrammarConfig): void {
   if (DANGEROUS_LANG_NAMES.has(language) || !/^[a-zA-Z0-9_-]+$/.test(language)) {
     throw new Error(`Invalid language name: '${language}'`);
@@ -99,6 +101,15 @@ export function addCustomGrammar(language: string, grammar: GrammarConfig): void
   for (const ext of grammar.extensions) {
     if (typeof ext !== "string" || !/^\.[a-zA-Z0-9_-]+$/.test(ext)) {
       throw new Error(`Invalid extension format: '${ext}'`);
+    }
+  }
+  if (typeof grammar.package !== "string" || grammar.package.length === 0 || grammar.package.length > 256 || !/^[@a-zA-Z0-9][\w./@-]*$/.test(grammar.package)) {
+    throw new Error(`Invalid package name: '${grammar.package}'`);
+  }
+  if (grammar.symbols && typeof grammar.symbols === "object") {
+    const symbolKeys = Object.keys(grammar.symbols);
+    if (symbolKeys.length > MAX_SYMBOLS) {
+      throw new Error(`Too many symbol mappings: ${symbolKeys.length} (max ${MAX_SYMBOLS})`);
     }
   }
   const config = loadConfig();

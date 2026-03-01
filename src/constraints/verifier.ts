@@ -315,6 +315,9 @@ export function verifyInvariant(result: unknown, invariant: string): boolean {
  * Only allows basic comparisons and property access.
  */
 function isSafeInvariant(expr: string): boolean {
+  // Normalize Unicode to NFKC to prevent confusable bypasses (e.g. fullwidth chars)
+  expr = expr.normalize("NFKC");
+
   // Disallow dangerous patterns
   const dangerous = [
     /\bprocess\b/,
