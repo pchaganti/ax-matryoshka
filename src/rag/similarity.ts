@@ -164,7 +164,8 @@ export function combinedSimilarity(
   const keywordScore = keywordMatchScore(queryTokens, keywords);
 
   // Combine: weight keywords more heavily for small knowledge bases
-  return tfidfScore * 0.4 + keywordScore * 0.6;
+  const combined = tfidfScore * 0.4 + keywordScore * 0.6;
+  return Number.isFinite(combined) ? combined : 0;
 }
 
 /**

@@ -106,10 +106,24 @@ export function addCustomGrammar(language: string, grammar: GrammarConfig): void
   if (typeof grammar.package !== "string" || grammar.package.length === 0 || grammar.package.length > 256 || !/^[@a-zA-Z0-9][\w./@-]*$/.test(grammar.package)) {
     throw new Error(`Invalid package name: '${grammar.package}'`);
   }
+  if (grammar.moduleExport !== undefined) {
+    if (typeof grammar.moduleExport !== "string" || grammar.moduleExport.length === 0 || grammar.moduleExport.length > 256) {
+      throw new Error(`Invalid moduleExport: '${grammar.moduleExport}'`);
+    }
+    if (DANGEROUS_LANG_NAMES.has(grammar.moduleExport)) {
+      throw new Error(`Dangerous moduleExport name: '${grammar.moduleExport}'`);
+    }
+  }
+  const VALID_SYMBOL_KINDS = new Set(["function", "method", "class", "interface", "type", "struct", "variable", "constant", "property", "enum", "module", "namespace", "trait"]);
   if (grammar.symbols && typeof grammar.symbols === "object" && !Array.isArray(grammar.symbols)) {
     const symbolKeys = Object.keys(grammar.symbols);
     if (symbolKeys.length > MAX_SYMBOLS) {
       throw new Error(`Too many symbol mappings: ${symbolKeys.length} (max ${MAX_SYMBOLS})`);
+    }
+    for (const [key, value] of Object.entries(grammar.symbols)) {
+      if (typeof value !== "string" || !VALID_SYMBOL_KINDS.has(value)) {
+        throw new Error(`Invalid symbol kind for '${key}': '${value}'`);
+      }
     }
   }
   const config = loadConfig();

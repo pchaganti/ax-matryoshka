@@ -121,6 +121,7 @@ export class SymbolExtractor {
    * Recursively walk the syntax tree and extract symbols
    */
   private static readonly MAX_TREE_DEPTH = 200;
+  private static readonly MAX_SYMBOLS_COUNT = 100_000;
 
   private walkTree(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -132,6 +133,7 @@ export class SymbolExtractor {
     depth: number = 0
   ): void {
     if (depth > SymbolExtractor.MAX_TREE_DEPTH) return;
+    if (symbols.length >= SymbolExtractor.MAX_SYMBOLS_COUNT) return;
     let currentParentId = parentId;
 
     // Special case: Python - handle classes and methods correctly
@@ -205,10 +207,10 @@ export class SymbolExtractor {
       id: this.symbolIdCounter,
       name,
       kind,
-      startLine: typeof startRow === "number" && Number.isFinite(startRow) ? startRow + 1 : 1,
-      endLine: typeof endRow === "number" && Number.isFinite(endRow) ? endRow + 1 : 1,
-      startCol: typeof startColumn === "number" && Number.isFinite(startColumn) ? startColumn : 0,
-      endCol: typeof endColumn === "number" && Number.isFinite(endColumn) ? endColumn : 0,
+      startLine: typeof startRow === "number" && Number.isFinite(startRow) ? Math.max(1, startRow + 1) : 1,
+      endLine: typeof endRow === "number" && Number.isFinite(endRow) ? Math.max(1, endRow + 1) : 1,
+      startCol: typeof startColumn === "number" && Number.isFinite(startColumn) ? Math.max(0, startColumn) : 0,
+      endCol: typeof endColumn === "number" && Number.isFinite(endColumn) ? Math.max(0, endColumn) : 0,
       signature: this.getSignature(node, language),
       parentSymbolId: parentId,
     };
@@ -261,10 +263,10 @@ export class SymbolExtractor {
       id: this.symbolIdCounter,
       name,
       kind,
-      startLine: typeof goStartRow === "number" && Number.isFinite(goStartRow) ? goStartRow + 1 : 1,
-      endLine: typeof goEndRow === "number" && Number.isFinite(goEndRow) ? goEndRow + 1 : 1,
-      startCol: typeof goStartCol === "number" && Number.isFinite(goStartCol) ? goStartCol : 0,
-      endCol: typeof goEndCol === "number" && Number.isFinite(goEndCol) ? goEndCol : 0,
+      startLine: typeof goStartRow === "number" && Number.isFinite(goStartRow) ? Math.max(1, goStartRow + 1) : 1,
+      endLine: typeof goEndRow === "number" && Number.isFinite(goEndRow) ? Math.max(1, goEndRow + 1) : 1,
+      startCol: typeof goStartCol === "number" && Number.isFinite(goStartCol) ? Math.max(0, goStartCol) : 0,
+      endCol: typeof goEndCol === "number" && Number.isFinite(goEndCol) ? Math.max(0, goEndCol) : 0,
       parentSymbolId: parentId,
     };
   }

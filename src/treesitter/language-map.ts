@@ -54,7 +54,7 @@ export function getAllLanguageConfigs(): Record<string, LanguageConfig> {
 
   // Merge custom grammars (overrides built-in)
   try {
-    const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
+    const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "hasOwnProperty", "toString", "valueOf", "toLocaleString", "isPrototypeOf", "propertyIsEnumerable"]);
     const custom = getCustomGrammars();
     for (const [lang, grammar] of Object.entries(custom)) {
       if (DANGEROUS_KEYS.has(lang)) continue;

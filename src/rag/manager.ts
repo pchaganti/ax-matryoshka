@@ -187,6 +187,9 @@ Error: ${failure.error}
     if (record.error && record.error.length > MAX_ERROR_LENGTH) {
       record = { ...record, error: record.error.slice(0, MAX_ERROR_LENGTH) };
     }
+    if (!Number.isFinite(record.timestamp) || record.timestamp < 0) {
+      record = { ...record, timestamp: Date.now() };
+    }
 
     // Auto-prune stale failures older than 10 minutes before adding
     const staleCutoff = Date.now() - 10 * 60 * 1000;

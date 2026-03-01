@@ -298,6 +298,10 @@ export function verifyInvariant(result: unknown, invariant: string): boolean {
   if (typeof invariant !== "string" || !invariant.trim()) {
     return false;
   }
+  const MAX_INVARIANT_LENGTH = 10_000;
+  if (invariant.length > MAX_INVARIANT_LENGTH) {
+    return false;
+  }
   // Safety: only allow safe expressions
   if (!isSafeInvariant(invariant)) {
     return false;

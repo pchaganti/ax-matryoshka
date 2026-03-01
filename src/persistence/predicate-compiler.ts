@@ -94,6 +94,10 @@ export class PredicateCompiler {
     if (!code || !code.trim()) {
       throw new Error("Empty predicate");
     }
+    const MAX_CODE_LENGTH = 10_000;
+    if (code.length > MAX_CODE_LENGTH) {
+      throw new Error(`Predicate too long (${code.length} chars, max ${MAX_CODE_LENGTH})`);
+    }
 
     // Check for dangerous patterns
     for (const pattern of DANGEROUS_PATTERNS) {

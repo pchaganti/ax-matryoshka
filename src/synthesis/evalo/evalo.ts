@@ -78,6 +78,7 @@ export function evalExtractor(extractor: Extractor, input: string, depth: number
     case "split": {
       const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
+      if (!extractor.delim || extractor.delim.length === 0) return null;
 
       const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(extractor.delim);
