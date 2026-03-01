@@ -193,6 +193,7 @@ export class SymbolExtractor {
     const name = this.getNodeName(node);
     if (!name) return null;
 
+    if (this.symbolIdCounter >= Number.MAX_SAFE_INTEGER - 1) return null;
     this.symbolIdCounter++;
 
     return {

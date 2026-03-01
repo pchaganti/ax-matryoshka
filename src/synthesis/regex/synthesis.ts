@@ -396,12 +396,17 @@ function analyzePosition(examples: string[], pos: number): { type: "fixed" | "cl
   return { type: "class", value: "any" };
 }
 
+const MAX_ANALYZE_EXAMPLES = 10_000;
+
 export function analyzeCharacters(examples: string[]): RegexNode | null {
   if (examples.length === 0) return null;
+  if (examples.length > MAX_ANALYZE_EXAMPLES) {
+    examples = examples.slice(0, MAX_ANALYZE_EXAMPLES);
+  }
 
   const lengths = examples.map((e) => e.length);
-  const minLen = Math.min(...lengths);
-  const maxLen = Math.max(...lengths);
+  const minLen = lengths.reduce((a, b) => Math.min(a, b), Infinity);
+  const maxLen = lengths.reduce((a, b) => Math.max(a, b), 0);
 
   // Fixed length - analyze each position
   if (minLen === maxLen) {

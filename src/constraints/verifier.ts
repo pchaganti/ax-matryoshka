@@ -295,6 +295,9 @@ function verifyObjectConstraint(
  * @returns true if invariant holds, false otherwise
  */
 export function verifyInvariant(result: unknown, invariant: string): boolean {
+  if (typeof invariant !== "string" || !invariant.trim()) {
+    return false;
+  }
   // Safety: only allow safe expressions
   if (!isSafeInvariant(invariant)) {
     return false;

@@ -144,7 +144,12 @@ function jsonToSexp(json: unknown): string | null {
  * Looks for S-expressions starting with ( or constrained terms starting with [
  * Falls back to JSON conversion if no S-expression found
  */
+const MAX_RESPONSE_PARSE_LENGTH = 1_000_000;
+
 function extractCode(response: string): string | null {
+  if (response.length > MAX_RESPONSE_PARSE_LENGTH) {
+    response = response.slice(0, MAX_RESPONSE_PARSE_LENGTH);
+  }
   // Also check for code blocks first (multi-line S-expressions)
   const codeBlockMatch = response.match(/```(?:lisp|scheme|sexp)?\n?([\s\S]*?)```/);
   if (codeBlockMatch) {

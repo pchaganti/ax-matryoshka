@@ -95,7 +95,9 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
     if (!delim || delim.length === 0) return null;
     const idx = args.index as number;
     if (!Number.isInteger(idx) || idx < 0) return null;
+    const MAX_SPLIT_PARTS = 10_000;
     const parts = input.split(delim);
+    if (parts.length > MAX_SPLIT_PARTS) return null;
     if (idx >= parts.length) return null;
     return parts[idx] ?? null;
   },

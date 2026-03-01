@@ -206,6 +206,9 @@ Error: ${failure.error}
     sessionId?: string,
     maxAge: number = 5 * 60 * 1000
   ): FailureRecord[] {
+    if (!Number.isFinite(maxAge) || maxAge < 0) {
+      maxAge = 5 * 60 * 1000;
+    }
     const cutoff = Date.now() - maxAge;
 
     return this.failureMemory.filter(f =>
@@ -276,7 +279,7 @@ Error: ${failure.error}
       parts.push(`
 **Failed Code:**
 \`\`\`javascript
-${failure.code.slice(0, 200).replace(/`/g, "\\`")}${failure.code.length > 200 ? "..." : ""}
+${(failure.code || "").slice(0, 200).replace(/`/g, "\\`")}${(failure.code?.length ?? 0) > 200 ? "..." : ""}
 \`\`\`
 **Error:** ${failure.error}
 

@@ -381,9 +381,12 @@ export function evaluate(
         if (typeof item === "number" && isFinite(item)) {
           total += item;
         } else if (typeof item === "object" && item !== null) {
-          // Try to extract numeric values from objects
-          const vals = Object.values(item as Record<string, unknown>);
-          for (const v of vals) {
+          // Try to extract numeric values from objects (cap property enumeration)
+          const MAX_PROPS = 1000;
+          const keys = Object.keys(item as Record<string, unknown>);
+          const limit = Math.min(keys.length, MAX_PROPS);
+          for (let j = 0; j < limit; j++) {
+            const v = (item as Record<string, unknown>)[keys[j]];
             if (typeof v === "number" && isFinite(v)) {
               total += v;
               break;

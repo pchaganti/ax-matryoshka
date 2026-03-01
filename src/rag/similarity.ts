@@ -201,11 +201,14 @@ export function buildSearchIndex(
 /**
  * Search the index and return ranked results
  */
+const MAX_TOP_K = 1000;
+
 export function searchIndex(
   index: SearchIndex,
   query: string,
   topK: number = 5
 ): Array<{ id: string; score: number }> {
+  topK = Math.max(1, Math.min(Math.floor(topK) || 5, MAX_TOP_K));
   const queryTokens = tokenize(query);
 
   const scores: Array<{ id: string; score: number }> = [];

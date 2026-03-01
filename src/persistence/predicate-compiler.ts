@@ -162,7 +162,10 @@ export class PredicateCompiler {
     // Loop to handle nested parentheses: ((a), b) -> strip inner first
     let stripped = code;
     let prev = "";
-    while (prev !== stripped) {
+    const MAX_STRIP_ITERATIONS = 100;
+    let iterations = 0;
+    while (prev !== stripped && iterations < MAX_STRIP_ITERATIONS) {
+      iterations++;
       prev = stripped;
       stripped = stripped.replace(/\([^()]*\)/g, "");
     }
