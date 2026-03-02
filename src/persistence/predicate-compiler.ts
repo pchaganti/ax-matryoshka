@@ -235,7 +235,9 @@ export class PredicateCompiler {
     if (numMatch) {
       const [, field, op, value] = numMatch;
       if (!this.isValidFieldName(field)) return null;
-      const sqlOp = op === "===" || op === "==" ? "=" : op === "!==" || op === "!=" ? "!=" : op;
+      const VALID_SQL_OPS: Record<string, string> = { "===": "=", "==": "=", "!==": "!=", "!=": "!=", "<": "<", ">": ">", "<=": "<=", ">=": ">=" };
+      const sqlOp = VALID_SQL_OPS[op];
+      if (!sqlOp) return null;
       const numValue = Number(value);
       if (!Number.isFinite(numValue)) return null;
       return { sql: `CAST(json_extract(data, '$.${field}') AS REAL) ${sqlOp} ?`, params: [numValue] };

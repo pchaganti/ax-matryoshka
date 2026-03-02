@@ -120,7 +120,12 @@ export class PipeAdapter {
       }
     };
 
+    const MAX_LINE_LENGTH = 10_000_000; // 10MB
     rl.on("line", (line) => {
+      if (line.length > MAX_LINE_LENGTH) {
+        this.output.write(JSON.stringify({ error: "Line too long" }) + "\n");
+        return;
+      }
       const trimmed = line.trim();
       if (!trimmed) {
         if (this.interactive) rl.prompt();

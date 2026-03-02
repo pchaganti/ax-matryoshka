@@ -174,12 +174,12 @@ export class EvolutionarySynthesizer {
         const m = s.match(new RegExp(${safePattern}));
         if (!m) return null;
         const r = parseInt((m[1] || m[0]).replace(/[,$]/g, ''), 10);
-        return isNaN(r) ? null : r;
+        return isNaN(r) || !Number.isSafeInteger(r) ? null : r;
       }`
       );
 
       // Direct parseInt for simple numbers (with NaN guard)
-      strategies.push(`(s) => { const r = parseInt(s.replace(/[^\\d.-]/g, ''), 10); return isNaN(r) ? null : r; }`);
+      strategies.push(`(s) => { const r = parseInt(s.replace(/[^\\d.-]/g, ''), 10); return isNaN(r) || !Number.isSafeInteger(r) ? null : r; }`);
 
       strategies.push(`(s) => { const r = parseFloat(s.replace(/[^\\d.-]/g, '')); return isNaN(r) || !isFinite(r) ? null : r; }`);
     } else if (typeof sampleOutput === "string") {

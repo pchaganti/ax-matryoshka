@@ -44,20 +44,22 @@ function customToConfig(language: string, custom: GrammarConfig): LanguageConfig
  * Get all language configurations (built-in + custom)
  * Custom configs override built-in ones with the same name
  */
+const DANGEROUS_LANG_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "hasOwnProperty", "toString", "valueOf", "toLocaleString", "isPrototypeOf", "propertyIsEnumerable"]);
+
 export function getAllLanguageConfigs(): Record<string, LanguageConfig> {
   const configs: Record<string, LanguageConfig> = {};
 
   // Add built-in grammars
   for (const [lang, builtin] of Object.entries(BUILTIN_GRAMMARS)) {
+    if (DANGEROUS_LANG_KEYS.has(lang)) continue;
     configs[lang] = builtinToConfig(lang, builtin);
   }
 
   // Merge custom grammars (overrides built-in)
   try {
-    const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "hasOwnProperty", "toString", "valueOf", "toLocaleString", "isPrototypeOf", "propertyIsEnumerable"]);
     const custom = getCustomGrammars();
     for (const [lang, grammar] of Object.entries(custom)) {
-      if (DANGEROUS_KEYS.has(lang)) continue;
+      if (DANGEROUS_LANG_KEYS.has(lang)) continue;
       configs[lang] = customToConfig(lang, grammar);
     }
   } catch {

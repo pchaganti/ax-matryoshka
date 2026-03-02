@@ -143,7 +143,7 @@ describe("Audit #66", () => {
   describe("#10 — getAllLanguageConfigs DANGEROUS_KEYS should include toString/valueOf", () => {
     it("should block hasOwnProperty/toString/valueOf in language keys", () => {
       const source = readFileSync("src/treesitter/language-map.ts", "utf-8");
-      const keysStart = source.indexOf("DANGEROUS_KEYS");
+      const keysStart = source.indexOf("DANGEROUS_LANG_KEYS");
       expect(keysStart).toBeGreaterThan(-1);
       const block = source.slice(keysStart, keysStart + 400);
       expect(block).toMatch(/hasOwnProperty|toString|valueOf/);

@@ -786,6 +786,9 @@ export class SynthesisIntegrator {
           const code = `(input) => ${exprToCode(program)}`;
           try {
             const generatedCode = exprToCode(program);
+            // Cap generated code length to prevent DoS
+            const MAX_GENERATED_CODE_LENGTH = 50_000;
+            if (generatedCode.length > MAX_GENERATED_CODE_LENGTH) continue;
             // Validate synthesized code before execution
             const dangerousPatterns = [
               /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,

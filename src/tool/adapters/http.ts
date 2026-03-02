@@ -587,7 +587,7 @@ Examples:
     } else if (args[i] === "--host" && args[i + 1]) {
       host = args[++i];
       // Validate host is a reasonable hostname/IP
-      if (!/^[a-zA-Z0-9._-]+$/.test(host)) {
+      if (!/^[a-zA-Z0-9._-]+$/.test(host) || host.length > 255) {
         console.error(`Invalid host: ${host}. Must be a valid hostname or IP address.`);
         process.exit(1);
       }

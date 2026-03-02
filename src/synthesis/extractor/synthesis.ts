@@ -66,8 +66,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Parse plain integer",
     inputPattern: /^\d+$/,
     outputType: "number",
-    code: "(s) => parseInt(s, 10)",
-    testFn: (s) => parseInt(s, 10),
+    code: "(s) => { const n = parseInt(s, 10); return Number.isSafeInteger(n) ? n : null; }",
+    testFn: (s) => { const n = parseInt(s, 10); return Number.isSafeInteger(n) ? n : null; },
   },
 
   // Integer with commas: 1,234,567 -> number
@@ -76,8 +76,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Parse integer with comma separators",
     inputPattern: /^[\d,]+$/,
     outputType: "number",
-    code: '(s) => parseInt(s.replace(/,/g, ""), 10)',
-    testFn: (s) => parseInt(s.replace(/,/g, ""), 10),
+    code: '(s) => { const n = parseInt(s.replace(/,/g, ""), 10); return Number.isSafeInteger(n) ? n : null; }',
+    testFn: (s) => { const n = parseInt(s.replace(/,/g, ""), 10); return Number.isSafeInteger(n) ? n : null; },
   },
 
   // Percentage: 50% -> 0.5

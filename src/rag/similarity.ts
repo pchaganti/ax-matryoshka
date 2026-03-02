@@ -234,6 +234,10 @@ export function searchIndex(
 
   // Sort by score descending and return top K
   return scores
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      if (b.score > a.score) return 1;
+      if (b.score < a.score) return -1;
+      return 0;
+    })
     .slice(0, topK);
 }

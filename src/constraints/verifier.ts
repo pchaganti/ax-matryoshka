@@ -188,6 +188,12 @@ function verifyStringConstraint(
     }
   }
 
+  // Validate minLength <= maxLength
+  if (constraint.minLength !== undefined && constraint.maxLength !== undefined && constraint.minLength > constraint.maxLength) {
+    errors.push(`${path} has invalid constraint: minLength (${constraint.minLength}) > maxLength (${constraint.maxLength})`);
+    return;
+  }
+
   // MinLength constraint
   if (constraint.minLength !== undefined && value.length < constraint.minLength) {
     errors.push(
@@ -383,8 +389,8 @@ function isSafeInvariant(expr: string): boolean {
     return false;
   }
 
-  // Reject unicode escape sequences that could bypass keyword checks
-  if (/\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\}/.test(expr)) {
+  // Reject unicode and hex escape sequences that could bypass keyword checks
+  if (/\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\}|\\x[\da-fA-F]{2}/.test(expr)) {
     return false;
   }
 
