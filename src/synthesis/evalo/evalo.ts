@@ -44,7 +44,7 @@ export function evalExtractor(extractor: Extractor, input: string, depth: number
         const regex = new RegExp(extractor.pattern);
         const match = str.match(regex);
         if (!match) return null;
-        if (!Number.isInteger(extractor.group) || extractor.group < 0) return null;
+        if (!Number.isInteger(extractor.group) || extractor.group < 0 || extractor.group > 99) return null;
         return match[extractor.group] ?? null;
       } catch {
         return null;

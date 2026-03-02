@@ -81,6 +81,7 @@ export class RAGManager {
    * @returns Array of hints sorted by relevance
    */
   getHints(query: string, topK: number = 2): Hint[] {
+    topK = Math.max(1, Math.min(Math.floor(topK) || 2, 100));
     const hints: Hint[] = [];
 
     // Get relevant expert examples
@@ -121,7 +122,11 @@ export class RAGManager {
 
     // Sort by score and limit
     return hints
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => {
+        if (b.score > a.score) return 1;
+        if (b.score < a.score) return -1;
+        return 0;
+      })
       .slice(0, topK);
   }
 

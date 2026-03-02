@@ -385,6 +385,7 @@ export async function createSandboxWithSynthesis(
      * grep - Fast regex search returning matches with line numbers
      */
     var MAX_GREP_RESULTS = 10000;
+    var MAX_GREP_ITERATIONS = 1000000;
     function grep(pattern, flags) {
       if (!pattern || typeof pattern !== "string") return [];
       if (pattern.length > 500) return [];
@@ -397,8 +398,10 @@ export async function createSandboxWithSynthesis(
       const regex = new RegExp(pattern, f);
       const results = [];
       let match;
+      var iterations = 0;
 
       while ((match = regex.exec(context)) !== null) {
+        if (++iterations >= MAX_GREP_ITERATIONS) break;
         const beforeMatch = context.slice(0, match.index);
         const lineNum = (beforeMatch.match(/\\n/g) || []).length + 1;
         const line = __linesArray[lineNum - 1] || '';

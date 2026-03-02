@@ -14,6 +14,11 @@ import { synthesizeProgram, exprToCode, testProgram, type Example } from "./rela
  * Rejects code containing dangerous patterns before evaluation.
  */
 function safeEvalSynthesized(code: string): (input: string) => unknown {
+  // Cap code length to prevent memory exhaustion during Function construction
+  const MAX_CODE_LENGTH = 50_000;
+  if (code.length > MAX_CODE_LENGTH) {
+    throw new Error(`Synthesized code too long (${code.length} chars, max ${MAX_CODE_LENGTH})`);
+  }
   // Block dangerous patterns in synthesized code
   const dangerous = [
     /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,

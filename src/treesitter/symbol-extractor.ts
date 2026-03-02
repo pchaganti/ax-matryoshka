@@ -203,12 +203,16 @@ export class SymbolExtractor {
     const startColumn = node.startPosition?.column;
     const endColumn = node.endPosition?.column;
 
+    const startLine = typeof startRow === "number" && Number.isFinite(startRow) ? Math.max(1, startRow + 1) : 1;
+    let endLine = typeof endRow === "number" && Number.isFinite(endRow) ? Math.max(1, endRow + 1) : 1;
+    if (endLine < startLine) endLine = startLine;
+
     return {
       id: this.symbolIdCounter,
       name,
       kind,
-      startLine: typeof startRow === "number" && Number.isFinite(startRow) ? Math.max(1, startRow + 1) : 1,
-      endLine: typeof endRow === "number" && Number.isFinite(endRow) ? Math.max(1, endRow + 1) : 1,
+      startLine,
+      endLine,
       startCol: typeof startColumn === "number" && Number.isFinite(startColumn) ? Math.max(0, startColumn) : 0,
       endCol: typeof endColumn === "number" && Number.isFinite(endColumn) ? Math.max(0, endColumn) : 0,
       signature: this.getSignature(node, language),

@@ -253,6 +253,10 @@ export class EvolutionarySynthesizer {
     code: string,
     examples: Array<{ input: string; output: unknown }>
   ): boolean {
+    // Cap code length to prevent memory exhaustion during Function construction
+    const MAX_CODE_LENGTH = 50_000;
+    if (code.length > MAX_CODE_LENGTH) return false;
+
     // Block dangerous patterns in synthesized code
     const DANGEROUS_PATTERNS = [
       /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,

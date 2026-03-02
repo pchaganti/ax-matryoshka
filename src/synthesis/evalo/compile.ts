@@ -23,12 +23,13 @@ export function compile(extractor: Extractor): string {
       if (typeof extractor.value === "string") {
         return JSON.stringify(extractor.value);
       }
+      if (typeof extractor.value === "number" && !Number.isFinite(extractor.value)) return "null";
       return String(extractor.value);
 
     case "match": {
       const matchValidation = validateRegex(extractor.pattern);
       if (!matchValidation.valid) return "null";
-      if (!Number.isInteger(extractor.group) || extractor.group < 0) return "null";
+      if (!Number.isInteger(extractor.group) || extractor.group < 0 || extractor.group > 99) return "null";
       const strCode = compile(extractor.str);
       return `((_s) => typeof _s !== "string" ? null : _s.match(new RegExp(${JSON.stringify(extractor.pattern)}))?.[${extractor.group}] ?? null)(${strCode})`;
     }
