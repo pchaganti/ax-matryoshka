@@ -165,6 +165,7 @@ export function evaluate(
       log(`Filtering ${collection.length} items`);
 
       // Apply predicate to each element
+      const MAX_FILTER_RESULTS = 100_000;
       const results: LCValue[] = [];
       for (const item of collection) {
         let result: LCValue;
@@ -184,6 +185,7 @@ export function evaluate(
         }
         if (result) {
           results.push(item);
+          if (results.length >= MAX_FILTER_RESULTS) break;
         }
       }
 
@@ -204,8 +206,11 @@ export function evaluate(
       log(`Mapping over ${collection.length} items`);
 
       // Apply transform to each element
+      const MAX_MAP_RESULTS = 100_000;
+      const limit = Math.min(collection.length, MAX_MAP_RESULTS);
       const results: LCValue[] = [];
-      for (const item of collection) {
+      for (let i = 0; i < limit; i++) {
+        const item = collection[i];
         let result: LCValue;
         if (typeof transform === "function") {
           // Native function (e.g., from classify)

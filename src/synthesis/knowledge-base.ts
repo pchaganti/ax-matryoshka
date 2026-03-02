@@ -212,9 +212,10 @@ export class KnowledgeBase {
     };
 
     // Mark parents as composable with the derived component
+    const MAX_COMPOSABLE_WITH = 100;
     for (const parent of parents) {
       const stored = this.components.get(parent.id);
-      if (stored) {
+      if (stored && stored.composableWith.length < MAX_COMPOSABLE_WITH) {
         stored.composableWith.push(derived.id);
       }
     }

@@ -224,7 +224,7 @@ export class EvolutionarySynthesizer {
       outputs.every((o) => typeof o === "number") &&
       inputs.every((i) => /^\d+$/.test(i))
     ) {
-      return "(s) => { const r = parseInt(s, 10); return isNaN(r) ? null : r; }";
+      return "(s) => { const r = parseInt(s, 10); return isNaN(r) || !Number.isSafeInteger(r) ? null : r; }";
     }
 
     // Check for currency pattern
@@ -232,7 +232,7 @@ export class EvolutionarySynthesizer {
       outputs.every((o) => typeof o === "number") &&
       inputs.every((i) => /^\$[\d,]+$/.test(i))
     ) {
-      return '(s) => { const r = parseInt(s.replace(/[$,]/g, ""), 10); return isNaN(r) ? null : r; }';
+      return '(s) => { const r = parseInt(s.replace(/[$,]/g, ""), 10); return isNaN(r) || !Number.isSafeInteger(r) ? null : r; }';
     }
 
     // Check for key:value pattern

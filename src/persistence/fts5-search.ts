@@ -194,6 +194,7 @@ export class FTS5Search {
    */
   private extractSearchTerms(query: string): string[] {
     // Remove FTS5 operators and extract plain terms
+    const MAX_EXTRACTED_TERMS = 100;
     const cleaned = query
       .replace(/\bAND\b/gi, " ")
       .replace(/\bOR\b/gi, " ")
@@ -204,7 +205,8 @@ export class FTS5Search {
 
     return cleaned
       .split(/\s+/)
-      .filter((t) => t.length > 0 && !/^\d+$/.test(t));
+      .filter((t) => t.length > 0 && !/^\d+$/.test(t))
+      .slice(0, MAX_EXTRACTED_TERMS);
   }
 
   /**

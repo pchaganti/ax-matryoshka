@@ -298,19 +298,19 @@ export class SynthesisIntegrator {
       code = `(s) => {
         const cleaned = s.replace(/[^0-9.]/g, '');
         const r = parseFloat(cleaned);
-        return isNaN(r) ? null : r;
+        return isNaN(r) || !isFinite(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s.replace(/[^0-9.]/g, "");
         const r = parseFloat(cleaned);
-        return isNaN(r) ? null : r;
+        return isNaN(r) || !isFinite(r) ? null : r;
       };
     } else if (hasEuFormat || (hasEuroSymbol && inputs.some((i) => i.includes(",")))) {
       // EU format: 1.234,56€
       code = `(s) => {
         const cleaned = s.replace(/[€$¥£\\s]/g, '').replace(/\\./g, '').replace(',', '.');
         const r = parseFloat(cleaned);
-        return isNaN(r) ? null : r;
+        return isNaN(r) || !isFinite(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s
@@ -318,7 +318,7 @@ export class SynthesisIntegrator {
           .replace(/\./g, "")
           .replace(",", ".");
         const r = parseFloat(cleaned);
-        return isNaN(r) ? null : r;
+        return isNaN(r) || !isFinite(r) ? null : r;
       };
     } else if (hasYenSymbol) {
       // Yen format: ¥123,456 (no decimals typically)
@@ -337,12 +337,12 @@ export class SynthesisIntegrator {
       code = `(s) => {
         const cleaned = s.replace(/[$€¥£,\\s]/g, '');
         const r = parseFloat(cleaned);
-        return isNaN(r) ? null : r;
+        return isNaN(r) || !isFinite(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s.replace(/[$€¥£,\s]/g, "");
         const r = parseFloat(cleaned);
-        return isNaN(r) ? null : r;
+        return isNaN(r) || !isFinite(r) ? null : r;
       };
     }
 

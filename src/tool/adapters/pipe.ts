@@ -121,6 +121,7 @@ export class PipeAdapter {
     };
 
     const MAX_LINE_LENGTH = 10_000_000; // 10MB
+    const MAX_QUEUE_SIZE = 10_000;
     rl.on("line", (line) => {
       if (line.length > MAX_LINE_LENGTH) {
         this.output.write(JSON.stringify({ error: "Line too long" }) + "\n");
@@ -129,6 +130,10 @@ export class PipeAdapter {
       const trimmed = line.trim();
       if (!trimmed) {
         if (this.interactive) rl.prompt();
+        return;
+      }
+      if (this.queue.length >= MAX_QUEUE_SIZE) {
+        this.output.write(JSON.stringify({ error: "Queue full" }) + "\n");
         return;
       }
       this.queue.push(trimmed);

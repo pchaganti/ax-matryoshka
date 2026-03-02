@@ -95,7 +95,7 @@ describe("Audit #68", () => {
       const source = readFileSync("src/tool/adapters/pipe.ts", "utf-8");
       const queuePush = source.indexOf("this.queue.push");
       expect(queuePush).toBeGreaterThan(-1);
-      const block = source.slice(queuePush - 300, queuePush);
+      const block = source.slice(queuePush - 500, queuePush);
       expect(block).toMatch(/MAX_LINE|line\.length|trimmed\.length/i);
     });
   });

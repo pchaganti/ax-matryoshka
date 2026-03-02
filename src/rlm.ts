@@ -262,6 +262,7 @@ export function buildSystemPrompt(
   contextLength: number,
   toolInterfaces: string
 ): string {
+  if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const formattedLength = contextLength.toLocaleString();
 
   return `You are a headless JavaScript runtime. You have NO EYES. You cannot read the document directly.

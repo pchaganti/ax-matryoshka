@@ -291,6 +291,8 @@ function verifyArrayConstraint(
 /**
  * Verify object constraints.
  */
+const MAX_PROPERTIES = 1000;
+
 function verifyObjectConstraint(
   value: Record<string, unknown>,
   constraint: OutputConstraint,
@@ -300,6 +302,10 @@ function verifyObjectConstraint(
 ): void {
   // Required properties
   if (constraint.required) {
+    if (constraint.required.length > MAX_PROPERTIES) {
+      errors.push(`${path} has too many required properties (${constraint.required.length}, max ${MAX_PROPERTIES})`);
+      return;
+    }
     for (const prop of constraint.required) {
       if (!Object.prototype.hasOwnProperty.call(value, prop)) {
         errors.push(`${path} is missing required property "${prop}"`);
@@ -309,7 +315,12 @@ function verifyObjectConstraint(
 
   // Property type constraints
   if (constraint.properties) {
-    for (const [prop, propConstraint] of Object.entries(constraint.properties)) {
+    const entries = Object.entries(constraint.properties);
+    if (entries.length > MAX_PROPERTIES) {
+      errors.push(`${path} has too many property constraints (${entries.length}, max ${MAX_PROPERTIES})`);
+      return;
+    }
+    for (const [prop, propConstraint] of entries) {
       if (Object.prototype.hasOwnProperty.call(value, prop)) {
         verifyOutputConstraint(
           value[prop],
