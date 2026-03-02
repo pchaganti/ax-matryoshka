@@ -141,7 +141,9 @@ export class KnowledgeBase {
           b.component.successCount / Math.max(1, b.component.usageCount);
         const aWeight = a.score * aSuccessRate;
         const bWeight = b.score * bSuccessRate;
-        return bWeight - aWeight;
+        if (bWeight > aWeight) return 1;
+        if (bWeight < aWeight) return -1;
+        return 0;
       })
       .map((c) => c.component);
   }

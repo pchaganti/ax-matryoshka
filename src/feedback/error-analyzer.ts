@@ -7,6 +7,9 @@
  * Calculate Levenshtein distance between two strings
  */
 export function levenshteinDistance(a: string, b: string): number {
+  const MAX_STR_LENGTH = 10_000;
+  if (a.length > MAX_STR_LENGTH) a = a.slice(0, MAX_STR_LENGTH);
+  if (b.length > MAX_STR_LENGTH) b = b.slice(0, MAX_STR_LENGTH);
   const matrix: number[][] = [];
 
   for (let i = 0; i <= b.length; i++) {
@@ -49,7 +52,11 @@ export function findSimilar(
       distance: levenshteinDistance(input.toLowerCase(), candidate.toLowerCase()),
     }))
     .filter(r => r.distance <= maxDistance)
-    .sort((a, b) => a.distance - b.distance)
+    .sort((a, b) => {
+      if (a.distance < b.distance) return -1;
+      if (a.distance > b.distance) return 1;
+      return 0;
+    })
     .slice(0, maxResults);
 
   return results;

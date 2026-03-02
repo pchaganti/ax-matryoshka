@@ -134,6 +134,16 @@ function verifyNumberConstraint(
     return;
   }
 
+  // Validate constraint bounds are finite
+  if (constraint.min !== undefined && !Number.isFinite(constraint.min)) {
+    errors.push(`${path} has invalid constraint: min is not finite`);
+    return;
+  }
+  if (constraint.max !== undefined && !Number.isFinite(constraint.max)) {
+    errors.push(`${path} has invalid constraint: max is not finite`);
+    return;
+  }
+
   // Validate min <= max
   if (constraint.min !== undefined && constraint.max !== undefined && constraint.min > constraint.max) {
     errors.push(`${path} has invalid constraint: min (${constraint.min}) > max (${constraint.max})`);
@@ -188,6 +198,16 @@ function verifyStringConstraint(
     }
   }
 
+  // Validate minLength/maxLength are non-negative integers
+  if (constraint.minLength !== undefined && (!Number.isInteger(constraint.minLength) || constraint.minLength < 0)) {
+    errors.push(`${path} has invalid constraint: minLength must be a non-negative integer`);
+    return;
+  }
+  if (constraint.maxLength !== undefined && (!Number.isInteger(constraint.maxLength) || constraint.maxLength < 0)) {
+    errors.push(`${path} has invalid constraint: maxLength must be a non-negative integer`);
+    return;
+  }
+
   // Validate minLength <= maxLength
   if (constraint.minLength !== undefined && constraint.maxLength !== undefined && constraint.minLength > constraint.maxLength) {
     errors.push(`${path} has invalid constraint: minLength (${constraint.minLength}) > maxLength (${constraint.maxLength})`);
@@ -219,6 +239,16 @@ function verifyArrayConstraint(
   path: string,
   depth: number = 0
 ): void {
+  // Validate minItems/maxItems are non-negative integers
+  if (constraint.minItems !== undefined && (!Number.isInteger(constraint.minItems) || constraint.minItems < 0)) {
+    errors.push(`${path} has invalid constraint: minItems must be a non-negative integer`);
+    return;
+  }
+  if (constraint.maxItems !== undefined && (!Number.isInteger(constraint.maxItems) || constraint.maxItems < 0)) {
+    errors.push(`${path} has invalid constraint: maxItems must be a non-negative integer`);
+    return;
+  }
+
   // Validate minItems <= maxItems
   if (constraint.minItems !== undefined && constraint.maxItems !== undefined && constraint.minItems > constraint.maxItems) {
     errors.push(`${path} has invalid constraint: minItems (${constraint.minItems}) > maxItems (${constraint.maxItems})`);

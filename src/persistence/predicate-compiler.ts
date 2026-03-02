@@ -203,6 +203,9 @@ export class PredicateCompiler {
    * Returns null if conversion is not possible.
    */
   toSQLCondition(predicate: string): { sql: string; params: unknown[] } | null {
+    const MAX_PREDICATE_LENGTH = 10_000;
+    if (!predicate || predicate.length > MAX_PREDICATE_LENGTH) return null;
+
     // Simple equality: item.field === 'value' or item.field === "value"
     const eqMatch = predicate.match(/^item\.(\w+)\s*===?\s*(['"])([^'"\n\r]*)\2\s*$/);
     if (eqMatch) {

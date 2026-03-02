@@ -125,7 +125,10 @@ export function compileToFunctionString(extractor: Extractor): string {
 /**
  * Escape special characters for use in a string literal
  */
+const MAX_ESCAPE_INPUT_LENGTH = 10_000;
+
 function escapeStringForLiteral(str: string): string {
+  if (str.length > MAX_ESCAPE_INPUT_LENGTH) str = str.slice(0, MAX_ESCAPE_INPUT_LENGTH);
   return str
     .replace(/\\/g, "\\\\")
     .replace(/\0/g, "\\0")

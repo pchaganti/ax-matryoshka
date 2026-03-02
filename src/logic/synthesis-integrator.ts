@@ -1004,7 +1004,8 @@ export class SynthesisIntegrator {
     }
 
     // Look for common substrings
-    const first = strings[0];
+    const MAX_SEARCH_LENGTH = 1000;
+    const first = strings[0].length > MAX_SEARCH_LENGTH ? strings[0].slice(0, MAX_SEARCH_LENGTH) : strings[0];
     for (let len = Math.min(10, first.length); len >= 3; len--) {
       for (let i = 0; i <= first.length - len; i++) {
         const substr = first.substring(i, i + len);
@@ -1065,7 +1066,9 @@ export class SynthesisIntegrator {
   private hashExamples(
     examples: Array<{ input: string; output: unknown }>
   ): string {
-    const str = examples.map((e) => `${e.input}:${e.output}`).join("|");
+    const MAX_HASH_INPUT_LENGTH = 100_000;
+    let str = examples.map((e) => `${e.input}:${e.output}`).join("|");
+    if (str.length > MAX_HASH_INPUT_LENGTH) str = str.slice(0, MAX_HASH_INPUT_LENGTH);
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
