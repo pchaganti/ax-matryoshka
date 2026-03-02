@@ -54,7 +54,8 @@ export class FTS5Search {
     const results = this.db.searchRaw(query);
 
     // Count occurrences of search terms in each result
-    const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+    const MAX_SEARCH_TERMS = 100;
+    const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0).slice(0, MAX_SEARCH_TERMS);
 
     // Pre-compute relevance scores to avoid recalculating per sort comparison
     const scores = new Map<SearchResult, number>();
@@ -67,7 +68,11 @@ export class FTS5Search {
     }
 
     return results.sort((a, b) => {
-      return (scores.get(b) ?? 0) - (scores.get(a) ?? 0);
+      const scoreB = scores.get(b) ?? 0;
+      const scoreA = scores.get(a) ?? 0;
+      if (scoreB > scoreA) return 1;
+      if (scoreB < scoreA) return -1;
+      return 0;
     });
   }
 
@@ -143,7 +148,8 @@ export class FTS5Search {
 
     // Handle alternation pattern: error|warning
     if (/^\w+(\|\w+)+$/.test(pattern)) {
-      const terms = pattern.split("|");
+      const MAX_ALTERNATION_TERMS = 100;
+      const terms = pattern.split("|").slice(0, MAX_ALTERNATION_TERMS);
       const ftsQuery = terms.map(t => `"${t}"`).join(" OR ");
       return this.search(ftsQuery);
     }

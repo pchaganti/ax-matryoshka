@@ -543,7 +543,7 @@ export function evaluate(
     }
 
     case "extract": {
-      if (!Number.isInteger(term.group) || term.group < 0) return null;
+      if (!Number.isInteger(term.group) || term.group < 0 || term.group > 99) return null;
       const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") return null;
       log(`Extracting pattern from string`);

@@ -14,7 +14,10 @@ import { validateRegex } from "../../logic/lc-solver.js";
  *
  * The generated code expects 'input' to be in scope.
  */
-export function compile(extractor: Extractor): string {
+const MAX_COMPILE_DEPTH = 100;
+
+export function compile(extractor: Extractor, depth: number = 0): string {
+  if (depth > MAX_COMPILE_DEPTH) return "null";
   switch (extractor.tag) {
     case "input":
       return "input";
@@ -30,14 +33,14 @@ export function compile(extractor: Extractor): string {
       const matchValidation = validateRegex(extractor.pattern);
       if (!matchValidation.valid) return "null";
       if (!Number.isInteger(extractor.group) || extractor.group < 0 || extractor.group > 99) return "null";
-      const strCode = compile(extractor.str);
+      const strCode = compile(extractor.str, depth + 1);
       return `((_s) => typeof _s !== "string" ? null : _s.match(new RegExp(${JSON.stringify(extractor.pattern)}))?.[${extractor.group}] ?? null)(${strCode})`;
     }
 
     case "replace": {
       const replaceValidation = validateRegex(extractor.from);
-      if (!replaceValidation.valid) return compile(extractor.str);
-      const strCode = compile(extractor.str);
+      if (!replaceValidation.valid) return compile(extractor.str, depth + 1);
+      const strCode = compile(extractor.str, depth + 1);
       // Escape $ as $$ for replacement string to prevent backreference injection
       const to = escapeStringForLiteral(extractor.to.replace(/\$/g, "$$$$"));
       return `((_s) => typeof _s !== "string" ? null : _s.replace(new RegExp(${JSON.stringify(extractor.from)}, "g"), "${to}"))(${strCode})`;
@@ -46,13 +49,13 @@ export function compile(extractor: Extractor): string {
     case "slice": {
       if (!Number.isSafeInteger(extractor.start) || !Number.isSafeInteger(extractor.end)) return "null";
       if (extractor.start < 0) return "null";
-      const strCode = compile(extractor.str);
+      const strCode = compile(extractor.str, depth + 1);
       return `((_s) => typeof _s !== "string" ? null : _s.slice(${extractor.start}, ${extractor.end}))(${strCode})`;
     }
 
     case "split": {
       if (!extractor.delim || extractor.delim.length > 1000) return "null";
-      const strCode = compile(extractor.str);
+      const strCode = compile(extractor.str, depth + 1);
       const delim = escapeStringForLiteral(extractor.delim);
       const idx = extractor.index;
       if (!Number.isInteger(idx) || idx < 0) {
@@ -62,25 +65,25 @@ export function compile(extractor: Extractor): string {
     }
 
     case "parseInt": {
-      const strCode = compile(extractor.str);
+      const strCode = compile(extractor.str, depth + 1);
       return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) || !Number.isSafeInteger(_r) ? null : _r; })(${strCode})`;
     }
 
     case "parseFloat": {
-      const strCode = compile(extractor.str);
+      const strCode = compile(extractor.str, depth + 1);
       return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${strCode})`;
     }
 
     case "add": {
-      const leftCode = compile(extractor.left);
-      const rightCode = compile(extractor.right);
+      const leftCode = compile(extractor.left, depth + 1);
+      const rightCode = compile(extractor.right, depth + 1);
       return `((_l, _r) => (typeof _l !== "number" || typeof _r !== "number" || isNaN(_l) || isNaN(_r)) ? null : (isFinite(_l + _r) ? _l + _r : null))(${leftCode}, ${rightCode})`;
     }
 
     case "if": {
-      const condCode = compile(extractor.cond);
-      const thenCode = compile(extractor.then);
-      const elseCode = compile(extractor.else);
+      const condCode = compile(extractor.cond, depth + 1);
+      const thenCode = compile(extractor.then, depth + 1);
+      const elseCode = compile(extractor.else, depth + 1);
       return `((_c) => (_c === null || _c === "" || _c === 0 || _c === false || (typeof _c === "number" && isNaN(_c))) ? (${elseCode}) : (${thenCode}))(${condCode})`;
     }
 

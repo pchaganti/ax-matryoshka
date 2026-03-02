@@ -46,6 +46,8 @@ export function findSimilar(
   maxDistance: number = 3,
   maxResults: number = 5
 ): Array<{ value: string; distance: number }> {
+  const MAX_CANDIDATES = 10_000;
+  if (candidates.length > MAX_CANDIDATES) candidates = candidates.slice(0, MAX_CANDIDATES);
   const results = candidates
     .map(candidate => ({
       value: candidate,

@@ -340,6 +340,10 @@ function evaluate(
       if (skippedCount > 0) {
         log(`[Solver] Warning: skipped ${skippedCount} non-numeric/unparseable values`);
       }
+      if (!Number.isFinite(total)) {
+        log(`[Solver] Sum overflow: result is not finite`);
+        return null;
+      }
       log(`[Solver] Sum = ${total}`);
       return total;
     }

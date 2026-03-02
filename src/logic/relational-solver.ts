@@ -60,7 +60,7 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
     if (typeof input !== "string") return null;
     const pattern = args.pattern as string;
     const group = (args.group as number) ?? 0;
-    if (group < 0) return null;
+    if (group < 0 || group > 99) return null;
     const validation = validateRegex(pattern);
     if (!validation.valid) return null;
     try {
