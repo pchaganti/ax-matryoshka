@@ -93,8 +93,13 @@ export function compile(extractor: Extractor): string {
  *
  * @returns A function that takes an input string and returns the extracted value
  */
+const MAX_COMPILED_CODE_LENGTH = 100_000;
+
 export function compileToFunction(extractor: Extractor): (input: string) => Value {
   const code = compile(extractor);
+  if (code.length > MAX_COMPILED_CODE_LENGTH) {
+    throw new Error(`Compiled code too long (${code.length} chars, max ${MAX_COMPILED_CODE_LENGTH})`);
+  }
   const fnCode = `(input) => ${code}`;
 
   try {

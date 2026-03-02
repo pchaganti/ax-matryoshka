@@ -382,7 +382,7 @@ export function extractFinalAnswer(
       if (foundKey !== undefined) {
         const value = parsed[foundKey];
         if (parsed.notes) {
-          return `${parsed.notes}\n\nResult: ${typeof value === 'number' ? value.toLocaleString() : value}`;
+          return `${parsed.notes}\n\nResult: ${typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString() : value}`;
         }
         return JSON.stringify(parsed, null, 2);
       }
@@ -783,7 +783,14 @@ Try again with proper formatting.`;
           if (solverBindings.size > MAX_SOLVER_BINDINGS) {
             const keys = [...solverBindings.keys()];
             const turnKeys = keys.filter(k => /^_\d+$/.test(k))
-              .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
+              .sort((a, b) => {
+                const aNum = parseInt(a.slice(1), 10);
+                const bNum = parseInt(b.slice(1), 10);
+                if (!Number.isFinite(aNum) || !Number.isFinite(bNum)) return 0;
+                if (aNum < bNum) return -1;
+                if (aNum > bNum) return 1;
+                return 0;
+              });
             const nonTurnCount = keys.length - turnKeys.length;
             const maxTurnKeys = Math.max(1, MAX_SOLVER_BINDINGS - nonTurnCount);
             const toRemove = turnKeys.slice(0, Math.max(0, turnKeys.length - maxTurnKeys));

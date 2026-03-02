@@ -608,7 +608,9 @@ export class SynthesisCoordinator {
    * Get structure pattern of a string
    */
   private getStructure(str: string): string {
-    return str
+    const MAX_STRUCTURE_INPUT = 10_000;
+    const capped = str.length > MAX_STRUCTURE_INPUT ? str.slice(0, MAX_STRUCTURE_INPUT) : str;
+    return capped
       .replace(/[a-zA-Z]+/g, "TEXT")
       .replace(/\d+/g, "NUM")
       .replace(/\s+/g, " ");

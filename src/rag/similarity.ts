@@ -191,6 +191,11 @@ export interface SearchIndex {
 export function buildSearchIndex(
   docs: Array<{ id: string; text: string; keywords: string[] }>
 ): SearchIndex {
+  for (const d of docs) {
+    if (typeof d.id !== "string" || typeof d.text !== "string" || !Array.isArray(d.keywords)) {
+      throw new Error("Invalid document: id must be string, text must be string, keywords must be array");
+    }
+  }
   const documents = docs.map(d => tokenize(d.text));
   const idf = inverseDocumentFrequency(documents);
 

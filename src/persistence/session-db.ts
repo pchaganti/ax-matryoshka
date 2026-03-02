@@ -154,6 +154,12 @@ export class SessionDB {
       return 0;
     }
 
+    // Cap content size before splitting to prevent OOM on huge strings
+    const MAX_CONTENT_SIZE = 100_000_000; // 100MB
+    if (content.length > MAX_CONTENT_SIZE) {
+      content = content.slice(0, MAX_CONTENT_SIZE);
+    }
+
     const MAX_LINES = 500_000;
     let lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
     if (lines.length > MAX_LINES) {
@@ -255,6 +261,9 @@ export class SessionDB {
       data = data.slice(0, MAX_HANDLE_ITEMS);
     }
 
+    if (this.handleCounter >= Number.MAX_SAFE_INTEGER - 1) {
+      throw new Error("Handle counter overflow");
+    }
     const nextId = this.handleCounter + 1;
     const handle = `$res${nextId}`;
     const now = Date.now();

@@ -264,7 +264,9 @@ Error: ${failure.error}
       }
     }
 
-    return parts.join("\n");
+    const MAX_PROMPT_OUTPUT = 50_000;
+    const result = parts.join("\n");
+    return result.length > MAX_PROMPT_OUTPUT ? result.slice(0, MAX_PROMPT_OUTPUT) : result;
   }
 
   /**

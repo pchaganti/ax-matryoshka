@@ -5,7 +5,7 @@
  * and merges with built-in grammars.
  */
 
-import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import type { SymbolKind } from "../treesitter/types.js";
@@ -43,12 +43,19 @@ export const CONFIG_FILE = join(CONFIG_DIR, "config.json");
  * Load configuration from ~/.matryoshka/config.json
  * Returns empty config if file doesn't exist
  */
+const MAX_CONFIG_FILE_SIZE = 10_000_000; // 10MB
+
 export function loadConfig(): MatryoshkaConfig {
   if (!existsSync(CONFIG_FILE)) {
     return {};
   }
 
   try {
+    const stats = statSync(CONFIG_FILE);
+    if (stats.size > MAX_CONFIG_FILE_SIZE) {
+      console.warn(`Warning: Config file too large (${stats.size} bytes, max ${MAX_CONFIG_FILE_SIZE})`);
+      return {};
+    }
     const content = readFileSync(CONFIG_FILE, "utf-8");
     return JSON.parse(content) as MatryoshkaConfig;
   } catch (error) {
