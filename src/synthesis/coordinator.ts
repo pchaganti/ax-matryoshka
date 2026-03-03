@@ -44,6 +44,10 @@ function safeEvalSynthesized(code: string): (input: string) => unknown {
   if (/\\u[0-9a-fA-F]{4}|\\u\{[0-9a-fA-F]+\}|\\x[0-9a-fA-F]{2}/.test(code)) {
     throw new Error("Synthesized code contains unicode/hex escape sequences");
   }
+  // Block string concatenation patterns that can bypass blocklist
+  if (/["']\s*\+\s*["']/.test(code)) {
+    throw new Error("Synthesized code contains string concatenation pattern");
+  }
   const fn = new Function("return " + code)();
   if (typeof fn !== "function") {
     throw new Error("Synthesized code did not produce a function");

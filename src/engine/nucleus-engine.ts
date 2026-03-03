@@ -54,6 +54,7 @@ function createSolverTools(context: string): SolverTools {
   };
 
   function fuzzyMatch(str: string, query: string): number {
+    if (!query || query.length === 0) return 0;
     const strLower = str.toLowerCase();
     const queryLower = query.toLowerCase();
 

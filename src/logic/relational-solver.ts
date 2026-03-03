@@ -252,7 +252,7 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
     const [, day, monthName, shortYear] = shortMatch;
     const month = MONTHS[monthName.toLowerCase()];
     if (month) {
-      const year = parseInt(shortYear) < 50 ? `20${shortYear}` : `19${shortYear}`;
+      const year = parseInt(shortYear, 10) < 50 ? `20${shortYear}` : `19${shortYear}`;
       const dayNum = parseInt(day, 10);
       const m = parseInt(month, 10);
       if (dayNum < 1 || dayNum > daysInMonth(m, parseInt(year, 10))) return null;

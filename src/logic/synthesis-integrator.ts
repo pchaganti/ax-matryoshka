@@ -135,7 +135,12 @@ export class SynthesisIntegrator {
     // Check for conflicting examples
     const inputMap = new Map<string, string>();
     for (const ex of examples) {
-      const outputKey = JSON.stringify(ex.output);
+      let outputKey: string;
+      try {
+        outputKey = JSON.stringify(ex.output);
+      } catch {
+        outputKey = String(ex.output);
+      }
       if (inputMap.has(ex.input) && inputMap.get(ex.input) !== outputKey) {
         return {
           success: false,

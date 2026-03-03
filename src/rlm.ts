@@ -463,14 +463,19 @@ export async function runRLM(
   const {
     llmClient,
     adapter = createNucleusAdapter(),
-    maxTurns = 10,
-    turnTimeoutMs = 30000,
-    maxSubCalls = 10,
+    maxTurns: rawMaxTurns = 10,
+    turnTimeoutMs: rawTurnTimeoutMs = 30000,
+    maxSubCalls: rawMaxSubCalls = 10,
     verbose = false,
     constraint,
     ragEnabled = true,
     sessionId = `session-${Date.now()}`,
   } = options;
+
+  // Validate numeric config parameters
+  const maxTurns = Number.isFinite(rawMaxTurns) && rawMaxTurns >= 1 ? Math.floor(rawMaxTurns) : 10;
+  const turnTimeoutMs = Number.isFinite(rawTurnTimeoutMs) && rawTurnTimeoutMs >= 100 ? Math.floor(rawTurnTimeoutMs) : 30000;
+  const maxSubCalls = Number.isFinite(rawMaxSubCalls) && rawMaxSubCalls >= 1 ? Math.floor(rawMaxSubCalls) : 10;
 
   const log = (msg: string) => {
     if (verbose) console.log(msg);

@@ -99,7 +99,12 @@ export function compile(extractor: Extractor, depth: number = 0): string {
  */
 const MAX_COMPILED_CODE_LENGTH = 100_000;
 
+const VALID_TAGS = new Set(["input", "lit", "match", "replace", "slice", "split", "parseInt", "parseFloat", "add", "if"]);
+
 export function compileToFunction(extractor: Extractor): (input: string) => Value {
+  if (!extractor || !VALID_TAGS.has(extractor.tag)) {
+    throw new Error(`Invalid extractor tag: ${extractor?.tag}`);
+  }
   const code = compile(extractor);
   if (code.length > MAX_COMPILED_CODE_LENGTH) {
     throw new Error(`Compiled code too long (${code.length} chars, max ${MAX_COMPILED_CODE_LENGTH})`);

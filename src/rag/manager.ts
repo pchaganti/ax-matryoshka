@@ -136,12 +136,14 @@ export class RAGManager {
    * Format an expert example as a hint for the model
    */
   private formatExampleAsHint(example: ExpertExample): string {
+    const safeCode = (example.code || "").replace(/`/g, "\\`").slice(0, 2000);
+    const safeRationale = (example.rationale || "").slice(0, 1000);
     return `**Suggested Pattern:**
 \`\`\`javascript
-${example.code}
+${safeCode}
 \`\`\`
 
-**Why this works:** ${example.rationale}`;
+**Why this works:** ${safeRationale}`;
   }
 
   /**
@@ -252,13 +254,15 @@ Error: ${failure.error}
     ];
 
     // Group hints by type
+    const MAX_INDIVIDUAL_HINT = 5000;
     const patterns = hints.filter(h => h.type === "pattern");
     const pitfalls = hints.filter(h => h.type === "pitfall");
     const failures = hints.filter(h => h.type === "failure");
 
     // Add patterns
     for (const hint of patterns) {
-      parts.push(`### ${hint.title}\n${hint.content}\n`);
+      const content = hint.content.slice(0, MAX_INDIVIDUAL_HINT);
+      parts.push(`### ${hint.title}\n${content}\n`);
     }
 
     // Add warnings
@@ -266,12 +270,13 @@ Error: ${failure.error}
       parts.push("\n### ⚠️ IMPORTANT WARNINGS\n");
 
       for (const hint of pitfalls) {
-        parts.push(hint.content);
+        parts.push(hint.content.slice(0, MAX_INDIVIDUAL_HINT));
         parts.push("");
       }
 
       for (const hint of failures) {
-        parts.push(`**${hint.title}**\n${hint.content}\n`);
+        const content = hint.content.slice(0, MAX_INDIVIDUAL_HINT);
+        parts.push(`**${hint.title}**\n${content}\n`);
       }
     }
 
@@ -301,7 +306,7 @@ Error: ${failure.error}
 \`\`\`javascript
 ${(failure.code || "").slice(0, 200).replace(/`/g, "\\`")}${(failure.code?.length ?? 0) > 200 ? "..." : ""}
 \`\`\`
-**Error:** ${failure.error}
+**Error:** ${(failure.error || "").slice(0, 500)}
 
 Do NOT repeat this approach. Try a different strategy.
 `);
