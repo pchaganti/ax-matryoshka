@@ -1030,7 +1030,7 @@ export class SynthesisIntegrator {
 
     for (let i = 0; i < first.length; i++) {
       const char = first[i];
-      if (strings.every((s) => s[i] === char)) {
+      if (strings.every((s) => i < s.length && s[i] === char)) {
         prefix += char;
       } else {
         break;

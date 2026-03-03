@@ -110,7 +110,7 @@ export async function createSandboxWithSynthesis(
     },
 
     synthesize_extractor: (
-      examples: Array<{ input: string; output: unknown }>
+      examples: Array<{ input: string; output: string | number | boolean | null }>
     ): ((s: string) => unknown) | null => {
       const MAX_EXAMPLES = 50;
       if (!examples || examples.length === 0) {
@@ -122,6 +122,13 @@ export async function createSandboxWithSynthesis(
       if (examples.length > MAX_EXAMPLES) {
         examples = examples.slice(0, MAX_EXAMPLES);
       }
+
+      // Validate output types — reject objects/arrays/functions
+      examples = examples.filter(e => {
+        const output = e.output;
+        return typeof output === "string" || typeof output === "number" || typeof output === "boolean" || output === null;
+      });
+      if (examples.length === 0) return null;
 
       const MAX_JSON_LOG_LENGTH = 1000;
       log(`[Synthesis] synthesize_extractor called with ${examples.length} constraints:`);
@@ -394,6 +401,7 @@ export async function createSandboxWithSynthesis(
       if (pattern.length > 500) return [];
       if (/(\\((?:[^()]*[+*])[^()]*\\))[+*]/.test(pattern)) return [];
       try { new RegExp(pattern); } catch(e) { return []; }
+      if (flags && typeof flags !== "string") flags = "";
       let f = (flags || '').replace(/[^gimsuy]/g, '');
       if (!f.includes('g')) f += 'g';
       if (!f.includes('m')) f += 'm';

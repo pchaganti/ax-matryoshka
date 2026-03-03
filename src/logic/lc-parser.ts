@@ -553,7 +553,7 @@ function parseList(state: ParserState): LCTerm | null {
       if (!delim || delim.tag !== "lit" || typeof delim.value !== "string")
         return null;
       const index = parseTerm(state);
-      if (!index || index.tag !== "lit" || typeof index.value !== "number")
+      if (!index || index.tag !== "lit" || typeof index.value !== "number" || !Number.isSafeInteger(index.value))
         return null;
       return { tag: "split", str, delim: delim.value, index: index.value };
     }

@@ -331,8 +331,10 @@ export class NucleusEngine {
    * Get current variable bindings
    */
   getBindings(): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
+    const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+    const result: Record<string, unknown> = Object.create(null);
     for (const [key, value] of this.bindings) {
+      if (DANGEROUS_KEYS.has(key)) continue;
       // Summarize arrays to avoid huge output
       if (Array.isArray(value)) {
         result[key] = `Array[${value.length}]`;

@@ -701,6 +701,7 @@ function evaluate(
 
     case "define-fn": {
       // Synthesize a function from examples and return it for storage
+      if (!term.examples || term.examples.length === 0) return null;
       log(`[Lattice] Defining function "${term.name}" from ${term.examples.length} examples`);
       const result = synthesisIntegrator.synthesizeOnFailure({
         operation: "define-fn",

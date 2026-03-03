@@ -66,8 +66,10 @@ function resolveEnvVars(obj: unknown): unknown {
     return obj.map(resolveEnvVars);
   }
   if (obj && typeof obj === "object") {
-    const result: Record<string, unknown> = {};
+    const DANGEROUS_OBJ_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+    const result: Record<string, unknown> = Object.create(null);
     for (const [key, value] of Object.entries(obj)) {
+      if (DANGEROUS_OBJ_KEYS.has(key)) continue;
       result[key] = resolveEnvVars(value);
     }
     return result;

@@ -326,8 +326,10 @@ export class SessionDB {
       LIMIT ? OFFSET ?
     `);
     const rows = stmt.all(handle, limit, offset) as Array<{ data: string }>;
+    const MAX_JSON_DATA_SIZE = 10_000_000; // 10MB per entry
     return rows.map((r) => {
       try {
+        if (r.data.length > MAX_JSON_DATA_SIZE) return null;
         return JSON.parse(r.data);
       } catch (e) {
         console.warn(`[SessionDB] Failed to parse handle data: ${e instanceof Error ? e.message : String(e)}`);
@@ -388,6 +390,10 @@ export class SessionDB {
       throw new Error("Turn must be a non-negative integer");
     }
     const bindingsJson = JSON.stringify(Object.fromEntries(bindings));
+    const MAX_CHECKPOINT_SIZE = 10_000_000; // 10MB
+    if (bindingsJson.length > MAX_CHECKPOINT_SIZE) {
+      throw new Error("Checkpoint too large");
+    }
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO checkpoints (turn, bindings, timestamp)
       VALUES (?, ?, ?)

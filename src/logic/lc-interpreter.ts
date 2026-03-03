@@ -666,7 +666,7 @@ export function formatValue(value: LCValue, indent: number = 0): string {
     return `<function>`;
   }
 
-  if (typeof value === "object") {
+  if (typeof value === "object" && value !== null) {
     const entries = Object.entries(value);
     if (entries.length === 0) return "{}";
     const items = entries.slice(0, 5).map(([k, v]) => `${pad}  ${k}: ${formatValue(v, indent + 1)}`).join(",\n");
