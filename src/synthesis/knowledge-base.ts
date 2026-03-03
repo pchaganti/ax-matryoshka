@@ -379,6 +379,8 @@ export class KnowledgeBase {
     for (const example of examples) {
       const covered = components.some((c) => {
         if (c.pattern) {
+          const validation = validateRegex(c.pattern);
+          if (!validation.valid) return false;
           try {
             return new RegExp(c.pattern).test(example);
           } catch {

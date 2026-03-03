@@ -69,7 +69,10 @@ function escapeForCharClass(str: string): string {
   return result;
 }
 
-export function nodeToRegex(node: RegexNode): string {
+const MAX_REGEX_DEPTH = 100;
+
+export function nodeToRegex(node: RegexNode, depth: number = 0): string {
+  if (depth > MAX_REGEX_DEPTH) return "";
   switch (node.type) {
     case "literal":
       return escapeRegex(node.value);
@@ -99,7 +102,7 @@ export function nodeToRegex(node: RegexNode): string {
       }
 
     case "repeat": {
-      const childRegex = nodeToRegex(node.child);
+      const childRegex = nodeToRegex(node.child, depth + 1);
       const needsGroup = node.child.type === "sequence" || node.child.type === "alt" || node.child.type === "repeat";
       const wrapped = needsGroup ? `(?:${childRegex})` : childRegex;
 
@@ -121,16 +124,16 @@ export function nodeToRegex(node: RegexNode): string {
     }
 
     case "sequence":
-      return node.children.map(nodeToRegex).join("");
+      return node.children.map(c => nodeToRegex(c, depth + 1)).join("");
 
     case "alt":
-      return node.children.map(nodeToRegex).join("|");
+      return node.children.map(c => nodeToRegex(c, depth + 1)).join("|");
 
     case "group":
       if (node.capturing) {
-        return `(${nodeToRegex(node.child)})`;
+        return `(${nodeToRegex(node.child, depth + 1)})`;
       } else {
-        return `(?:${nodeToRegex(node.child)})`;
+        return `(?:${nodeToRegex(node.child, depth + 1)})`;
       }
 
     default:
@@ -404,8 +407,9 @@ export function analyzeCharacters(examples: string[]): RegexNode | null {
     examples = examples.slice(0, MAX_ANALYZE_EXAMPLES);
   }
 
+  const MAX_CHAR_ANALYSIS = 1000;
   const lengths = examples.map((e) => e.length);
-  const minLen = lengths.reduce((a, b) => Math.min(a, b), Infinity);
+  const minLen = Math.min(lengths.reduce((a, b) => Math.min(a, b), Infinity), MAX_CHAR_ANALYSIS);
   const maxLen = lengths.reduce((a, b) => Math.max(a, b), 0);
 
   // Fixed length - analyze each position
@@ -521,8 +525,8 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
   if (!input || !input.positives) {
     return { success: false, error: "Invalid input: positives required" };
   }
-  let positives = input.positives.slice(0, MAX_EXAMPLES);
-  const negatives = input.negatives ? input.negatives.slice(0, MAX_EXAMPLES) : [];
+  let positives = input.positives.slice(0, MAX_EXAMPLES).filter(s => typeof s === "string" && s.length <= MAX_EXAMPLE_LENGTH);
+  const negatives = input.negatives ? input.negatives.slice(0, MAX_EXAMPLES).filter(s => typeof s === "string" && s.length <= MAX_EXAMPLE_LENGTH) : [];
 
   // Validation
   if (positives.length === 0) {

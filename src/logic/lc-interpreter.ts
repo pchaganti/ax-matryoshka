@@ -362,11 +362,13 @@ export function evaluate(
 
     case "classify": {
       // Classify builds a predicate function from examples
-      log(`Building classifier from ${term.examples.length} examples`);
+      const MAX_CLASSIFY_EXAMPLES = 1000;
+      const classifyExamples = term.examples.slice(0, MAX_CLASSIFY_EXAMPLES);
+      log(`Building classifier from ${classifyExamples.length} examples`);
 
       // Filter out empty strings — "".includes("") is always true, making classifier match everything
-      const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input).filter(s => s.length > 0);
-      const falseExamples = term.examples.filter(e => e.output === false).map(e => e.input).filter(s => s.length > 0);
+      const trueExamples = classifyExamples.filter(e => e.output === true).map(e => e.input).filter(s => s.length > 0);
+      const falseExamples = classifyExamples.filter(e => e.output === false).map(e => e.input).filter(s => s.length > 0);
 
       log(`  True examples: ${trueExamples.length}, False examples: ${falseExamples.length}`);
 

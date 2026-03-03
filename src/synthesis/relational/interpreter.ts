@@ -267,7 +267,10 @@ export function synthesizeProgram(
 /**
  * Convert an expression AST to executable JavaScript code
  */
-export function exprToCode(expr: Expr): string {
+const MAX_CODE_DEPTH = 100;
+
+export function exprToCode(expr: Expr, depth: number = 0): string {
+  if (depth > MAX_CODE_DEPTH) return "(null)";
   switch (expr.type) {
     case "lit":
       return typeof expr.value === "string" ? JSON.stringify(expr.value) : String(expr.value);
@@ -280,48 +283,50 @@ export function exprToCode(expr: Expr): string {
       return expr.name;
 
     case "add":
-      return `(${exprToCode(expr.left)} + ${exprToCode(expr.right)})`;
+      return `(${exprToCode(expr.left, depth + 1)} + ${exprToCode(expr.right, depth + 1)})`;
 
     case "sub": {
-      const subResult = `(${exprToCode(expr.left)} - ${exprToCode(expr.right)})`;
+      const subResult = `(${exprToCode(expr.left, depth + 1)} - ${exprToCode(expr.right, depth + 1)})`;
       return `((_s) => isFinite(_s) ? _s : null)(${subResult})`;
     }
 
     case "mul": {
-      const mulResult = `(${exprToCode(expr.left)} * ${exprToCode(expr.right)})`;
+      const mulResult = `(${exprToCode(expr.left, depth + 1)} * ${exprToCode(expr.right, depth + 1)})`;
       return `((_m) => isFinite(_m) ? _m : null)(${mulResult})`;
     }
 
     case "div": {
-      const divRight = exprToCode(expr.right);
-      const divLeft = exprToCode(expr.left);
+      const divRight = exprToCode(expr.right, depth + 1);
+      const divLeft = exprToCode(expr.left, depth + 1);
       return `((_l, _r) => _r === 0 ? null : ((_d) => isFinite(_d) ? _d : null)(_l / _r))(${divLeft}, ${divRight})`;
     }
 
     case "concat": {
       const MAX_CONCAT = 1_000_000;
-      return `((_l, _r) => { const _res = String(_l) + String(_r); return _res.length > ${MAX_CONCAT} ? null : _res; })(${exprToCode(expr.left)}, ${exprToCode(expr.right)})`;
+      return `((_l, _r) => { const _res = String(_l) + String(_r); return _res.length > ${MAX_CONCAT} ? null : _res; })(${exprToCode(expr.left, depth + 1)}, ${exprToCode(expr.right, depth + 1)})`;
     }
 
     case "match": {
       if (!Number.isInteger(expr.group) || expr.group < 0 || expr.group > 99) return "(null)";
       // Use RegExp constructor with JSON.stringify to safely embed pattern
       // This avoids regex literal delimiter issues with backslashes and forward slashes
-      return `((_s) => _s == null ? null : (_s.match(new RegExp(${JSON.stringify(expr.pattern)}))?.[${expr.group}] ?? null))(${exprToCode(expr.str)})`;
+      return `((_s) => _s == null ? null : (_s.match(new RegExp(${JSON.stringify(expr.pattern)}))?.[${expr.group}] ?? null))(${exprToCode(expr.str, depth + 1)})`;
     }
 
     case "replace": {
-      return `((_s) => _s == null ? null : _s.replace(new RegExp(${JSON.stringify(expr.pattern)}, "g"), ${JSON.stringify(expr.replacement)}))(${exprToCode(expr.str)})`;
+      // Escape $ in replacement to prevent backreference injection ($1, $&, etc.)
+      const safeReplacement = expr.replacement.replace(/\$/g, "$$$$");
+      return `((_s) => _s == null ? null : _s.replace(new RegExp(${JSON.stringify(expr.pattern)}, "g"), ${JSON.stringify(safeReplacement)}))(${exprToCode(expr.str, depth + 1)})`;
     }
 
     case "parseInt":
-      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) || !Number.isSafeInteger(_r) ? null : _r; })(${exprToCode(expr.str)})`;
+      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) || !Number.isSafeInteger(_r) ? null : _r; })(${exprToCode(expr.str, depth + 1)})`;
 
     case "parseFloat":
-      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${exprToCode(expr.str)})`;
+      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${exprToCode(expr.str, depth + 1)})`;
 
     case "if":
-      return `(${exprToCode(expr.cond)} ? ${exprToCode(expr.then)} : ${exprToCode(expr.else)})`;
+      return `(${exprToCode(expr.cond, depth + 1)} ? ${exprToCode(expr.then, depth + 1)} : ${exprToCode(expr.else, depth + 1)})`;
 
     default:
       return "/* unknown expr */";

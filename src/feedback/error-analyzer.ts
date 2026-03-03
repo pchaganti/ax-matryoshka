@@ -46,6 +46,9 @@ export function findSimilar(
   maxDistance: number = 3,
   maxResults: number = 5
 ): Array<{ value: string; distance: number }> {
+  if (!Number.isFinite(maxDistance) || maxDistance < 0) maxDistance = 3;
+  if (!Number.isFinite(maxResults) || maxResults < 1) maxResults = 5;
+  maxResults = Math.min(Math.floor(maxResults), 1000);
   const MAX_CANDIDATES = 10_000;
   if (candidates.length > MAX_CANDIDATES) candidates = candidates.slice(0, MAX_CANDIDATES);
   const results = candidates
