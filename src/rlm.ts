@@ -937,7 +937,8 @@ Try again with proper formatting.`;
         if (result.result !== undefined && result.result !== null) {
           let resultStr: string;
           try {
-            resultStr = JSON.stringify(result.result, null, 2);
+            const MAX_RESULT_JSON = 50_000;
+            resultStr = JSON.stringify(result.result, null, 2).slice(0, MAX_RESULT_JSON);
           } catch {
             resultStr = String(result.result);
           }

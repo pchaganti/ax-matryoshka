@@ -32,6 +32,9 @@ export class CheckpointManager {
    * Save checkpoint at current turn
    */
   save(turn: number): void {
+    if (!Number.isSafeInteger(turn) || turn < 0) {
+      throw new Error("Invalid turn number");
+    }
     // Collect all handle references
     const handles = this.registry.listHandles();
     const resultsHandle = this.registry.getResults();
@@ -52,6 +55,7 @@ export class CheckpointManager {
    * Restore checkpoint for a turn
    */
   restore(turn: number): boolean {
+    if (!Number.isSafeInteger(turn) || turn < 0) return false;
     const bindings = this.db.getCheckpoint(turn);
     if (!bindings) return false;
 
@@ -84,6 +88,7 @@ export class CheckpointManager {
    * Delete a specific checkpoint
    */
   delete(turn: number): void {
+    if (!Number.isSafeInteger(turn) || turn < 0) return;
     this.db.deleteCheckpoint(turn);
   }
 

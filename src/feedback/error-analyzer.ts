@@ -7,7 +7,7 @@
  * Calculate Levenshtein distance between two strings
  */
 export function levenshteinDistance(a: string, b: string): number {
-  const MAX_STR_LENGTH = 10_000;
+  const MAX_STR_LENGTH = 1_000;
   if (a.length > MAX_STR_LENGTH) a = a.slice(0, MAX_STR_LENGTH);
   if (b.length > MAX_STR_LENGTH) b = b.slice(0, MAX_STR_LENGTH);
   const matrix: number[][] = [];

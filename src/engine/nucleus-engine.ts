@@ -126,6 +126,7 @@ function createSolverTools(context: string): SolverTools {
       const MAX_QUERY_LENGTH = 500;
       const MAX_FUZZY_LINES = 50_000;
       if (query.length > MAX_QUERY_LENGTH) return [];
+      if (!Number.isFinite(limit)) limit = 10;
       const clampedLimit = Math.max(1, Math.min(Math.floor(limit), 1000));
       const results: Array<{ line: string; lineNum: number; score: number }> = [];
       const lineCount = Math.min(lines.length, MAX_FUZZY_LINES);
@@ -313,6 +314,7 @@ export class NucleusEngine {
       .sort((a, b) => {
         const aNum = parseInt(a.slice(1), 10);
         const bNum = parseInt(b.slice(1), 10);
+        if (!Number.isFinite(aNum) || !Number.isFinite(bNum)) return 0;
         if (aNum < bNum) return -1;
         if (aNum > bNum) return 1;
         return 0;

@@ -58,10 +58,11 @@ type Token =
  * Lexer: convert input string to tokens
  */
 function tokenize(input: string): Token[] {
+  const MAX_TOKENS = 100_000;
   const tokens: Token[] = [];
   let i = 0;
 
-  while (i < input.length) {
+  while (i < input.length && tokens.length < MAX_TOKENS) {
     const ch = input[i];
 
     // Skip whitespace
@@ -309,6 +310,7 @@ function parseConstraintObject(state: ParserState): Record<string, unknown> | nu
   consume(state); // {
 
   const constraints: Record<string, unknown> = Object.create(null);
+  const MAX_CONSTRAINT_ENTRIES = 100;
 
   while (peek(state)) {
     const next = peek(state);
@@ -318,6 +320,8 @@ function parseConstraintObject(state: ParserState): Record<string, unknown> | nu
       consume(state);
       break;
     }
+
+    if (Object.keys(constraints).length >= MAX_CONSTRAINT_ENTRIES) break;
 
     // Expect :key value pairs
     const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
@@ -533,6 +537,7 @@ function parseList(state: ParserState): LCTerm | null {
       const group = parseTerm(state);
       if (!group || group.tag !== "lit" || typeof group.value !== "number")
         return null;
+      if (!Number.isSafeInteger(group.value) || group.value < 0 || group.value > 99) return null;
       return { tag: "match", str, pattern: pattern.value, group: group.value };
     }
 

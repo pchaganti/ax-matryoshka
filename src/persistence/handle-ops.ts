@@ -41,6 +41,9 @@ export class HandleOps {
    * Sum a numeric field across all items
    */
   sum(handle: string, field: string): number {
+    if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(field) || field.length > 256) {
+      throw new Error("Invalid field name");
+    }
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
