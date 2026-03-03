@@ -559,7 +559,11 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
     return { success: false, error: "Could not synthesize pattern" };
   }
 
+  const MAX_PATTERN_LENGTH = 5000;
   const pattern = nodeToRegex(ast);
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    return { success: false, error: `Synthesized pattern too long (${pattern.length} chars, max ${MAX_PATTERN_LENGTH})` };
+  }
   const regex = new RegExp(`^${pattern}$`);
 
   // Verify positives match

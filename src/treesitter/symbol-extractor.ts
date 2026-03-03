@@ -256,6 +256,7 @@ export class SymbolExtractor {
       }
     }
 
+    if (this.symbolIdCounter >= Number.MAX_SAFE_INTEGER - 1) return null;
     this.symbolIdCounter++;
 
     const goStartRow = node.startPosition?.row;

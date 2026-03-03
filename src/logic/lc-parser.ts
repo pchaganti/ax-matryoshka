@@ -109,8 +109,9 @@ function tokenize(input: string): Token[] {
     // Keyword (starts with :)
     if (ch === ":") {
       i++;
+      const MAX_KW_LENGTH = 200;
       let kw = "";
-      while (i < input.length && /[a-zA-Z_0-9]/.test(input[i])) {
+      while (i < input.length && /[a-zA-Z_0-9]/.test(input[i]) && kw.length < MAX_KW_LENGTH) {
         kw += input[i];
         i++;
       }

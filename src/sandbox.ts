@@ -382,6 +382,8 @@ export async function createSandbox(
      * @returns {string} The extracted lines joined with newlines
      */
     function locate_line(start, end) {
+      if (!Number.isInteger(start) || !Number.isSafeInteger(start)) return '';
+      if (end !== undefined && (!Number.isInteger(end) || !Number.isSafeInteger(end))) return '';
       const totalLines = __linesArray.length;
 
       // Convert to 0-based index, handle negative (clamp to 0)

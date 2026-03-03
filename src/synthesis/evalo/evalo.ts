@@ -100,7 +100,9 @@ export function evalExtractor(extractor: Extractor, input: string, depth: number
     case "parseFloat": {
       const str = evalExtractor(extractor.str, input, depth + 1);
       if (str === null) return null;
-      const floatResult = parseFloat(String(str));
+      const strVal = String(str);
+      if (strVal.length > 200) return null;
+      const floatResult = parseFloat(strVal);
       return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 

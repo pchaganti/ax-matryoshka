@@ -431,7 +431,7 @@ function isSafeInvariant(expr: string): boolean {
   }
 
   // Reject unicode and hex escape sequences that could bypass keyword checks
-  if (/\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\}|\\x[\da-fA-F]{2}/.test(expr)) {
+  if (/\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\}|\\x[\da-fA-F]{2}|\\[0-7]{1,3}/.test(expr)) {
     return false;
   }
 

@@ -81,6 +81,8 @@ export class RAGManager {
    * @returns Array of hints sorted by relevance
    */
   getHints(query: string, topK: number = 2): Hint[] {
+    const MAX_QUERY_LENGTH = 10_000;
+    if (!query || query.length > MAX_QUERY_LENGTH) return [];
     topK = Math.max(1, Math.min(Math.floor(topK) || 2, 100));
     const hints: Hint[] = [];
 

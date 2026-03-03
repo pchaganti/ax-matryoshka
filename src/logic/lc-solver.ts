@@ -414,7 +414,7 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
       }
-      if (!Number.isInteger(term.group) || term.group < 0) return null;
+      if (!Number.isInteger(term.group) || term.group < 0 || term.group > 99) return null;
       const matchValidation = validateRegex(term.pattern);
       if (!matchValidation.valid) {
         throw new Error(`match: ${matchValidation.error}`);
@@ -556,7 +556,7 @@ function evaluate(
       if (typeof str !== "string") {
         throw new Error(`extract: expected string, got ${typeof str}`);
       }
-      if (!Number.isInteger(term.group) || term.group < 0) return null;
+      if (!Number.isInteger(term.group) || term.group < 0 || term.group > 99) return null;
       const extractValidation = validateRegex(term.pattern);
       if (!extractValidation.valid) {
         throw new Error(`extract: ${extractValidation.error}`);

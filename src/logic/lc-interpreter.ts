@@ -519,6 +519,7 @@ export function evaluate(
     case "parseNumber": {
       const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") return null;
+      if (str.length > 200) return null;
       log(`Parsing number: "${str}"`);
       let cleaned = str.replace(/[^0-9.,\-]/g, "");
       cleaned = cleaned.replace(/,/g, "");
