@@ -351,6 +351,7 @@ export class KnowledgeBase {
     components: SynthesizedComponent[],
     examples: string[]
   ): SynthesizedComponent[][] {
+    const MAX_COMPOSITIONS = 100;
     const compositions: SynthesizedComponent[][] = [];
 
     // Try pairs
@@ -359,6 +360,7 @@ export class KnowledgeBase {
         const combined = [components[i], components[j]];
         if (this.coversAll(combined, examples)) {
           compositions.push(combined);
+          if (compositions.length >= MAX_COMPOSITIONS) return compositions;
         }
       }
     }

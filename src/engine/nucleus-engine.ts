@@ -133,7 +133,11 @@ function createSolverTools(context: string): SolverTools {
         }
       }
 
-      results.sort((a, b) => b.score - a.score);
+      results.sort((a, b) => {
+        if (b.score > a.score) return 1;
+        if (b.score < a.score) return -1;
+        return 0;
+      });
       return results.slice(0, clampedLimit);
     },
 
@@ -296,7 +300,13 @@ export class NucleusEngine {
   private evictOldTurnBindings(): void {
     const turnKeys = [...this.bindings.keys()]
       .filter(k => /^_\d+$/.test(k))
-      .sort((a, b) => parseInt(a.slice(1), 10) - parseInt(b.slice(1), 10));
+      .sort((a, b) => {
+        const aNum = parseInt(a.slice(1), 10);
+        const bNum = parseInt(b.slice(1), 10);
+        if (aNum < bNum) return -1;
+        if (aNum > bNum) return 1;
+        return 0;
+      });
     while (turnKeys.length > NucleusEngine.MAX_TURN_BINDINGS) {
       const oldest = turnKeys.shift()!;
       this.bindings.delete(oldest);

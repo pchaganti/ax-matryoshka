@@ -8,12 +8,15 @@
 /**
  * Tokenize text into lowercase words
  */
+const MAX_TOKENS = 10_000;
+
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/[^\w\s$]/g, " ")  // Keep $ for currency
     .split(/\s+/)
-    .filter(word => word.length > 1 || word === "$");  // Skip single chars, but keep $
+    .filter(word => word.length > 1 || word === "$")  // Skip single chars, but keep $
+    .slice(0, MAX_TOKENS);
 }
 
 /**

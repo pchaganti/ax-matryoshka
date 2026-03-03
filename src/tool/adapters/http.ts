@@ -399,7 +399,7 @@ export class HttpAdapter {
     const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
     // Pre-check content-length header to reject oversized requests immediately
     const contentLength = parseInt(req.headers["content-length"] || "", 10);
-    if (!isNaN(contentLength) && (contentLength < 0 || contentLength > MAX_BODY_SIZE)) {
+    if (!isNaN(contentLength) && (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > MAX_BODY_SIZE)) {
       req.destroy();
       return Promise.reject(new Error("Request body too large"));
     }
@@ -592,10 +592,11 @@ Examples:
         process.exit(1);
       }
     } else if (args[i] === "--timeout" && args[i + 1]) {
+      const MAX_TIMEOUT_SECONDS = 86400; // 24 hours
       const timeoutArg = args[++i];
       const parsed = parseInt(timeoutArg, 10);
-      if (isNaN(parsed) || parsed < 1) {
-        console.error(`Invalid timeout: ${timeoutArg}. Must be a positive number.`);
+      if (isNaN(parsed) || parsed < 1 || parsed > MAX_TIMEOUT_SECONDS) {
+        console.error(`Invalid timeout: ${timeoutArg}. Must be 1-${MAX_TIMEOUT_SECONDS}.`);
         process.exit(1);
       }
       timeoutSeconds = parsed;

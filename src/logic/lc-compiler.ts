@@ -23,7 +23,10 @@ export function compileToJS(term: LCTerm): string {
 /**
  * Internal compilation
  */
-function compile(term: LCTerm): string {
+const MAX_COMPILE_DEPTH = 100;
+
+function compile(term: LCTerm, depth: number = 0): string {
+  if (depth > MAX_COMPILE_DEPTH) return "null";
   switch (term.tag) {
     case "input":
       return "input";
@@ -41,10 +44,10 @@ function compile(term: LCTerm): string {
 })()`;
 
     case "match": {
-      if (!Number.isInteger(term.group) || term.group < 0) return "null";
+      if (!Number.isInteger(term.group) || term.group < 0 || term.group > 99) return "null";
       const matchValidation = validateRegex(term.pattern);
       if (!matchValidation.valid) return "null";
-      const str = compile(term.str);
+      const str = compile(term.str, depth + 1);
       const pattern = escapeRegex(term.pattern);
       return `(${str}).match(/${pattern}/)?.[${term.group}] ?? null`;
     }
@@ -52,7 +55,7 @@ function compile(term: LCTerm): string {
     case "replace": {
       const replaceValidation = validateRegex(term.from);
       if (!replaceValidation.valid) return "null";
-      const str = compile(term.str);
+      const str = compile(term.str, depth + 1);
       const from = escapeRegex(term.from);
       // Escape $ to $$ to prevent backreference injection in replacement
       const to = escapeString(term.to.replace(/\$/g, "$$$$"));
@@ -60,7 +63,8 @@ function compile(term: LCTerm): string {
     }
 
     case "split": {
-      const str = compile(term.str);
+      if (!term.delim || term.delim.length === 0 || term.delim.length > 1000) return "null";
+      const str = compile(term.str, depth + 1);
       const delim = escapeString(term.delim);
       const index = term.index;
       if (!Number.isInteger(index) || index < 0) {
@@ -70,19 +74,19 @@ function compile(term: LCTerm): string {
     }
 
     case "parseInt": {
-      const str = compile(term.str);
+      const str = compile(term.str, depth + 1);
       return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${str})`;
     }
 
     case "parseFloat": {
-      const str = compile(term.str);
+      const str = compile(term.str, depth + 1);
       return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${str})`;
     }
 
     case "if": {
-      const cond = compile(term.cond);
-      const thenBranch = compile(term.then);
-      const elseBranch = compile(term.else);
+      const cond = compile(term.cond, depth + 1);
+      const thenBranch = compile(term.then, depth + 1);
+      const elseBranch = compile(term.else, depth + 1);
       return `(${cond}) ? (${thenBranch}) : (${elseBranch})`;
     }
 
@@ -125,7 +129,7 @@ function compile(term: LCTerm): string {
 
     case "constrained":
       // Constraints are resolved before compilation
-      return compile(term.term);
+      return compile(term.term, depth + 1);
 
     case "var":
       // Validate variable name is a safe JS identifier to prevent code injection
@@ -135,8 +139,8 @@ function compile(term: LCTerm): string {
       return term.name;
 
     case "app": {
-      const fn = compile(term.fn);
-      const arg = compile(term.arg);
+      const fn = compile(term.fn, depth + 1);
+      const arg = compile(term.arg, depth + 1);
       return `(${fn})(${arg})`;
     }
 
@@ -145,7 +149,7 @@ function compile(term: LCTerm): string {
       if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(term.param)) {
         return "((_) => null)";
       }
-      return `((${term.param}) => ${compile(term.body)})`;
+      return `((${term.param}) => ${compile(term.body, depth + 1)})`;
 
     default:
       throw new Error(`Unsupported term tag for compilation: ${(term as LCTerm).tag}`);
