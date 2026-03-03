@@ -69,7 +69,7 @@ export class HttpAdapter {
 
   constructor(options: HttpAdapterOptions = {}) {
     const rawPort = options.port ?? 3456;
-    this.port = Number.isSafeInteger(rawPort) && rawPort >= 1 && rawPort <= 65535 ? rawPort : 3456;
+    this.port = Number.isSafeInteger(rawPort) && rawPort >= 0 && rawPort <= 65535 ? rawPort : 3456;
     const rawHost = options.host ?? "localhost";
     this.host = typeof rawHost === "string" && /^[a-zA-Z0-9._-]+$/.test(rawHost) && rawHost.length <= 255 ? rawHost : "localhost";
     this.cors = options.cors ?? true;

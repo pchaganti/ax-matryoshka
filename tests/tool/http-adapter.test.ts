@@ -6,7 +6,8 @@ describe("HttpAdapter", () => {
 
   beforeEach(() => {
     // Use port 0 to let the OS assign a free port, avoiding conflicts on CI
-    adapter = new HttpAdapter({ port: 0, host: "localhost" });
+    // Use 127.0.0.1 instead of localhost to avoid IPv4/IPv6 mismatch on Linux CI
+    adapter = new HttpAdapter({ port: 0, host: "127.0.0.1" });
   });
 
   afterEach(async () => {
@@ -72,7 +73,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/load`, {
+      const response = await fetch(`http://127.0.0.1:${port}/load`, {
         method: "POST",
         headers: { "Content-Type": "text/plain" },
         body: "not json",
@@ -89,13 +90,13 @@ describe("HttpAdapter", () => {
       const { port } = adapter.getServerInfo();
 
       // Load a document first so /reset has a session
-      await fetch(`http://localhost:${port}/load`, {
+      await fetch(`http://127.0.0.1:${port}/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "test" }),
       });
 
-      const response = await fetch(`http://localhost:${port}/reset`, {
+      const response = await fetch(`http://127.0.0.1:${port}/reset`, {
         method: "POST",
       });
       const data = await response.json();
@@ -110,7 +111,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/health`);
+      const response = await fetch(`http://127.0.0.1:${port}/health`);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -123,7 +124,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/help`);
+      const response = await fetch(`http://127.0.0.1:${port}/help`);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -135,10 +136,10 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response1 = await fetch(`http://localhost:${port}/help`);
+      const response1 = await fetch(`http://127.0.0.1:${port}/help`);
       const data1 = await response1.json();
 
-      const response2 = await fetch(`http://localhost:${port}/help`);
+      const response2 = await fetch(`http://127.0.0.1:${port}/help`);
       const data2 = await response2.json();
 
       expect(data1.message).toBe(data2.message);
@@ -148,7 +149,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/bindings`);
+      const response = await fetch(`http://127.0.0.1:${port}/bindings`);
       const data = await response.json();
 
       // Bindings requires an active session
@@ -161,7 +162,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/stats`);
+      const response = await fetch(`http://127.0.0.1:${port}/stats`);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -172,7 +173,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/load`, {
+      const response = await fetch(`http://127.0.0.1:${port}/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "test line\nanother line", name: "test-doc" }),
@@ -189,14 +190,14 @@ describe("HttpAdapter", () => {
       const { port } = adapter.getServerInfo();
 
       // Load first
-      await fetch(`http://localhost:${port}/load`, {
+      await fetch(`http://127.0.0.1:${port}/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "error here\nok line\nerror again" }),
       });
 
       // Query
-      const response = await fetch(`http://localhost:${port}/query`, {
+      const response = await fetch(`http://127.0.0.1:${port}/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: '(grep "error")' }),
@@ -213,19 +214,19 @@ describe("HttpAdapter", () => {
       const { port } = adapter.getServerInfo();
 
       // Load and query first
-      await fetch(`http://localhost:${port}/load`, {
+      await fetch(`http://127.0.0.1:${port}/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "test" }),
       });
-      await fetch(`http://localhost:${port}/query`, {
+      await fetch(`http://127.0.0.1:${port}/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: '(grep "test")' }),
       });
 
       // Reset
-      const response = await fetch(`http://localhost:${port}/reset`, {
+      const response = await fetch(`http://127.0.0.1:${port}/reset`, {
         method: "POST",
       });
       const data = await response.json();
@@ -234,7 +235,7 @@ describe("HttpAdapter", () => {
       expect(data.success).toBe(true);
 
       // Verify bindings cleared
-      const bindingsResponse = await fetch(`http://localhost:${port}/bindings`);
+      const bindingsResponse = await fetch(`http://127.0.0.1:${port}/bindings`);
       const bindingsData = await bindingsResponse.json();
       expect(bindingsData.message).toBe("No bindings");
     });
@@ -243,7 +244,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/unknown`);
+      const response = await fetch(`http://127.0.0.1:${port}/unknown`);
       const data = await response.json();
 
       expect(response.status).toBe(404);
@@ -254,7 +255,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/load`, {
+      const response = await fetch(`http://127.0.0.1:${port}/load`, {
         method: "GET",
       });
       const data = await response.json();
@@ -267,7 +268,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/query`, {
+      const response = await fetch(`http://127.0.0.1:${port}/query`, {
         method: "OPTIONS",
       });
 
