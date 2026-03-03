@@ -350,8 +350,8 @@ export async function createSandboxWithSynthesis(
     Promise,
     parseInt,
     parseFloat,
-    isNaN,
-    isFinite,
+    isNaN: Number.isNaN,
+    isFinite: Number.isFinite,
     encodeURIComponent,
     decodeURIComponent,
     // Override eval to prevent arbitrary code execution in sandbox

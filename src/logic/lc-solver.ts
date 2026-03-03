@@ -440,7 +440,10 @@ function evaluate(
       }
       // Escape $ in replacement to prevent backreference injection ($1, $&, etc.)
       const safeReplacement = term.to.replace(/\$/g, "$$$$");
-      return str.replace(new RegExp(term.from, "g"), safeReplacement);
+      const MAX_RESULT_LENGTH = 1_000_000;
+      const result = str.replace(new RegExp(term.from, "g"), safeReplacement);
+      if (result.length > MAX_RESULT_LENGTH) return null;
+      return result;
     }
 
     case "split": {

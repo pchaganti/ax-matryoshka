@@ -271,7 +271,7 @@ export function evaluate(
         throw new Error(`split: expected string, got ${typeof str}`);
       }
       if (!Number.isInteger(term.index) || term.index < 0) return null;
-      if (!term.delim.length) return null;
+      if (typeof term.delim !== "string" || term.delim.length === 0 || term.delim.length > 1000) return null;
       const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(term.delim);
       if (parts.length > MAX_SPLIT_PARTS) return null;

@@ -57,7 +57,7 @@ export class CheckpointManager {
 
     // Restore RESULTS binding (or clear stale RESULTS if checkpoint has none)
     const resultsHandle = bindings.get("RESULTS");
-    if (resultsHandle) {
+    if (resultsHandle && /^\$res\d+$/.test(resultsHandle)) {
       // Verify handle still exists before restoring
       const handleData = this.registry.get(resultsHandle);
       if (handleData === null) {

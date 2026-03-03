@@ -527,11 +527,12 @@ export class SessionDB {
    */
   getAllSymbols(): Symbol[] {
     if (!this.db) return [];
+    const MAX_SYMBOLS = 100_000;
     const stmt = this.db.prepare(`
       SELECT id, name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId
-      FROM symbols ORDER BY startLine, startCol
+      FROM symbols ORDER BY startLine, startCol LIMIT ?
     `);
-    return stmt.all() as Symbol[];
+    return stmt.all(MAX_SYMBOLS) as Symbol[];
   }
 
   /**

@@ -214,7 +214,7 @@ function generateClassifierGuidance(
   for (const idx of indices) {
     const line = grepResults[idx].line;
     // Escape backslashes first, then double quotes for S-expression string embedding
-    const escaped = line.replace(/\\/g, "\\\\").replace(/"/g, '\\"').slice(0, 500);
+    const escaped = line.slice(0, 500).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     examples.push(escaped);
   }
 
@@ -470,12 +470,19 @@ export async function runRLM(
     verbose = false,
     constraint,
     ragEnabled = true,
-    sessionId = `session-${Date.now()}`,
+    sessionId: rawSessionId = `session-${Date.now()}`,
   } = options;
 
+  // Validate sessionId
+  const safeSessionId = typeof rawSessionId === "string" && rawSessionId.length > 0 && rawSessionId.length <= 256 && /^[a-zA-Z0-9_-]+$/.test(rawSessionId)
+    ? rawSessionId
+    : `session-${Date.now()}`;
+  const sessionId = safeSessionId;
+
   // Validate numeric config parameters
+  const MAX_TIMEOUT = 300_000; // 5 minutes
   const maxTurns = Number.isFinite(rawMaxTurns) && rawMaxTurns >= 1 ? Math.floor(rawMaxTurns) : 10;
-  const turnTimeoutMs = Number.isFinite(rawTurnTimeoutMs) && rawTurnTimeoutMs >= 100 ? Math.floor(rawTurnTimeoutMs) : 30000;
+  const turnTimeoutMs = Number.isFinite(rawTurnTimeoutMs) && rawTurnTimeoutMs >= 100 && rawTurnTimeoutMs <= MAX_TIMEOUT ? Math.floor(rawTurnTimeoutMs) : 30000;
   const maxSubCalls = Number.isFinite(rawMaxSubCalls) && rawMaxSubCalls >= 1 ? Math.floor(rawMaxSubCalls) : 10;
 
   const log = (msg: string) => {

@@ -101,10 +101,12 @@ export class RAGManager {
 
         // Add pitfalls if present
         if (example.pitfalls && example.pitfalls.length > 0) {
+          const MAX_PITFALLS = 10;
+          const pitfallContent = example.pitfalls.slice(0, MAX_PITFALLS).map(p => `- ${String(p).slice(0, 500)}`).join("\n");
           hints.push({
             type: "pitfall",
             title: `Pitfalls for: ${example.description}`,
-            content: example.pitfalls.map(p => `- ${p}`).join("\n"),
+            content: pitfallContent.slice(0, 5000),
             score: result.score * 0.8,  // Slightly lower priority
           });
         }
