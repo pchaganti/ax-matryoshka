@@ -159,7 +159,8 @@ console.log(JSON.stringify(hits, null, 2));
  * Get feedback message when code execution fails
  */
 function getErrorFeedback(error: string, code?: string): string {
-  let feedback = `The previous code had an error: ${error}\nFix the code and try again.`;
+  const safeError = error.slice(0, 500);
+  let feedback = `The previous code had an error: ${safeError}\nFix the code and try again.`;
   if (code) {
     feedback += `\nCode that failed: ${code.slice(0, 200)}`;
   }

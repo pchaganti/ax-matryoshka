@@ -659,8 +659,12 @@ export class SynthesisIntegrator {
     examples: Array<{ input: string; output: unknown }>
   ): SynthesisOutcome {
     // Group examples by output
+    const MAX_OUTPUT_GROUPS = 100;
     const outputGroups = new Map<unknown, string[]>();
     for (const ex of examples) {
+      if (!outputGroups.has(ex.output) && outputGroups.size >= MAX_OUTPUT_GROUPS) {
+        continue; // Cap unique output groups
+      }
       const group = outputGroups.get(ex.output) || [];
       group.push(ex.input);
       outputGroups.set(ex.output, group);

@@ -57,7 +57,7 @@ describe("Audit #41", () => {
   describe("#4 — lc-solver add should guard against Infinity", () => {
     it("should check isFinite in evaluate add", () => {
       const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const addCase = source.match(/case "add":\s*\{[\s\S]*?return left \+ right/);
+      const addCase = source.match(/case "add":\s*\{[\s\S]*?(?:return left \+ right|addResult)/);
       expect(addCase).not.toBeNull();
       expect(addCase![0]).toMatch(/isFinite|Number\.isFinite/);
     });

@@ -381,6 +381,7 @@ function getErrorFeedback(error: string, code?: string): string {
  * @param query - The original query for context
  */
 function getSuccessFeedback(resultCount?: number, previousCount?: number, query?: string): string {
+  const safeQuery = (query || "the query").slice(0, 200);
   if (resultCount === 0 && previousCount && previousCount > 0) {
     return `Filter matched nothing. Try different pattern.
 
@@ -396,7 +397,7 @@ Next:`;
   if (resultCount && resultCount > 0) {
     return `Found ${resultCount} matches.
 
-Check: Do these results answer "${query || 'the query'}"?
+Check: Do these results answer "${safeQuery}"?
 - For "list/show/what": output the items directly <<<FINAL>>>item1, item2...<<<END>>>
 - For "how many/count": (count RESULTS)
 - For "total/sum": (sum RESULTS)

@@ -110,7 +110,8 @@ Provide JavaScript code to continue analysis.`;
  * Error feedback for DeepSeek
  */
 function getErrorFeedback(error: string): string {
-  return `Execution error: ${error}
+  const safeError = error.slice(0, 500);
+  return `Execution error: ${safeError}
 
 Please fix the code and provide a corrected version:
 \`\`\`javascript

@@ -169,9 +169,10 @@ NOT Python. NOT JSON. Only JavaScript.`;
  * Error feedback for Qwen
  */
 function getErrorFeedback(error: string): string {
+  const safeError = error.slice(0, 500);
   // Detect common issues and provide specific guidance
-  if (error.includes("is not a function") && (error.includes("split") || error.includes("match") || error.includes("replace"))) {
-    return `Code error: ${error}
+  if (safeError.includes("is not a function") && (safeError.includes("split") || safeError.includes("match") || safeError.includes("replace"))) {
+    return `Code error: ${safeError}
 
 IMPORTANT: grep() returns objects, not strings!
 Each item has: { match, line, lineNum }
@@ -189,7 +190,7 @@ for (const item of hits) {
 \`\`\``;
   }
 
-  return `Code error: ${error}
+  return `Code error: ${safeError}
 
 Fix the bug and output ONLY a JavaScript code block:
 \`\`\`javascript

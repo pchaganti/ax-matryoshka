@@ -122,11 +122,13 @@ function createSolverTools(context: string): SolverTools {
 
     fuzzy_search: (query: string, limit: number = 10) => {
       const MAX_QUERY_LENGTH = 500;
+      const MAX_FUZZY_LINES = 50_000;
       if (query.length > MAX_QUERY_LENGTH) return [];
       const clampedLimit = Math.max(1, Math.min(Math.floor(limit), 1000));
       const results: Array<{ line: string; lineNum: number; score: number }> = [];
+      const lineCount = Math.min(lines.length, MAX_FUZZY_LINES);
 
-      for (let i = 0; i < lines.length; i++) {
+      for (let i = 0; i < lineCount; i++) {
         const score = fuzzyMatch(lines[i], query);
         if (score > 0) {
           results.push({
@@ -270,7 +272,9 @@ export class NucleusEngine {
         (solverResult.value as { _type: string })._type === "synthesized-fn"
       ) {
         const fnObj = solverResult.value as { _type: string; name: string; fn: unknown; code: string };
-        this.bindings.set(`_fn_${fnObj.name}`, fnObj);
+        if (typeof fnObj.name === "string" && fnObj.name.length <= 256 && /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(fnObj.name)) {
+          this.bindings.set(`_fn_${fnObj.name}`, fnObj);
+        }
         if (this.verbose) {
           console.log(`[Engine] Registered function "${fnObj.name}" as _fn_${fnObj.name}`);
         }

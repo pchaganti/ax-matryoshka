@@ -668,7 +668,8 @@ function evaluate(
       if (!Number.isFinite(left) || !Number.isFinite(right)) {
         return null;
       }
-      return left + right;
+      const addResult = left + right;
+      return Number.isFinite(addResult) ? addResult : null;
     }
 
     case "if": {
