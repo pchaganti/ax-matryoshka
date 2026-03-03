@@ -91,7 +91,8 @@ function createSolverTools(context: string): SolverTools {
       const validation = validateRegex(pattern);
       if (!validation.valid) return [];
       // Cap capture groups to prevent huge result objects
-      const unescapedParens = pattern.replace(/\\./g, "").match(/\(/g);
+      // Replace escaped backslashes first, then escaped chars, to correctly handle \\(
+      const unescapedParens = pattern.replace(/\\\\/g, "").replace(/\\./g, "").match(/\(/g);
       if (unescapedParens && unescapedParens.length > MAX_CAPTURE_GROUPS) return [];
       const flags = "gmi";
       const regex = new RegExp(pattern, flags);

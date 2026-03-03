@@ -48,7 +48,9 @@ export interface Config {
  * Recursively resolve environment variables in config values.
  * Supports ${VAR_NAME} syntax in string values.
  */
-function resolveEnvVars(obj: unknown): unknown {
+const MAX_ENV_DEPTH = 20;
+function resolveEnvVars(obj: unknown, depth: number = 0): unknown {
+  if (depth > MAX_ENV_DEPTH) return obj;
   if (typeof obj === "string") {
     const DANGEROUS_VAR_NAMES = ["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"];
     return obj.replace(/\$\{([^}]+)\}/g, (_, varName: string) => {
@@ -63,14 +65,14 @@ function resolveEnvVars(obj: unknown): unknown {
     });
   }
   if (Array.isArray(obj)) {
-    return obj.map(resolveEnvVars);
+    return obj.map(item => resolveEnvVars(item, depth + 1));
   }
   if (obj && typeof obj === "object") {
     const DANGEROUS_OBJ_KEYS = new Set(["__proto__", "constructor", "prototype"]);
     const result: Record<string, unknown> = Object.create(null);
     for (const [key, value] of Object.entries(obj)) {
       if (DANGEROUS_OBJ_KEYS.has(key)) continue;
-      result[key] = resolveEnvVars(value);
+      result[key] = resolveEnvVars(value, depth + 1);
     }
     return result;
   }

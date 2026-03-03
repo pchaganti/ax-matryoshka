@@ -416,8 +416,10 @@ function tryDelimiterFieldExtraction(
     const MAX_FIELDS = 1000;
     const maxFields = Math.min(MAX_FIELDS, examples.reduce((max, e) => Math.max(max, e.input.split(delim).slice(0, MAX_FIELDS).length), 0));
     for (let fieldIdx = 0; fieldIdx < maxFields; fieldIdx++) {
+      const MAX_INPUT_LENGTH = 100_000;
       const allMatch = examples.every((e) => {
-        const fields = e.input.split(delim).map((f) => f.trim());
+        if (e.input.length > MAX_INPUT_LENGTH) return false;
+        const fields = e.input.split(delim, MAX_FIELDS).map((f) => f.trim());
         return fields[fieldIdx] === String(e.output);
       });
 

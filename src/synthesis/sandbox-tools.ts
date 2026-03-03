@@ -418,7 +418,7 @@ export async function createSandboxWithSynthesis(
 
       while ((match = regex.exec(searchContext)) !== null) {
         if (++iterations >= MAX_GREP_ITERATIONS) break;
-        const beforeMatch = context.slice(0, match.index);
+        const beforeMatch = searchContext.slice(0, match.index);
         const lineNum = (beforeMatch.match(/\\n/g) || []).length + 1;
         const line = __linesArray[lineNum - 1] || '';
 

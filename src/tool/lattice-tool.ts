@@ -229,7 +229,8 @@ export class LatticeTool {
       return `Result: ${value.slice(0, 100)}${value.length > 100 ? "..." : ""}`;
     }
 
-    return `Result: ${JSON.stringify(value)}`;
+    const MAX_JSON_RESULT = 10_000;
+    return `Result: ${JSON.stringify(value).slice(0, MAX_JSON_RESULT)}`;
   }
 
   /**
@@ -241,7 +242,7 @@ export class LatticeTool {
       success: true,
       data: bindings,
       message: Object.keys(bindings).length > 0
-        ? `Current bindings: ${Object.keys(bindings).join(", ")}`
+        ? `Current bindings: ${Object.keys(bindings).join(", ").slice(0, 2000)}`
         : "No bindings",
     };
   }
@@ -315,7 +316,8 @@ export class LatticeTool {
  * Parse a text command into a LatticeCommand
  */
 export function parseCommand(input: string): LatticeCommand | null {
-  const trimmed = input.trim();
+  const MAX_COMMAND_LENGTH = 100_000;
+  const trimmed = input.length > MAX_COMMAND_LENGTH ? input.slice(0, MAX_COMMAND_LENGTH).trim() : input.trim();
 
   if (!trimmed) return null;
 

@@ -425,7 +425,10 @@ export class SessionDB {
       const MAX_CHECKPOINT_JSON_SIZE = 10_000_000; // 10MB
       if (row.bindings.length > MAX_CHECKPOINT_JSON_SIZE) return null;
       const obj = JSON.parse(row.bindings) as Record<string, string>;
-      return new Map(Object.entries(obj));
+      const MAX_CHECKPOINT_KEYS = 100_000;
+      const entries = Object.entries(obj);
+      if (entries.length > MAX_CHECKPOINT_KEYS) return null;
+      return new Map(entries);
     } catch {
       return null;
     }
