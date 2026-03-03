@@ -112,10 +112,10 @@ describe("Audit #65", () => {
       if (fnStart === -1) {
         const altStart = source.indexOf("export function keywordMatchScore(");
         expect(altStart).toBeGreaterThan(-1);
-        const block = source.slice(altStart, altStart + 800);
+        const block = source.slice(altStart, altStart + 1000);
         expect(block).toMatch(/isFinite.*score|score.*isFinite|denominator\s*===?\s*0/i);
       } else {
-        const block = source.slice(fnStart, fnStart + 800);
+        const block = source.slice(fnStart, fnStart + 1000);
         expect(block).toMatch(/isFinite.*score|score.*isFinite|denominator\s*===?\s*0/i);
       }
     });

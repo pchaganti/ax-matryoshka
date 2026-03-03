@@ -330,7 +330,7 @@ export class SynthesisIntegrator {
       code = `(s) => {
         const cleaned = s.replace(/[¥,\\s]/g, '');
         const r = parseInt(cleaned, 10);
-        return isNaN(r) ? null : r;
+        return isNaN(r) || !Number.isSafeInteger(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s.replace(/[¥,\s]/g, "");
@@ -1021,9 +1021,12 @@ export class SynthesisIntegrator {
 
     // Look for common substrings
     const MAX_SEARCH_LENGTH = 1000;
+    const MAX_ITERATIONS = 50_000;
+    let iterations = 0;
     const first = strings[0].length > MAX_SEARCH_LENGTH ? strings[0].slice(0, MAX_SEARCH_LENGTH) : strings[0];
     for (let len = Math.min(10, first.length); len >= 3; len--) {
       for (let i = 0; i <= first.length - len; i++) {
+        if (++iterations > MAX_ITERATIONS) return null;
         const substr = first.substring(i, i + len);
         if (strings.every((s) => s.includes(substr))) {
           return this.escapeRegex(substr);

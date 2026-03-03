@@ -436,8 +436,9 @@ export class SessionDB {
    */
   getCheckpointTurns(): number[] {
     if (!this.db) return [];
-    const stmt = this.db.prepare("SELECT turn FROM checkpoints ORDER BY turn");
-    const rows = stmt.all() as Array<{ turn: number }>;
+    const MAX_CHECKPOINTS = 10_000;
+    const stmt = this.db.prepare("SELECT turn FROM checkpoints ORDER BY turn LIMIT ?");
+    const rows = stmt.all(MAX_CHECKPOINTS) as Array<{ turn: number }>;
     return rows.map((r) => r.turn);
   }
 

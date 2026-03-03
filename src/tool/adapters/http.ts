@@ -74,7 +74,8 @@ export class HttpAdapter {
     const MAX_TIMEOUT_SECONDS = 86400; // 24 hours
     const rawTimeout = options.timeoutSeconds ?? 600;
     const safeTimeout = Number.isFinite(rawTimeout) && rawTimeout > 0 ? Math.min(rawTimeout, MAX_TIMEOUT_SECONDS) : 600;
-    this.timeoutMs = safeTimeout * 1000;
+    const rawTimeoutMs = safeTimeout * 1000;
+    this.timeoutMs = Number.isSafeInteger(rawTimeoutMs) ? rawTimeoutMs : 600_000;
   }
 
   private resetInactivityTimer(): void {
@@ -200,7 +201,7 @@ export class HttpAdapter {
     // CORS headers
     if (this.cors) {
       const origin = req.headers.origin || "";
-      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/.test(origin);
       res.setHeader("Access-Control-Allow-Origin", isLocalhost ? origin : "http://localhost");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
@@ -414,7 +415,7 @@ export class HttpAdapter {
       req.on("data", (chunk: Buffer) => {
         if (settled) return;
         totalBytes += chunk.length;
-        if (totalBytes > MAX_BODY_SIZE) {
+        if (!Number.isSafeInteger(totalBytes) || totalBytes > MAX_BODY_SIZE) {
           settled = true;
           req.destroy();
           reject(new Error("Request body too large"));
@@ -582,7 +583,7 @@ Examples:
     if (args[i] === "--port" && args[i + 1]) {
       const portArg = args[++i];
       const parsed = parseInt(portArg, 10);
-      if (isNaN(parsed) || parsed < 1 || parsed > 65535) {
+      if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65535) {
         console.error(`Invalid port: ${portArg}. Must be 1-65535.`);
         process.exit(1);
       }

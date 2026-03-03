@@ -215,6 +215,8 @@ export class PredicateCompiler {
       const field = eqMatch[1];
       const value = eqMatch[3];
       if (!this.isValidFieldName(field)) return null;
+      const MAX_VALUE_LENGTH = 10_000;
+      if (value.length > MAX_VALUE_LENGTH) return null;
       return { sql: `json_extract(data, '$.${field}') = ?`, params: [value] };
     }
 
@@ -223,6 +225,8 @@ export class PredicateCompiler {
     if (eqMatchDQ) {
       const [, field, value] = eqMatchDQ;
       if (!this.isValidFieldName(field)) return null;
+      const MAX_VALUE_LENGTH = 10_000;
+      if (value.length > MAX_VALUE_LENGTH) return null;
       return { sql: `json_extract(data, '$.${field}') = ?`, params: [value] };
     }
 
