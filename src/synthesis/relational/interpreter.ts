@@ -282,15 +282,20 @@ export function exprToCode(expr: Expr): string {
     case "add":
       return `(${exprToCode(expr.left)} + ${exprToCode(expr.right)})`;
 
-    case "sub":
-      return `(${exprToCode(expr.left)} - ${exprToCode(expr.right)})`;
+    case "sub": {
+      const subResult = `(${exprToCode(expr.left)} - ${exprToCode(expr.right)})`;
+      return `((_s) => isFinite(_s) ? _s : null)(${subResult})`;
+    }
 
-    case "mul":
-      return `(${exprToCode(expr.left)} * ${exprToCode(expr.right)})`;
+    case "mul": {
+      const mulResult = `(${exprToCode(expr.left)} * ${exprToCode(expr.right)})`;
+      return `((_m) => isFinite(_m) ? _m : null)(${mulResult})`;
+    }
 
     case "div": {
-      const divResult = `(${exprToCode(expr.left)} / ${exprToCode(expr.right)})`;
-      return `((_d) => isFinite(_d) ? _d : null)(${divResult})`;
+      const divRight = exprToCode(expr.right);
+      const divLeft = exprToCode(expr.left);
+      return `((_l, _r) => _r === 0 ? null : ((_d) => isFinite(_d) ? _d : null)(_l / _r))(${divLeft}, ${divRight})`;
     }
 
     case "concat":

@@ -232,7 +232,7 @@ export class PredicateCompiler {
       const [, field, value] = includesMatch;
       if (!this.isValidFieldName(field)) return null;
       // Escape SQL LIKE wildcards in the value to match literally
-      const escapedValue = value.replace(/%/g, "\\%").replace(/_/g, "\\_");
+      const escapedValue = value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
       return { sql: `json_extract(data, '$.${field}') LIKE ? ESCAPE '\\'`, params: [`%${escapedValue}%`] };
     }
 

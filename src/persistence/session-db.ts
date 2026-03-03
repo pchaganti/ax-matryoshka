@@ -233,6 +233,7 @@ export class SessionDB {
     if (!this.db) return [];
     if (!query.trim()) return [];
 
+    const MAX_SEARCH_RESULTS = 100_000;
     // Use FTS5 MATCH query
     const stmt = this.db.prepare(`
       SELECT d.lineNum, d.content
@@ -240,10 +241,11 @@ export class SessionDB {
       JOIN document_lines_fts f ON d.lineNum = f.rowid
       WHERE document_lines_fts MATCH ?
       ORDER BY d.lineNum
+      LIMIT ?
     `);
 
     try {
-      return stmt.all(query) as DocumentLine[];
+      return stmt.all(query, MAX_SEARCH_RESULTS) as DocumentLine[];
     } catch (err) {
       console.error("[SessionDB] FTS5 query failed:", err instanceof Error ? err.message : String(err));
       return [];
@@ -343,13 +345,15 @@ export class SessionDB {
    */
   getHandleData(handle: string): unknown[] {
     if (!this.db) return [];
+    const MAX_ITEMS = 1_000_000;
     const MAX_JSON_DATA_SIZE = 10_000_000; // 10MB per entry
     const stmt = this.db.prepare(`
       SELECT data FROM handle_data
       WHERE handle = ?
       ORDER BY idx
+      LIMIT ?
     `);
-    const rows = stmt.all(handle) as Array<{ data: string }>;
+    const rows = stmt.all(handle, MAX_ITEMS) as Array<{ data: string }>;
     return rows.map((r) => {
       try {
         if (r.data.length > MAX_JSON_DATA_SIZE) return null;
@@ -366,8 +370,9 @@ export class SessionDB {
    */
   listHandles(): string[] {
     if (!this.db) return [];
-    const stmt = this.db.prepare("SELECT handle FROM handles ORDER BY handle");
-    const rows = stmt.all() as Array<{ handle: string }>;
+    const MAX_HANDLES = 100_000;
+    const stmt = this.db.prepare("SELECT handle FROM handles ORDER BY handle LIMIT ?");
+    const rows = stmt.all(MAX_HANDLES) as Array<{ handle: string }>;
     return rows.map((r) => r.handle);
   }
 
@@ -540,11 +545,12 @@ export class SessionDB {
    */
   getSymbolsByKind(kind: SymbolKind): Symbol[] {
     if (!this.db) return [];
+    const MAX_SYMBOLS = 100_000;
     const stmt = this.db.prepare(`
       SELECT id, name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId
-      FROM symbols WHERE kind = ? ORDER BY startLine, startCol
+      FROM symbols WHERE kind = ? ORDER BY startLine, startCol LIMIT ?
     `);
-    return stmt.all(kind) as Symbol[];
+    return stmt.all(kind, MAX_SYMBOLS) as Symbol[];
   }
 
   /**
@@ -554,11 +560,12 @@ export class SessionDB {
     if (!this.db) return [];
     if (!Number.isFinite(line)) return [];
     line = Math.floor(line);
+    const MAX_SYMBOLS = 100_000;
     const stmt = this.db.prepare(`
       SELECT id, name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId
-      FROM symbols WHERE startLine <= ? AND endLine >= ? ORDER BY startLine, startCol
+      FROM symbols WHERE startLine <= ? AND endLine >= ? ORDER BY startLine, startCol LIMIT ?
     `);
-    return stmt.all(line, line) as Symbol[];
+    return stmt.all(line, line, MAX_SYMBOLS) as Symbol[];
   }
 
   /**

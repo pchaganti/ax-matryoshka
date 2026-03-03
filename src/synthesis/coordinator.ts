@@ -346,8 +346,8 @@ export class SynthesisCoordinator {
       this.knowledgeBase.add({
         id: `regex_${Date.now()}_${this.synthesisCount}`,
         type: "regex",
-        name: request.description || "synthesized_regex",
-        description: request.description,
+        name: (request.description || "synthesized_regex").slice(0, 500),
+        description: (request.description || "").slice(0, 2000),
         pattern: result.pattern,
         ast: result.ast,
         positiveExamples: request.positiveExamples,
