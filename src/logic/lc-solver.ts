@@ -449,7 +449,7 @@ function evaluate(
         throw new Error(`split: expected string, got ${typeof str}`);
       }
       if (!Number.isInteger(term.index) || term.index < 0) return null;
-      if (!term.delim || term.delim.length === 0) return null;
+      if (!term.delim || term.delim.length === 0 || term.delim.length > 1000) return null;
       const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(term.delim);
       if (parts.length > MAX_SPLIT_PARTS) return null;
@@ -458,13 +458,17 @@ function evaluate(
 
     case "parseInt": {
       const str = evaluate(term.str, tools, bindings, log, depth + 1);
-      const intResult = parseInt(String(str), 10);
+      const strForInt = String(str);
+      if (strForInt.length > 200) return null;
+      const intResult = parseInt(strForInt, 10);
       return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
       const str = evaluate(term.str, tools, bindings, log, depth + 1);
-      const floatResult = parseFloat(String(str));
+      const strForFloat = String(str);
+      if (strForFloat.length > 200) return null;
+      const floatResult = parseFloat(strForFloat);
       return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 

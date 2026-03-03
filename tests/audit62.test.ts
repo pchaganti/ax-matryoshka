@@ -14,7 +14,7 @@ describe("Audit #62", () => {
       const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
       const caseStart = source.indexOf('case "parseInt"');
       expect(caseStart).toBeGreaterThan(-1);
-      const block = source.slice(caseStart, caseStart + 400);
+      const block = source.slice(caseStart, caseStart + 500);
       expect(block).toMatch(/isSafeInteger/);
     });
   });

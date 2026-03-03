@@ -259,7 +259,10 @@ export function evaluate(
       if (!replaceValidation.valid) return str;
       // Escape $ in replacement to prevent backreference injection ($1, $&, etc.)
       const safeReplacement = term.to.replace(/\$/g, "$$$$");
-      return str.replace(new RegExp(term.from, "g"), safeReplacement);
+      const MAX_RESULT_LENGTH = 1_000_000;
+      const result = str.replace(new RegExp(term.from, "g"), safeReplacement);
+      if (result.length > MAX_RESULT_LENGTH) return null;
+      return result;
     }
 
     case "split": {
@@ -280,7 +283,9 @@ export function evaluate(
       if (typeof str !== "string" && typeof str !== "number") {
         throw new Error(`parseInt: expected string or number, got ${typeof str}`);
       }
-      const intResult = parseInt(String(str), 10);
+      const strForInt = String(str);
+      if (strForInt.length > 200) return null;
+      const intResult = parseInt(strForInt, 10);
       return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
@@ -289,7 +294,9 @@ export function evaluate(
       if (typeof str !== "string" && typeof str !== "number") {
         throw new Error(`parseFloat: expected string or number, got ${typeof str}`);
       }
-      const floatResult = parseFloat(String(str));
+      const strForFloat = String(str);
+      if (strForFloat.length > 200) return null;
+      const floatResult = parseFloat(strForFloat);
       return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
@@ -534,6 +541,7 @@ export function evaluate(
         case "number": {
           if (typeof val === "number") return isFinite(val) ? val : null;
           if (typeof val === "string") {
+            if (val.length > 200) return null;
             const n = parseFloat(val);
             return isNaN(n) || !isFinite(n) ? null : n;
           }

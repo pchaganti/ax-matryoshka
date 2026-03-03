@@ -22,6 +22,7 @@ function buildSystemPrompt(
   hints?: RAGHints
 ): string {
   // Determine document size category
+  if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const sizeCategory = contextLength < 2000 ? "SMALL" : "LARGE";
 
   return `You analyze documents to answer queries. Output ONE command per turn.

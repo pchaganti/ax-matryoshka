@@ -132,8 +132,9 @@ function tokenize(input: string): Token[] {
     // String literal
     if (ch === '"') {
       i++;
+      const MAX_STRING_LENGTH = 100_000;
       let str = "";
-      while (i < input.length && input[i] !== '"') {
+      while (i < input.length && input[i] !== '"' && str.length < MAX_STRING_LENGTH) {
         if (input[i] === "\\") {
           i++;
           if (i < input.length) {
@@ -645,8 +646,9 @@ function parseList(state: ParserState): LCTerm | null {
     case "synthesize": {
       // Parse list of [input output] pairs
       // Supports: (synthesize ("in" out) ...) or (synthesize (example "in" out) ...)
+      const MAX_SYNTH_EXAMPLES = 1000;
       const examples: Array<{ input: string; output: string | number | boolean | null }> = [];
-      while (peek(state) && peek(state)?.type !== "rparen") {
+      while (peek(state) && peek(state)?.type !== "rparen" && examples.length < MAX_SYNTH_EXAMPLES) {
         // Expect (input output) pair or [input output] or (example input output)
         const pairStart = peek(state);
         if (pairStart?.type === "lparen" || pairStart?.type === "lbracket") {
