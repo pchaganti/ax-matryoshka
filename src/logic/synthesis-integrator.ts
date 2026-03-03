@@ -693,6 +693,7 @@ export class SynthesisIntegrator {
     }
 
     // Filter out rules with invalid/dangerous regex patterns
+    const MAX_SAFE_RULES = 50;
     const safeRules = rules.filter(rule => {
       try {
         if (rule.pattern.length > 500) return false;
@@ -705,7 +706,7 @@ export class SynthesisIntegrator {
       } catch {
         return false;
       }
-    });
+    }).slice(0, MAX_SAFE_RULES);
     if (safeRules.length === 0) {
       return {
         success: false,

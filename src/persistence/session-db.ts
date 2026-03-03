@@ -161,7 +161,7 @@ export class SessionDB {
     }
 
     const MAX_LINES = 500_000;
-    let lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    let lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n", MAX_LINES + 1);
     if (lines.length > MAX_LINES) {
       lines = lines.slice(0, MAX_LINES);
     }

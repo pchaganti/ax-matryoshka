@@ -230,7 +230,11 @@ export class LatticeTool {
     }
 
     const MAX_JSON_RESULT = 10_000;
-    return `Result: ${JSON.stringify(value).slice(0, MAX_JSON_RESULT)}`;
+    // Cap object keys before stringify to prevent unbounded serialization
+    const safeValue = typeof value === "object" && value !== null
+      ? Object.fromEntries(Object.keys(value as Record<string, unknown>).slice(0, 100).map(k => [k, (value as Record<string, unknown>)[k]]))
+      : value;
+    return `Result: ${JSON.stringify(safeValue, null, 2).slice(0, MAX_JSON_RESULT)}`;
   }
 
   /**

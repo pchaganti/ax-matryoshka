@@ -447,8 +447,10 @@ export async function createSandboxWithSynthesis(
      */
     var MAX_TOKEN_WORDS = 100000;
     function count_tokens(text) {
-      const str = text === undefined ? context : text;
+      const MAX_TOKEN_INPUT = 1_000_000;
+      var str = text === undefined ? context : text;
       if (!str || str.length === 0) return 0;
+      if (str.length > MAX_TOKEN_INPUT) str = str.slice(0, MAX_TOKEN_INPUT);
 
       var words = str.split(/\\s+/).filter(w => w.length > 0);
       if (words.length > MAX_TOKEN_WORDS) words = words.slice(0, MAX_TOKEN_WORDS);

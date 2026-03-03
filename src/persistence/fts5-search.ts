@@ -60,7 +60,8 @@ export class FTS5Search {
     // Pre-compute relevance scores to avoid recalculating per sort comparison
     const scores = new Map<SearchResult, number>();
     for (const r of results) {
-      const lower = r.content.toLowerCase();
+      const MAX_CONTENT_SCORING = 100_000;
+      const lower = r.content.length > MAX_CONTENT_SCORING ? r.content.slice(0, MAX_CONTENT_SCORING).toLowerCase() : r.content.toLowerCase();
       const count = queryTerms.reduce((sum, term) => {
         return sum + (lower.split(term).length - 1);
       }, 0);

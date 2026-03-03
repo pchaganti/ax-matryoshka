@@ -120,7 +120,7 @@ export class PipeAdapter {
       }
     };
 
-    const MAX_LINE_LENGTH = 10_000_000; // 10MB
+    const MAX_LINE_LENGTH = 1_000_000; // 1MB
     const MAX_QUEUE_SIZE = 10_000;
     rl.on("line", (line) => {
       if (line.length > MAX_LINE_LENGTH) {

@@ -367,8 +367,9 @@ export function evaluate(
       log(`Building classifier from ${classifyExamples.length} examples`);
 
       // Filter out empty strings — "".includes("") is always true, making classifier match everything
-      const trueExamples = classifyExamples.filter(e => e.output === true).map(e => e.input).filter(s => s.length > 0);
-      const falseExamples = classifyExamples.filter(e => e.output === false).map(e => e.input).filter(s => s.length > 0);
+      const MAX_EXAMPLE_INPUT = 10_000;
+      const trueExamples = classifyExamples.filter(e => e.output === true).map(e => e.input.length > MAX_EXAMPLE_INPUT ? e.input.slice(0, MAX_EXAMPLE_INPUT) : e.input).filter(s => s.length > 0);
+      const falseExamples = classifyExamples.filter(e => e.output === false).map(e => e.input.length > MAX_EXAMPLE_INPUT ? e.input.slice(0, MAX_EXAMPLE_INPUT) : e.input).filter(s => s.length > 0);
 
       log(`  True examples: ${trueExamples.length}, False examples: ${falseExamples.length}`);
 
@@ -436,9 +437,13 @@ export function evaluate(
     }
 
     case "reduce": {
-      const collection = evaluate(term.collection, tools, env, log, depth + 1);
+      const MAX_REDUCE_ITEMS = 100_000;
+      let collection = evaluate(term.collection, tools, env, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`reduce: expected array, got ${typeof collection}`);
+      }
+      if (collection.length > MAX_REDUCE_ITEMS) {
+        collection = collection.slice(0, MAX_REDUCE_ITEMS);
       }
       const init = evaluate(term.init, tools, env, log, depth + 1);
       const fn = evaluate(term.fn, tools, env, log, depth + 1);
@@ -646,10 +651,14 @@ export function formatValue(value: LCValue, indent: number = 0): string {
   if (indent > MAX_FORMAT_DEPTH) return "...";
   const pad = "  ".repeat(Math.min(indent, MAX_FORMAT_DEPTH));
 
+  const MAX_FORMAT_STRING = 10_000;
   if (value === null) return "null";
   if (typeof value === "boolean") return String(value);
   if (typeof value === "number") return String(value);
-  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "string") {
+    const capped = value.length > MAX_FORMAT_STRING ? value.slice(0, MAX_FORMAT_STRING) + "..." : value;
+    return JSON.stringify(capped);
+  }
 
   if (Array.isArray(value)) {
     if (value.length === 0) return "[]";
