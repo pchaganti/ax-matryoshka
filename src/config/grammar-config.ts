@@ -110,7 +110,7 @@ export function addCustomGrammar(language: string, grammar: GrammarConfig): void
       throw new Error(`Invalid extension format: '${ext}'`);
     }
   }
-  if (typeof grammar.package !== "string" || grammar.package.length === 0 || grammar.package.length > 256 || !/^[@a-zA-Z0-9][\w./@-]*$/.test(grammar.package)) {
+  if (typeof grammar.package !== "string" || grammar.package.length === 0 || grammar.package.length > 256 || !/^[@a-zA-Z0-9][\w./@-]*$/.test(grammar.package) || grammar.package.includes("..")) {
     throw new Error(`Invalid package name: '${grammar.package}'`);
   }
   if (grammar.moduleExport !== undefined) {

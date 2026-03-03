@@ -279,15 +279,18 @@ export async function createSandboxWithSynthesis(
     console: {
       log: (...args: unknown[]) => {
         const MAX_LOG_ENTRY = 10_000;
-        logs.push(args.map((a) => String(a)).join(" ").slice(0, MAX_LOG_ENTRY));
+        const MAX_ARG_LENGTH = 1_000;
+        logs.push(args.map((a) => String(a).slice(0, MAX_ARG_LENGTH)).join(" ").slice(0, MAX_LOG_ENTRY));
       },
       error: (...args: unknown[]) => {
         const MAX_LOG_ENTRY = 10_000;
-        logs.push(`[ERROR] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
+        const MAX_ARG_LENGTH = 1_000;
+        logs.push(`[ERROR] ${args.map((a) => String(a).slice(0, MAX_ARG_LENGTH)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
       },
       warn: (...args: unknown[]) => {
         const MAX_LOG_ENTRY = 10_000;
-        logs.push(`[WARN] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
+        const MAX_ARG_LENGTH = 1_000;
+        logs.push(`[WARN] ${args.map((a) => String(a).slice(0, MAX_ARG_LENGTH)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
       },
     },
 
@@ -396,6 +399,7 @@ export async function createSandboxWithSynthesis(
      */
     var MAX_GREP_RESULTS = 10000;
     var MAX_GREP_ITERATIONS = 1000000;
+    var MAX_CONTEXT_LENGTH = 50_000_000;
     function grep(pattern, flags) {
       if (!pattern || typeof pattern !== "string") return [];
       if (pattern.length > 500) return [];
@@ -410,8 +414,9 @@ export async function createSandboxWithSynthesis(
       const results = [];
       let match;
       var iterations = 0;
+      var searchContext = context.length > MAX_CONTEXT_LENGTH ? context.slice(0, MAX_CONTEXT_LENGTH) : context;
 
-      while ((match = regex.exec(context)) !== null) {
+      while ((match = regex.exec(searchContext)) !== null) {
         if (++iterations >= MAX_GREP_ITERATIONS) break;
         const beforeMatch = context.slice(0, match.index);
         const lineNum = (beforeMatch.match(/\\n/g) || []).length + 1;

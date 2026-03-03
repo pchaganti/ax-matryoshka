@@ -97,18 +97,24 @@ const DEFAULT_CONFIG: Config = {
 };
 
 const MAX_NUMERIC_COERCE_LENGTH = 15; // Don't coerce strings longer than this (API keys, tokens)
-function coerceConfigTypes(obj: unknown): unknown {
+const MAX_CONFIG_DEPTH = 20;
+function coerceConfigTypes(obj: unknown, depth: number = 0): unknown {
+  if (depth > MAX_CONFIG_DEPTH) return obj;
   if (typeof obj === "string") {
-    if (obj.length <= MAX_NUMERIC_COERCE_LENGTH && /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(obj) && !isNaN(Number(obj))) return Number(obj);
+    if (obj.length <= MAX_NUMERIC_COERCE_LENGTH && /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/.test(obj) && !isNaN(Number(obj))) {
+      const num = Number(obj);
+      if (!Number.isFinite(num)) return obj;
+      return num;
+    }
     if (obj === "true") return true;
     if (obj === "false") return false;
     return obj;
   }
-  if (Array.isArray(obj)) return obj.map(coerceConfigTypes);
+  if (Array.isArray(obj)) return obj.map(item => coerceConfigTypes(item, depth + 1));
   if (obj && typeof obj === "object") {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(obj)) {
-      result[k] = coerceConfigTypes(v);
+      result[k] = coerceConfigTypes(v, depth + 1);
     }
     return result;
   }

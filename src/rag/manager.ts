@@ -152,13 +152,16 @@ ${safeCode}
    * Format a failure example as a hint
    */
   private formatFailureAsHint(failure: FailureExample): string {
+    const safeBadCode = failure.badCode.replace(/`/g, "\\`").replace(/\$/g, "\\$");
+    const safeError = failure.error.replace(/`/g, "\\`").replace(/\$/g, "\\$");
+    const safeFix = failure.fix.replace(/`/g, "\\`").replace(/\$/g, "\\$");
     return `**Don't do this:**
 \`\`\`javascript
-${failure.badCode}
+${safeBadCode}
 \`\`\`
-Error: ${failure.error}
+Error: ${safeError}
 
-**Instead:** ${failure.fix}`;
+**Instead:** ${safeFix}`;
   }
 
   /**

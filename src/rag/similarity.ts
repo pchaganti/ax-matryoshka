@@ -122,8 +122,12 @@ export function keywordMatchScore(
   keywords: string[]
 ): number {
   const MAX_QUERY_TOKENS = 200;
+  const MAX_KEYWORDS = 500;
   if (queryTokens.length > MAX_QUERY_TOKENS) {
     queryTokens = queryTokens.slice(0, MAX_QUERY_TOKENS);
+  }
+  if (keywords.length > MAX_KEYWORDS) {
+    keywords = keywords.slice(0, MAX_KEYWORDS);
   }
   const querySet = new Set(queryTokens);
   const keywordSet = new Set(keywords.map(k => k.toLowerCase()));

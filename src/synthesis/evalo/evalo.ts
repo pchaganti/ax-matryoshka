@@ -111,7 +111,7 @@ export function evalExtractor(extractor: Extractor, input: string, depth: number
       const right = evalExtractor(extractor.right, input, depth + 1);
       if (typeof left !== "number" || typeof right !== "number" || isNaN(left) || isNaN(right)) return null;
       const result = left + right;
-      if (!isFinite(result)) return null;
+      if (!isFinite(result) || !Number.isSafeInteger(result)) return null;
       return result;
     }
 

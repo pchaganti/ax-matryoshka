@@ -442,6 +442,11 @@ function isSafeInvariant(expr: string): boolean {
 
   if (!safePattern.test(expr)) return false;
 
+  // Limit property access depth to prevent prototype chain traversal
+  const MAX_DOT_DEPTH = 5;
+  const dotCount = (expr.match(/\./g) || []).length;
+  if (dotCount > MAX_DOT_DEPTH) return false;
+
   // Reject assignment operators (= not preceded by !, <, >, or another =)
   if (/(?<![!=<>])=(?!=)/.test(expr)) return false;
 
