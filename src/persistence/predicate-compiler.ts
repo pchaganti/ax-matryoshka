@@ -173,6 +173,9 @@ export class PredicateCompiler {
       prev = stripped;
       stripped = stripped.replace(/\([^()]*\)/g, "");
     }
+    if (iterations >= MAX_STRIP_ITERATIONS) {
+      throw new Error("Predicate too complex (nested parentheses)");
+    }
     if (/,/.test(stripped)) {
       throw new Error("Comma operator is not allowed in predicates");
     }

@@ -191,9 +191,14 @@ export interface SearchIndex {
 /**
  * Create a search index from documents
  */
+const MAX_DOCS = 100_000;
+
 export function buildSearchIndex(
   docs: Array<{ id: string; text: string; keywords: string[] }>
 ): SearchIndex {
+  if (docs.length > MAX_DOCS) {
+    throw new Error(`Too many documents: ${docs.length} (max ${MAX_DOCS})`);
+  }
   for (const d of docs) {
     if (typeof d.id !== "string" || typeof d.text !== "string" || !Array.isArray(d.keywords)) {
       throw new Error("Invalid document: id must be string, text must be string, keywords must be array");

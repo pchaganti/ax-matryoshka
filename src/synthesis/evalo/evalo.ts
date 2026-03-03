@@ -61,7 +61,10 @@ export function evalExtractor(extractor: Extractor, input: string, depth: number
         const regex = new RegExp(extractor.from, "g");
         // Escape $ in replacement to prevent backreference injection
         const safeReplacement = extractor.to.replace(/\$/g, "$$$$");
-        return str.replace(regex, safeReplacement);
+        const MAX_RESULT_LENGTH = 1_000_000;
+        const result = str.replace(regex, safeReplacement);
+        if (result.length > MAX_RESULT_LENGTH) return null;
+        return result;
       } catch {
         return null;
       }
@@ -78,7 +81,7 @@ export function evalExtractor(extractor: Extractor, input: string, depth: number
     case "split": {
       const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
-      if (!extractor.delim || extractor.delim.length === 0) return null;
+      if (!extractor.delim || extractor.delim.length === 0 || extractor.delim.length > 1000) return null;
 
       const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(extractor.delim);

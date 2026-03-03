@@ -341,6 +341,7 @@ export class SessionDB {
    */
   getHandleData(handle: string): unknown[] {
     if (!this.db) return [];
+    const MAX_JSON_DATA_SIZE = 10_000_000; // 10MB per entry
     const stmt = this.db.prepare(`
       SELECT data FROM handle_data
       WHERE handle = ?
@@ -349,6 +350,7 @@ export class SessionDB {
     const rows = stmt.all(handle) as Array<{ data: string }>;
     return rows.map((r) => {
       try {
+        if (r.data.length > MAX_JSON_DATA_SIZE) return null;
         return JSON.parse(r.data);
       } catch (e) {
         console.warn(`[SessionDB] Failed to parse handle data: ${e instanceof Error ? e.message : String(e)}`);

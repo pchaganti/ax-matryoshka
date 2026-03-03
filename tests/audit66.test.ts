@@ -113,7 +113,7 @@ describe("Audit #66", () => {
       const source = readFileSync("src/rag/manager.ts", "utf-8");
       const fnStart = source.indexOf("recordFailure(");
       expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 600);
+      const block = source.slice(fnStart, fnStart + 800);
       expect(block).toMatch(/isFinite.*timestamp|timestamp.*isFinite|timestamp.*typeof/i);
     });
   });

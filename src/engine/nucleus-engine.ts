@@ -85,9 +85,13 @@ function createSolverTools(context: string): SolverTools {
     grep: (pattern: string) => {
       const MAX_GREP_MATCHES = 10000;
       const MAX_PATTERN_LENGTH = 1000;
+      const MAX_CAPTURE_GROUPS = 50;
       if (pattern.length > MAX_PATTERN_LENGTH) return [];
       const validation = validateRegex(pattern);
       if (!validation.valid) return [];
+      // Cap capture groups to prevent huge result objects
+      const unescapedParens = pattern.replace(/\\./g, "").match(/\(/g);
+      if (unescapedParens && unescapedParens.length > MAX_CAPTURE_GROUPS) return [];
       const flags = "gmi";
       const regex = new RegExp(pattern, flags);
       const results: Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }> = [];

@@ -591,8 +591,15 @@ export async function runRLM(
         // Misaligned but still a pair — remove both to maintain parity
         history.splice(2, 2);
       } else {
-        // Safety: roles are misaligned and no valid pair found, remove 2 to prevent infinite loop
+        // Safety: roles are misaligned and no valid pair found
+        if (history.length <= 2) {
+          break;
+        }
         history.splice(2, Math.min(2, history.length - 2));
+        // Break if splice couldn't reduce the length (prevents infinite loop)
+        if (history.length > MAX_HISTORY_ENTRIES) {
+          break;
+        }
       }
     }
   };

@@ -128,6 +128,10 @@ export class FTS5Search {
    * Execute multiple searches efficiently
    */
   searchBatch(queries: string[]): Record<string, SearchResult[]> {
+    const MAX_BATCH_SIZE = 100;
+    if (queries.length > MAX_BATCH_SIZE) {
+      throw new Error(`Too many batch queries: ${queries.length} (max ${MAX_BATCH_SIZE})`);
+    }
     const results: Record<string, SearchResult[]> = {};
     for (const query of queries) {
       results[query] = this.search(query);

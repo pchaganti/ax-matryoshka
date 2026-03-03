@@ -183,9 +183,13 @@ Error: ${failure.error}
    * @param record - The failure to record
    */
   recordFailure(record: FailureRecord): void {
-    // Cap code and error length to prevent memory exhaustion
+    // Cap code, error, and query length to prevent memory exhaustion
     const MAX_CODE_LENGTH = 10_000;
     const MAX_ERROR_LENGTH = 2_000;
+    const MAX_QUERY_LENGTH = 10_000;
+    if (record.query && record.query.length > MAX_QUERY_LENGTH) {
+      record = { ...record, query: record.query.slice(0, MAX_QUERY_LENGTH) };
+    }
     if (record.code && record.code.length > MAX_CODE_LENGTH) {
       record = { ...record, code: record.code.slice(0, MAX_CODE_LENGTH) };
     }

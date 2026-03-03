@@ -271,13 +271,16 @@ export async function createSandboxWithSynthesis(
     // Console with log capture
     console: {
       log: (...args: unknown[]) => {
-        logs.push(args.map((a) => String(a)).join(" "));
+        const MAX_LOG_ENTRY = 10_000;
+        logs.push(args.map((a) => String(a)).join(" ").slice(0, MAX_LOG_ENTRY));
       },
       error: (...args: unknown[]) => {
-        logs.push(`[ERROR] ${args.map((a) => String(a)).join(" ")}`);
+        const MAX_LOG_ENTRY = 10_000;
+        logs.push(`[ERROR] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
       },
       warn: (...args: unknown[]) => {
-        logs.push(`[WARN] ${args.map((a) => String(a)).join(" ")}`);
+        const MAX_LOG_ENTRY = 10_000;
+        logs.push(`[WARN] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
       },
     },
 
