@@ -186,6 +186,9 @@ function isCodeDangerous(code: string): boolean {
  */
 function executeExpr(expr: Expr, input: unknown): unknown {
   const code = exprToCode(expr);
+  // Cap code length to prevent DoS via Function construction
+  const MAX_CODE_LENGTH = 50_000;
+  if (code.length > MAX_CODE_LENGTH) return null;
   // Validate generated code against dangerous patterns before execution
   if (isCodeDangerous(code)) return null;
   try {

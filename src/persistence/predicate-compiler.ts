@@ -131,7 +131,7 @@ export class PredicateCompiler {
 
     // Block string reconstruction methods that could bypass the blocklist
     // e.g., ['con','structor'].join(''), 'con'.concat('structor'), String.fromCharCode(99,111,110)
-    if (/\.join\s*\(/.test(code) || /\.concat\s*\(/.test(code) || /fromCharCode/.test(code)) {
+    if (/\.join\s*\(/.test(code) || /\.concat\s*\(/.test(code) || /fromCharCode/.test(code) || /fromCodePoint/.test(code) || /\.repeat\s*\(/.test(code)) {
       throw new Error("String reconstruction methods are not allowed in predicates");
     }
 

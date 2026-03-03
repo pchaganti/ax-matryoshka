@@ -213,18 +213,19 @@ function generateClassifierGuidance(
 
   for (const idx of indices) {
     const line = grepResults[idx].line;
-    // Escape double quotes for S-expression string embedding
-    const escaped = line.replace(/"/g, '\\"');
+    // Escape backslashes first, then double quotes for S-expression string embedding
+    const escaped = line.replace(/\\/g, "\\\\").replace(/"/g, '\\"').slice(0, 500);
     examples.push(escaped);
   }
 
   // Generate the guidance with concrete examples
+  const safeQuery = query.slice(0, 200).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/`/g, "\\`");
   return `
 ## NEXT STEP: Build classifier from these EXACT lines
 
 Your grep found ${grepResults.length} matches. Now use (classify ...) to filter.
 
-Look at the query: "${query}"
+Look at the query: "${safeQuery}"
 - Mark lines that answer the query as \`true\`
 - Mark lines that don't answer the query as \`false\`
 
@@ -560,10 +561,10 @@ export async function runRLM(
     userMessage += `\n\n## OUTPUT CONSTRAINTS\n`;
     userMessage += `Your final answer MUST satisfy these constraints:\n`;
     userMessage += `- Type: ${constraint.output.type}\n`;
-    if (constraint.output.min !== undefined) {
+    if (constraint.output.min !== undefined && Number.isFinite(constraint.output.min)) {
       userMessage += `- Minimum: ${constraint.output.min}\n`;
     }
-    if (constraint.output.max !== undefined) {
+    if (constraint.output.max !== undefined && Number.isFinite(constraint.output.max)) {
       userMessage += `- Maximum: ${constraint.output.max}\n`;
     }
     if (constraint.output.integer) {
@@ -571,7 +572,7 @@ export async function runRLM(
     }
     if (constraint.invariants) {
       for (const inv of constraint.invariants) {
-        userMessage += `- Invariant: ${inv}\n`;
+        userMessage += `- Invariant: ${String(inv).slice(0, 500)}\n`;
       }
     }
     userMessage += `\nBefore returning your answer, VERIFY it satisfies these constraints.`;

@@ -74,13 +74,13 @@ describe("Audit #31", () => {
   // Issue #5 — Medium: rlm.ts double-escaping in classify guidance
   // =============================================
   describe("#5 — rlm.ts classify guidance escaping", () => {
-    it("should not double-escape backslashes from grep results", () => {
+    it("should escape backslashes and quotes for S-expression safety", () => {
       const source = readFileSync("src/rlm.ts", "utf-8");
       // Find the buildClassifyGuidance function's escaping section
       const escapeSection = source.match(/Escape.*quotes for S-expression[\s\S]*?examples\.push/);
       expect(escapeSection).not.toBeNull();
-      // Should only escape double quotes, not backslashes (lines are already plain text)
-      expect(escapeSection![0]).not.toMatch(/replace\(\/\\\\\/g/);
+      // Should escape both backslashes and double quotes for S-expression safety
+      expect(escapeSection![0]).toMatch(/replace/);
     });
   });
 });

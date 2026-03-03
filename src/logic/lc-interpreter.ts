@@ -668,10 +668,14 @@ export function formatValue(value: LCValue, indent: number = 0): string {
 
   if (typeof value === "object" && value !== null) {
     const MAX_FORMAT_KEYS = 1000;
+    const MAX_KEY_LENGTH = 200;
     const keys = Object.keys(value);
     if (keys.length > MAX_FORMAT_KEYS) return `{ ... (${keys.length} properties) }`;
     if (keys.length === 0) return "{}";
-    const entries = keys.slice(0, 5).map(k => [k, (value as Record<string, unknown>)[k]]);
+    const entries = keys.slice(0, 5).map(k => {
+      const safeKey = k.length > MAX_KEY_LENGTH ? k.slice(0, MAX_KEY_LENGTH) + "..." : k;
+      return [safeKey, (value as Record<string, unknown>)[k]];
+    });
     const items = entries.map(([k, v]) => `${pad}  ${k}: ${formatValue(v as Parameters<typeof formatValue>[0], indent + 1)}`).join(",\n");
     return `{\n${items}\n${pad}}`;
   }

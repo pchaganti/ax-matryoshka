@@ -332,7 +332,7 @@ export async function createSandboxWithSynthesis(
       keys: { value: Object.keys, enumerable: true },
       values: { value: Object.values, enumerable: true },
       entries: { value: Object.entries, enumerable: true },
-      assign: { value: Object.assign, enumerable: true },
+      // Object.assign removed — can enable prototype pollution via __proto__ keys
       freeze: { value: Object.freeze, enumerable: true },
       fromEntries: { value: Object.fromEntries, enumerable: true },
       getOwnPropertyNames: { value: Object.getOwnPropertyNames, enumerable: true },

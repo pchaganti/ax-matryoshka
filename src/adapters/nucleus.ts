@@ -174,11 +174,13 @@ function extractCode(response: string): string | null {
       const parenAfterTensor = response.indexOf("(", tensorIdx);
       if (parenAfterTensor > tensorIdx) {
         // Balance parens to find the end
+        const MAX_DEPTH = 100;
         let depth = 0;
         let end = -1;
         for (let i = parenAfterTensor; i < response.length; i++) {
           if (response[i] === "(") depth++;
           if (response[i] === ")") depth--;
+          if (depth > MAX_DEPTH) break;
           if (depth === 0) {
             end = i + 1;
             break;
@@ -214,6 +216,8 @@ function extractCode(response: string): string | null {
       if (inString) continue;
       if (response[i] === "(") depth++;
       if (response[i] === ")") depth--;
+      const MAX_DEPTH = 100;
+      if (depth > MAX_DEPTH) break;
       if (depth === 0) {
         end = i + 1;
         break;
