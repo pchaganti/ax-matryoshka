@@ -129,11 +129,13 @@ function extractFinalAnswer(
     try {
       const parsed = JSON.parse(response.trim());
       const answerFields = ['answer', 'result', 'total', 'totalSales', 'total_sales', 'sum', 'count', 'value', 'response', 'summary'];
+      const MAX_KEYS = 100;
+      const keys = Object.keys(parsed).slice(0, MAX_KEYS);
       const hasAnswerField = answerFields.some(f =>
-        Object.keys(parsed).some(k => k.toLowerCase() === f.toLowerCase())
+        keys.some(k => k.toLowerCase() === f.toLowerCase())
       );
       if (hasAnswerField) {
-        return JSON.stringify(parsed, null, 2);
+        return JSON.stringify(parsed, null, 2).slice(0, 50_000);
       }
     } catch {
       // Not valid JSON

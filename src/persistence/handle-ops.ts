@@ -53,7 +53,9 @@ export class HandleOps {
       if (typeof item === "object" && item !== null && field in item) {
         const value = (item as Record<string, unknown>)[field];
         if (typeof value === "number" && Number.isFinite(value)) {
-          return acc + value;
+          const result = acc + value;
+          if (!Number.isFinite(result)) return acc;
+          return result;
         }
       }
       return acc;
@@ -196,18 +198,21 @@ export class HandleOps {
     }
 
     // Collect field names from objects
+    const MAX_FIELDS = 10_000;
     const fields = new Set<string>();
     for (const item of data) {
       if (typeof item === "object" && item !== null) {
         for (const key of Object.keys(item)) {
           fields.add(key);
+          if (fields.size >= MAX_FIELDS) break;
         }
       }
+      if (fields.size >= MAX_FIELDS) break;
     }
 
     return {
       count: data.length,
-      fields: Array.from(fields),
+      fields: Array.from(fields).slice(0, MAX_FIELDS),
       sample: data.slice(0, 3),
     };
   }

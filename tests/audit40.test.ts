@@ -73,7 +73,7 @@ describe("Audit #40", () => {
   describe("#6 — handle-ops sum/sumFromLine should guard against Infinity", () => {
     it("sum should check isFinite", () => {
       const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const sumFn = source.match(/sum\(handle[\s\S]*?return acc \+ value/);
+      const sumFn = source.match(/sum\(handle[\s\S]*?acc \+ value/);
       expect(sumFn).not.toBeNull();
       // Should check isFinite or Number.isFinite before accumulating
       expect(sumFn![0]).toMatch(/isFinite/);

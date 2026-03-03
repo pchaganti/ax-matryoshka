@@ -275,6 +275,7 @@ export function evaluate(
       const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(term.delim);
       if (parts.length > MAX_SPLIT_PARTS) return null;
+      if (term.index >= parts.length) return null;
       return parts[term.index] ?? null;
     }
 

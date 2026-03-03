@@ -106,7 +106,7 @@ export function addCustomGrammar(language: string, grammar: GrammarConfig): void
     throw new Error(`Extensions must be a non-empty array with at most ${MAX_EXTENSIONS} entries`);
   }
   for (const ext of grammar.extensions) {
-    if (typeof ext !== "string" || !/^\.[a-zA-Z0-9_-]+$/.test(ext)) {
+    if (typeof ext !== "string" || ext.length > 20 || !/^\.[a-zA-Z0-9_-]+$/.test(ext)) {
       throw new Error(`Invalid extension format: '${ext}'`);
     }
   }
@@ -128,7 +128,7 @@ export function addCustomGrammar(language: string, grammar: GrammarConfig): void
       throw new Error(`Too many symbol mappings: ${symbolKeys.length} (max ${MAX_SYMBOLS})`);
     }
     for (const [key, value] of Object.entries(grammar.symbols)) {
-      if (typeof value !== "string" || !VALID_SYMBOL_KINDS.has(value)) {
+      if (key.length > 256 || typeof value !== "string" || !VALID_SYMBOL_KINDS.has(value)) {
         throw new Error(`Invalid symbol kind for '${key}': '${value}'`);
       }
     }

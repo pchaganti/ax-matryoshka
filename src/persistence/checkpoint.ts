@@ -110,6 +110,10 @@ export class CheckpointManager {
    * Set custom session ID
    */
   setSessionId(id: string): void {
+    const MAX_SESSION_ID_LENGTH = 1000;
+    if (!id || id.length > MAX_SESSION_ID_LENGTH) {
+      throw new Error("Invalid session ID length");
+    }
     this.sessionId = id;
   }
 

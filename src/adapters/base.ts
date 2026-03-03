@@ -126,12 +126,13 @@ function extractFinalAnswer(
       if (typeof parsed.answer === "string") return parsed.answer;
       // Check for any field that looks like a final value (case-insensitive)
       const valueFields = ['total', 'result', 'value', 'totalsales', 'total_sales', 'count', 'sum', 'answer', 'totals'];
-      const keys = Object.keys(parsed);
+      const MAX_KEYS = 100;
+      const keys = Object.keys(parsed).slice(0, MAX_KEYS);
       const foundKey = keys.find(k => valueFields.includes(k.toLowerCase().replace(/_/g, '')));
 
       if (foundKey !== undefined) {
         const value = parsed[foundKey];
-        if (parsed.notes) {
+        if (typeof parsed.notes === "string") {
           return `${parsed.notes}\n\nResult: ${typeof value === 'number' ? value.toLocaleString() : value}`;
         }
         return JSON.stringify(parsed, null, 2).slice(0, 50_000);

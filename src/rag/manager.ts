@@ -173,7 +173,7 @@ Error: ${safeError}
 
     for (const failure of FAILURE_EXAMPLES) {
       // Check if query relates to this failure's intent
-      const intentWords = failure.intent.toLowerCase().split(/\s+/);
+      const intentWords = failure.intent.toLowerCase().split(/\s+/).slice(0, 100);
       const matches = intentWords.filter(word =>
         lowerQuery.includes(word) || (word.length > 3 && lowerQuery.includes(word.slice(0, 4)))
       );
