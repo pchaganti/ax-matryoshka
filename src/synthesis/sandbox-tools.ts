@@ -334,12 +334,12 @@ export async function createSandboxWithSynthesis(
       entries: { value: Object.entries, enumerable: true },
       // Object.assign removed — can enable prototype pollution via __proto__ keys
       freeze: { value: Object.freeze, enumerable: true },
-      fromEntries: { value: Object.fromEntries, enumerable: true },
+      // Object.fromEntries removed — can create objects with __proto__ keys
       getOwnPropertyNames: { value: Object.getOwnPropertyNames, enumerable: true },
       hasOwn: { value: Object.hasOwn, enumerable: true },
       is: { value: Object.is, enumerable: true },
       create: { value: Object.create, enumerable: true },
-      defineProperty: { value: Object.defineProperty, enumerable: true },
+      // Object.defineProperty removed — can define getters/setters bypassing sandbox
     })),
     String,
     Number,

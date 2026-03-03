@@ -255,6 +255,7 @@ export class SynthesisCoordinator {
         .map((e) => {
           // Try to parse as number
           const ctx = e.context as string;
+          if (ctx.length > 200) return ctx;
           const num = parseFloat(ctx);
           return isNaN(num) || !isFinite(num) ? ctx : num;
         });

@@ -174,6 +174,7 @@ const DANGEROUS_CODE_PATTERNS = [
   /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
   /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
   /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
+  /\bwith\b/, /\bdelete\b/,
   /\[['"]/, // Block bracket property access
 ];
 
@@ -221,6 +222,8 @@ export function synthesizeProgram(
   examples: Example[],
   maxResults: number = 5
 ): Expr[] {
+  const MAX_RESULTS_LIMIT = 1000;
+  maxResults = Math.min(Math.max(1, maxResults), MAX_RESULTS_LIMIT);
   if (examples.length === 0) {
     return [];
   }
@@ -297,7 +300,7 @@ export function exprToCode(expr: Expr): string {
       if (!Number.isInteger(expr.group) || expr.group < 0 || expr.group > 99) return "(null)";
       // Use RegExp constructor with JSON.stringify to safely embed pattern
       // This avoids regex literal delimiter issues with backslashes and forward slashes
-      return `((_s) => _s == null ? null : _s.match(new RegExp(${JSON.stringify(expr.pattern)}))?.[${expr.group}])(${exprToCode(expr.str)})`;
+      return `((_s) => _s == null ? null : (_s.match(new RegExp(${JSON.stringify(expr.pattern)}))?.[${expr.group}] ?? null))(${exprToCode(expr.str)})`;
     }
 
     case "replace": {

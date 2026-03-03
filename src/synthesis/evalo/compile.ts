@@ -58,7 +58,7 @@ export function compile(extractor: Extractor, depth: number = 0): string {
       const strCode = compile(extractor.str, depth + 1);
       const delim = escapeStringForLiteral(extractor.delim);
       const idx = extractor.index;
-      if (!Number.isInteger(idx) || idx < 0) {
+      if (!Number.isSafeInteger(idx) || idx < 0) {
         return `null`;
       }
       return `((_s) => typeof _s !== "string" ? null : _s.split("${delim}")?.[${idx}] ?? null)(${strCode})`;

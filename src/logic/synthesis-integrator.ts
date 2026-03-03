@@ -894,12 +894,15 @@ export class SynthesisIntegrator {
 
     // Strategy 2: Find OR pattern - individual patterns for each true example
     // that don't match any false examples
+    const MAX_PATTERNS = 100;
     const individualPatterns: string[] = [];
 
     for (const trueEx of trueExamples) {
+      if (individualPatterns.length >= MAX_PATTERNS) break;
       // Try bracket patterns [WORD]
       const brackets = trueEx.match(/\[\w+\]/g) || [];
       for (const bracket of brackets) {
+        if (individualPatterns.length >= MAX_PATTERNS) break;
         if (!falseExamples.some((f) => f.includes(bracket))) {
           const escaped = bracket.replace(/[[\]]/g, "\\$&");
           if (!individualPatterns.includes(escaped)) {
@@ -909,12 +912,14 @@ export class SynthesisIntegrator {
       }
 
       // Try prefix patterns like "ERROR:" or "WARN:"
-      const prefixMatch = trueEx.match(/^(\w+):/);
-      if (prefixMatch) {
-        const prefix = prefixMatch[1];
-        if (!falseExamples.some((f) => f.startsWith(prefix + ":"))) {
-          if (!individualPatterns.includes(prefix)) {
-            individualPatterns.push(prefix);
+      if (individualPatterns.length < MAX_PATTERNS) {
+        const prefixMatch = trueEx.match(/^(\w+):/);
+        if (prefixMatch) {
+          const prefix = prefixMatch[1];
+          if (!falseExamples.some((f) => f.startsWith(prefix + ":"))) {
+            if (!individualPatterns.includes(prefix)) {
+              individualPatterns.push(prefix);
+            }
           }
         }
       }
@@ -922,6 +927,7 @@ export class SynthesisIntegrator {
       // Try keywords that are unique to this true example
       const words = trueEx.match(/\b[A-Z]+\b/g) || [];
       for (const word of words) {
+        if (individualPatterns.length >= MAX_PATTERNS) break;
         if (!falseExamples.some((f) => f.includes(word))) {
           if (!individualPatterns.includes(word)) {
             individualPatterns.push(word);
@@ -933,6 +939,7 @@ export class SynthesisIntegrator {
     // Verify that the OR pattern covers all true examples
     if (individualPatterns.length > 0) {
       const orPattern = individualPatterns.join("|");
+      if (orPattern.length > 5000) return null; // Cap pattern length
       try {
         const regex = new RegExp(orPattern);
         const allTrueMatch = trueExamples.every((t) => regex.test(t));
