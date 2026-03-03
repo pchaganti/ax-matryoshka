@@ -655,18 +655,19 @@ export async function createSandboxWithSynthesis(
       const originalError = sandboxGlobals.console.error;
       const originalWarn = sandboxGlobals.console.warn;
 
+      const MAX_LOG_ENTRY = 10_000;
       sandboxGlobals.console.log = (...args: unknown[]) => {
-        const msg = args.map((a) => String(a)).join(" ");
+        const msg = args.map((a) => String(a)).join(" ").slice(0, MAX_LOG_ENTRY);
         executionLogs.push(msg);
         logs.push(msg);
       };
       sandboxGlobals.console.error = (...args: unknown[]) => {
-        const msg = `[ERROR] ${args.map((a) => String(a)).join(" ")}`;
+        const msg = `[ERROR] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY);
         executionLogs.push(msg);
         logs.push(msg);
       };
       sandboxGlobals.console.warn = (...args: unknown[]) => {
-        const msg = `[WARN] ${args.map((a) => String(a)).join(" ")}`;
+        const msg = `[WARN] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY);
         executionLogs.push(msg);
         logs.push(msg);
       };
@@ -675,7 +676,12 @@ export async function createSandboxWithSynthesis(
         const { declarations, mainCode } = extractDeclarations(code);
 
         if (declarations.length > 0) {
-          const declScript = new vm.Script(declarations.join("\n"));
+          const MAX_DECL_LENGTH = 100_000;
+          const declCode = declarations.join("\n");
+          if (declCode.length > MAX_DECL_LENGTH) {
+            throw new Error("Declaration script too large");
+          }
+          const declScript = new vm.Script(declCode);
           declScript.runInContext(vmContext);
         }
 

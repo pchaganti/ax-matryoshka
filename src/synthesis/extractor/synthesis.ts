@@ -386,7 +386,7 @@ function tryPrefixSuffixExtraction(
 
     return {
       name: "prefix_suffix_strip",
-      description: `Remove prefix "${inputPrefix}" and suffix "${inputSuffix}"`,
+      description: `Remove prefix ${JSON.stringify(inputPrefix.slice(0, 50))} and suffix ${JSON.stringify(inputSuffix.slice(0, 50))}`,
       code,
       test: testFn,
     };
@@ -414,7 +414,7 @@ function tryDelimiterFieldExtraction(
     // Find which field index produces the output
     if (examples.length === 0) continue;
     const MAX_FIELDS = 1000;
-    const maxFields = Math.min(MAX_FIELDS, Math.max(0, ...examples.map((e) => e.input.split(delim).length)));
+    const maxFields = Math.min(MAX_FIELDS, Math.max(0, ...examples.map((e) => e.input.split(delim).slice(0, MAX_FIELDS).length)));
     for (let fieldIdx = 0; fieldIdx < maxFields; fieldIdx++) {
       const allMatch = examples.every((e) => {
         const fields = e.input.split(delim).map((f) => f.trim());
@@ -425,7 +425,7 @@ function tryDelimiterFieldExtraction(
         const escapedDelim = delim.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
         const code = `(s) => s.split('${escapedDelim}').map(x => x.trim())[${fieldIdx}]`;
         const testFn = (s: string) =>
-          s.split(delim).map((x) => x.trim())[fieldIdx];
+          s.split(delim).map((x) => x.trim())[fieldIdx] ?? null;
 
         return {
           name: `delimiter_field_${fieldIdx}`,

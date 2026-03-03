@@ -54,7 +54,7 @@ describe("Audit #59", () => {
       const fnStart = source.indexOf("storeSymbol(");
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 1100);
-      expect(block).toMatch(/isFinite.*startLine|startLine.*isFinite|Number\.isFinite/);
+      expect(block).toMatch(/is(?:Finite|SafeInteger).*startLine|startLine.*is(?:Finite|SafeInteger)|Number\.is(?:Finite|SafeInteger)/);
     });
   });
 

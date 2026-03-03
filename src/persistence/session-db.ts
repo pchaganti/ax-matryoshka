@@ -476,16 +476,16 @@ export class SessionDB {
     if (typeof symbol.kind !== "string" || !VALID_KINDS.has(symbol.kind)) {
       throw new Error("Invalid symbol kind");
     }
-    if (!Number.isFinite(symbol.startLine) || !Number.isFinite(symbol.endLine) || symbol.startLine < 1 || symbol.endLine < 1) {
+    if (!Number.isSafeInteger(symbol.startLine) || !Number.isSafeInteger(symbol.endLine) || symbol.startLine < 1 || symbol.endLine < 1) {
       throw new Error("Invalid line numbers");
     }
-    if (symbol.startCol != null && !Number.isFinite(symbol.startCol)) {
+    if (symbol.startCol != null && !Number.isSafeInteger(symbol.startCol)) {
       throw new Error("Invalid column numbers");
     }
-    if (symbol.endCol != null && !Number.isFinite(symbol.endCol)) {
+    if (symbol.endCol != null && !Number.isSafeInteger(symbol.endCol)) {
       throw new Error("Invalid column numbers");
     }
-    if (symbol.parentSymbolId != null && !Number.isFinite(symbol.parentSymbolId)) {
+    if (symbol.parentSymbolId != null && !Number.isSafeInteger(symbol.parentSymbolId)) {
       throw new Error("Invalid parentSymbolId");
     }
 

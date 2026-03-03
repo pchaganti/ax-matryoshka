@@ -54,7 +54,7 @@ export function compile(extractor: Extractor, depth: number = 0): string {
     }
 
     case "split": {
-      if (!extractor.delim || extractor.delim.length > 1000) return "null";
+      if (!extractor.delim || extractor.delim.length === 0 || extractor.delim.length > 1000) return "null";
       const strCode = compile(extractor.str, depth + 1);
       const delim = escapeStringForLiteral(extractor.delim);
       const idx = extractor.index;

@@ -136,7 +136,7 @@ export class RAGManager {
    * Format an expert example as a hint for the model
    */
   private formatExampleAsHint(example: ExpertExample): string {
-    const safeCode = (example.code || "").replace(/`/g, "\\`").slice(0, 2000);
+    const safeCode = (example.code || "").replace(/`/g, "\\`").replace(/\$/g, "\\$").slice(0, 2000);
     const safeRationale = (example.rationale || "").slice(0, 1000);
     return `**Suggested Pattern:**
 \`\`\`javascript
@@ -304,7 +304,7 @@ Error: ${failure.error}
       parts.push(`
 **Failed Code:**
 \`\`\`javascript
-${(failure.code || "").slice(0, 200).replace(/`/g, "\\`")}${(failure.code?.length ?? 0) > 200 ? "..." : ""}
+${(failure.code || "").slice(0, 200).replace(/`/g, "\\`").replace(/\$/g, "\\$")}${(failure.code?.length ?? 0) > 200 ? "..." : ""}
 \`\`\`
 **Error:** ${(failure.error || "").slice(0, 500)}
 
