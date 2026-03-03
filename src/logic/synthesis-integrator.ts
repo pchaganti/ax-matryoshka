@@ -330,7 +330,7 @@ export class SynthesisIntegrator {
       fn = (s: string) => {
         const cleaned = s.replace(/[¥,\s]/g, "");
         const r = parseInt(cleaned, 10);
-        return isNaN(r) ? null : r;
+        return isNaN(r) || !Number.isSafeInteger(r) ? null : r;
       };
     } else {
       // US/Default format: $1,234.56

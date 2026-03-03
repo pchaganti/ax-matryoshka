@@ -295,6 +295,10 @@ export function synthesizeExtractor(
   maxResults: number = 5
 ): Extractor[] {
   // Validate inputs
+  const MAX_EXAMPLES = 1000;
+  if (examples.length > MAX_EXAMPLES) {
+    throw new Error(`Too many examples: ${examples.length} (max ${MAX_EXAMPLES})`);
+  }
   if (examples.length < 2) {
     throw new Error("Need at least 2 examples for reliable synthesis");
   }

@@ -988,7 +988,7 @@ function evaluateWithBinding(
 
     case "split": {
       if (!Number.isInteger(body.index) || body.index < 0) return null;
-      if (!body.delim || body.delim.length === 0) return null;
+      if (!body.delim || body.delim.length === 0 || body.delim.length > 1000) return null;
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
         : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
@@ -1000,13 +1000,17 @@ function evaluateWithBinding(
 
     case "parseInt": {
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
-      const intResult = parseInt(String(str), 10);
+      const strForInt = String(str);
+      if (strForInt.length > 200) return null;
+      const intResult = parseInt(strForInt, 10);
       return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
       const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
-      const floatResult = parseFloat(String(str));
+      const strForFloat = String(str);
+      if (strForFloat.length > 200) return null;
+      const floatResult = parseFloat(strForFloat);
       return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 

@@ -702,7 +702,8 @@ function parseList(state: ParserState): LCTerm | null {
         }
       } else {
         // Fallback to inline pairs
-        while (peek(state) && peek(state)?.type !== "rparen") {
+        const MAX_CLASSIFY_EXAMPLES = 1000;
+        while (peek(state) && peek(state)?.type !== "rparen" && examples.length < MAX_CLASSIFY_EXAMPLES) {
           const input = parseTerm(state);
           if (!input || input.tag !== "lit" || typeof input.value !== "string")
             break;

@@ -71,7 +71,10 @@ export class HttpAdapter {
     this.port = options.port ?? 3456;
     this.host = options.host ?? "localhost";
     this.cors = options.cors ?? true;
-    this.timeoutMs = (options.timeoutSeconds ?? 600) * 1000;
+    const MAX_TIMEOUT_SECONDS = 86400; // 24 hours
+    const rawTimeout = options.timeoutSeconds ?? 600;
+    const safeTimeout = Number.isFinite(rawTimeout) && rawTimeout > 0 ? Math.min(rawTimeout, MAX_TIMEOUT_SECONDS) : 600;
+    this.timeoutMs = safeTimeout * 1000;
   }
 
   private resetInactivityTimer(): void {

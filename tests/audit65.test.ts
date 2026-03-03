@@ -35,7 +35,7 @@ describe("Audit #65", () => {
       expect(fnStart).toBeGreaterThan(-1);
       const parseIntCase = source.indexOf('case "parseInt":', fnStart);
       expect(parseIntCase).toBeGreaterThan(-1);
-      const block = source.slice(parseIntCase, parseIntCase + 300);
+      const block = source.slice(parseIntCase, parseIntCase + 400);
       expect(block).toMatch(/isSafeInteger/);
     });
   });
