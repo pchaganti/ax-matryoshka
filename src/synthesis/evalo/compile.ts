@@ -48,7 +48,7 @@ export function compile(extractor: Extractor, depth: number = 0): string {
 
     case "slice": {
       if (!Number.isSafeInteger(extractor.start) || !Number.isSafeInteger(extractor.end)) return "null";
-      if (extractor.start < 0) return "null";
+      if (extractor.start < 0 || extractor.end < 0 || extractor.end < extractor.start) return "null";
       const strCode = compile(extractor.str, depth + 1);
       return `((_s) => typeof _s !== "string" ? null : _s.slice(${extractor.start}, ${extractor.end}))(${strCode})`;
     }

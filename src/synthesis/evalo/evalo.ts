@@ -74,7 +74,7 @@ export function evalExtractor(extractor: Extractor, input: string, depth: number
       const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
       if (!Number.isSafeInteger(extractor.start) || extractor.start < 0) return null;
-      if (!Number.isSafeInteger(extractor.end)) return null;
+      if (!Number.isSafeInteger(extractor.end) || extractor.end < 0 || extractor.end < extractor.start) return null;
       return str.slice(extractor.start, extractor.end);
     }
 

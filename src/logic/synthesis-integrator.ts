@@ -804,6 +804,7 @@ export class SynthesisIntegrator {
               /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
               /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
               /\bReflect\b/, /\bProxy\b/, /\bwith\b/, /\bdelete\b/, /\barguments\b/,
+              /\bObject\b/, /\.prototype\b/,
               /\[['"]/, // Block bracket property access like input['constructor']
               /`/, // Block template literals
             ];

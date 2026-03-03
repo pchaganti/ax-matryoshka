@@ -122,7 +122,8 @@ describe("evalExtractor (forward mode)", () => {
         end: -1,
       };
       const result = evalExtractor(e, "hello");
-      expect(result).toBe("hell");
+      // Negative end is now rejected for security (prevents unexpected data extraction)
+      expect(result).toBe(null);
     });
   });
 

@@ -298,8 +298,10 @@ export function exprToCode(expr: Expr): string {
       return `((_l, _r) => _r === 0 ? null : ((_d) => isFinite(_d) ? _d : null)(_l / _r))(${divLeft}, ${divRight})`;
     }
 
-    case "concat":
-      return `(String(${exprToCode(expr.left)}) + String(${exprToCode(expr.right)}))`;
+    case "concat": {
+      const MAX_CONCAT = 1_000_000;
+      return `((_l, _r) => { const _res = String(_l) + String(_r); return _res.length > ${MAX_CONCAT} ? null : _res; })(${exprToCode(expr.left)}, ${exprToCode(expr.right)})`;
+    }
 
     case "match": {
       if (!Number.isInteger(expr.group) || expr.group < 0 || expr.group > 99) return "(null)";

@@ -68,8 +68,10 @@ export class HttpAdapter {
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: HttpAdapterOptions = {}) {
-    this.port = options.port ?? 3456;
-    this.host = options.host ?? "localhost";
+    const rawPort = options.port ?? 3456;
+    this.port = Number.isSafeInteger(rawPort) && rawPort >= 1 && rawPort <= 65535 ? rawPort : 3456;
+    const rawHost = options.host ?? "localhost";
+    this.host = typeof rawHost === "string" && /^[a-zA-Z0-9._-]+$/.test(rawHost) && rawHost.length <= 255 ? rawHost : "localhost";
     this.cors = options.cors ?? true;
     const MAX_TIMEOUT_SECONDS = 86400; // 24 hours
     const rawTimeout = options.timeoutSeconds ?? 600;
@@ -291,7 +293,8 @@ export class HttpAdapter {
           break;
 
         default:
-          this.sendError(res, 404, `Unknown endpoint: ${path}`);
+          const safePath = path.slice(0, 200);
+          this.sendError(res, 404, `Unknown endpoint: ${safePath}`);
           return;
       }
 
@@ -478,8 +481,10 @@ export class HttpAdapter {
    * Send an error response
    */
   private sendError(res: http.ServerResponse, status: number, message: string): void {
+    const MAX_ERROR_LENGTH = 2000;
+    const safeMessage = message.length > MAX_ERROR_LENGTH ? message.slice(0, MAX_ERROR_LENGTH) : message;
     res.writeHead(status);
-    res.end(JSON.stringify({ success: false, error: message }));
+    res.end(JSON.stringify({ success: false, error: safeMessage }));
   }
 
   /**
