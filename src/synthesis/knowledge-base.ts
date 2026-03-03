@@ -331,9 +331,10 @@ export class KnowledgeBase {
 
     // Jaccard-like similarity based on character patterns
     const MAX_CHAR_INPUT = 10_000;
-    const exampleChars = new Set(examples.join("").slice(0, MAX_CHAR_INPUT).split(""));
+    const MAX_EXAMPLES_JOIN = 100;
+    const exampleChars = new Set(examples.slice(0, MAX_EXAMPLES_JOIN).join("").slice(0, MAX_CHAR_INPUT).split(""));
     const componentChars = new Set(
-      component.positiveExamples.join("").slice(0, MAX_CHAR_INPUT).split("")
+      component.positiveExamples.slice(0, MAX_EXAMPLES_JOIN).join("").slice(0, MAX_CHAR_INPUT).split("")
     );
 
     const intersection = new Set(

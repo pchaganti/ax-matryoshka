@@ -384,7 +384,7 @@ function analyzeInvalidRegex(pattern: string): ErrorAnalysis {
   const specialChars = ["$", ".", "*", "+", "?", "^", "[", "]", "(", ")", "{", "}", "|", "\\"];
   const unescaped = specialChars.filter(c => {
     const idx = pattern.indexOf(c);
-    return idx > 0 && pattern[idx - 1] !== "\\";
+    return idx >= 0 && (idx === 0 || pattern[idx - 1] !== "\\");
   });
 
   if (unescaped.length > 0) {

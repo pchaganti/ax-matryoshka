@@ -120,10 +120,10 @@ describe("Audit #82", () => {
       const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
       const fnStart = source.indexOf("function tryDelimiterFieldExtraction");
       expect(fnStart).toBeGreaterThan(-1);
-      const splitBlock = source.indexOf("split(delim)", fnStart);
+      const splitBlock = source.indexOf("split(delim,", fnStart);
       expect(splitBlock).toBeGreaterThan(-1);
       const block = source.slice(splitBlock - 50, splitBlock + 100);
-      expect(block).toMatch(/\.slice\(0,\s*MAX_FIELDS|split.*MAX_FIELDS|MAX_SPLIT/);
+      expect(block).toMatch(/\.slice\(0,\s*MAX_FIELDS|split\(delim,\s*MAX_FIELDS|MAX_SPLIT/);
     });
   });
 

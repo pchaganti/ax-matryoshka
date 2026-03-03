@@ -106,11 +106,11 @@ describe("Audit #89", () => {
   describe("#7 — delimiter field extraction should limit split", () => {
     it("should pass a limit to split() or cap input length", () => {
       const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
-      const fieldLoop = source.indexOf("e.input.split(delim)");
+      const fieldLoop = source.indexOf("e.input.split(delim,");
       expect(fieldLoop).toBeGreaterThan(-1);
       const block = source.slice(fieldLoop - 100, fieldLoop + 200);
       // Should either pass limit to split or cap input length before split
-      expect(block).toMatch(/split\(delim,\s*\d|input\.length\s*>|input\.slice\(0,|MAX_INPUT/i);
+      expect(block).toMatch(/split\(delim,\s*\d|split\(delim,\s*MAX|input\.length\s*>|input\.slice\(0,|MAX_INPUT/i);
     });
   });
 

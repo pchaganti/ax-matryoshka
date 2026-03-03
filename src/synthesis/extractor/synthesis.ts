@@ -135,8 +135,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Split by comma",
     inputPattern: /^[^,]+,[^,]+(,[^,]+)*$/,
     outputType: "array",
-    code: "(s) => s.split(',').map(x => x.trim())",
-    testFn: (s) => s.split(",").map((x) => x.trim()),
+    code: "(s) => s.split(',', 1000).map(x => x.trim())",
+    testFn: (s) => s.split(",", 1000).map((x) => x.trim()),
   },
 
   // Pipe-separated -> array
@@ -145,8 +145,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Split by pipe",
     inputPattern: /^[^|]+\|[^|]+(\|[^|]+)*$/,
     outputType: "array",
-    code: "(s) => s.split('|').map(x => x.trim())",
-    testFn: (s) => s.split("|").map((x) => x.trim()),
+    code: "(s) => s.split('|', 1000).map(x => x.trim())",
+    testFn: (s) => s.split("|", 1000).map((x) => x.trim()),
   },
 
   // [bracketed] -> content
@@ -414,7 +414,7 @@ function tryDelimiterFieldExtraction(
     // Find which field index produces the output
     if (examples.length === 0) continue;
     const MAX_FIELDS = 1000;
-    const maxFields = Math.min(MAX_FIELDS, examples.reduce((max, e) => Math.max(max, e.input.split(delim).slice(0, MAX_FIELDS).length), 0));
+    const maxFields = Math.min(MAX_FIELDS, examples.reduce((max, e) => Math.max(max, e.input.split(delim, MAX_FIELDS + 1).length), 0));
     for (let fieldIdx = 0; fieldIdx < maxFields; fieldIdx++) {
       const MAX_INPUT_LENGTH = 100_000;
       const allMatch = examples.every((e) => {
@@ -427,7 +427,7 @@ function tryDelimiterFieldExtraction(
         const escapedDelim = delim.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
         const code = `(s) => s.split('${escapedDelim}').map(x => x.trim())[${fieldIdx}]`;
         const testFn = (s: string) =>
-          s.split(delim).map((x) => x.trim())[fieldIdx] ?? null;
+          s.split(delim, MAX_FIELDS).map((x) => x.trim())[fieldIdx] ?? null;
 
         return {
           name: `delimiter_field_${fieldIdx}`,

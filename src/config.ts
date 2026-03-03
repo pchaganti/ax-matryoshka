@@ -64,7 +64,9 @@ function resolveEnvVars(obj: unknown, depth: number = 0): unknown {
       return resolved;
     });
   }
+  const MAX_ARRAY_SIZE = 10_000;
   if (Array.isArray(obj)) {
+    if (obj.length > MAX_ARRAY_SIZE) return obj;
     return obj.map(item => resolveEnvVars(item, depth + 1));
   }
   if (obj && typeof obj === "object") {

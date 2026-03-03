@@ -134,7 +134,7 @@ function extractFinalAnswer(
         if (parsed.notes) {
           return `${parsed.notes}\n\nResult: ${typeof value === 'number' ? value.toLocaleString() : value}`;
         }
-        return JSON.stringify(parsed, null, 2);
+        return JSON.stringify(parsed, null, 2).slice(0, 50_000);
       }
     } catch {
       // Not valid JSON, ignore

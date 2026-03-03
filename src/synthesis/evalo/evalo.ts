@@ -93,7 +93,9 @@ export function evalExtractor(extractor: Extractor, input: string, depth: number
     case "parseInt": {
       const str = evalExtractor(extractor.str, input, depth + 1);
       if (str === null) return null;
-      const intResult = parseInt(String(str), 10);
+      const strVal = String(str);
+      if (strVal.length > 200) return null;
+      const intResult = parseInt(strVal, 10);
       return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 

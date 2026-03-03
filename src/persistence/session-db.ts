@@ -485,7 +485,7 @@ export class SessionDB {
     if (typeof symbol.kind !== "string" || !VALID_KINDS.has(symbol.kind)) {
       throw new Error("Invalid symbol kind");
     }
-    if (!Number.isSafeInteger(symbol.startLine) || !Number.isSafeInteger(symbol.endLine) || symbol.startLine < 1 || symbol.endLine < 1) {
+    if (!Number.isSafeInteger(symbol.startLine) || !Number.isSafeInteger(symbol.endLine) || symbol.startLine < 1 || symbol.endLine < 1 || symbol.startLine > symbol.endLine) {
       throw new Error("Invalid line numbers");
     }
     if (symbol.startCol != null && !Number.isSafeInteger(symbol.startCol)) {

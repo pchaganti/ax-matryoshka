@@ -261,9 +261,10 @@ function parseExamples(state: ParserState): Array<{ input: string; output: unkno
   const isParenList = start.type === "lparen";
   consume(state); // [ or (
 
+  const MAX_EXAMPLES = 1000;
   const examples: Array<{ input: string; output: unknown }> = [];
 
-  while (peek(state)) {
+  while (peek(state) && examples.length < MAX_EXAMPLES) {
     const next = peek(state);
 
     // End of list
