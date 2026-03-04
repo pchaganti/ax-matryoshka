@@ -30,6 +30,7 @@ export class SessionDB {
   constructor() {
     // Create in-memory database
     this.db = new Database(":memory:");
+    this.db.pragma("foreign_keys = ON");
     this.initSchema();
   }
 
@@ -147,26 +148,36 @@ export class SessionDB {
   loadDocument(content: string): number {
     if (!this.db) return 0;
 
-    // Clear existing data
-    this.db.exec("DELETE FROM document_lines");
-
     // Handle empty document
     if (!content) {
+      this.db.exec("DELETE FROM document_lines");
       return 0;
     }
 
-    const lines = content.split("\n");
+    // Cap content size before splitting to prevent OOM on huge strings
+    const MAX_CONTENT_SIZE = 100_000_000; // 100MB
+    if (content.length > MAX_CONTENT_SIZE) {
+      content = content.slice(0, MAX_CONTENT_SIZE);
+    }
+
+    const MAX_LINES = 500_000;
+    let lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n", MAX_LINES + 1);
+    if (lines.length > MAX_LINES) {
+      lines = lines.slice(0, MAX_LINES);
+    }
     const insert = this.db.prepare(
       "INSERT INTO document_lines (lineNum, content) VALUES (?, ?)"
     );
 
-    const insertMany = this.db.transaction((lines: string[]) => {
+    // Wrap DELETE + INSERT in the same transaction for atomicity
+    const replaceAll = this.db.transaction((lines: string[]) => {
+      this.db!.exec("DELETE FROM document_lines");
       for (let i = 0; i < lines.length; i++) {
         insert.run(i + 1, lines[i]);
       }
     });
 
-    insertMany(lines);
+    replaceAll(lines);
     return lines.length;
   }
 
@@ -175,6 +186,12 @@ export class SessionDB {
    */
   getLines(start: number, end: number): DocumentLine[] {
     if (!this.db) return [];
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return [];
+    start = Math.floor(start);
+    end = Math.floor(end);
+    if (end < 1) return [];
+    if (start > end) return [];
+    if (start < 1) start = 1;
     const stmt = this.db.prepare(`
       SELECT lineNum, content FROM document_lines
       WHERE lineNum >= ? AND lineNum <= ?
@@ -189,8 +206,8 @@ export class SessionDB {
   getLineCount(): number {
     if (!this.db) return 0;
     const stmt = this.db.prepare("SELECT COUNT(*) as count FROM document_lines");
-    const row = stmt.get() as { count: number };
-    return row.count;
+    const row = stmt.get() as { count: number } | undefined;
+    return row?.count ?? 0;
   }
 
   /**
@@ -198,7 +215,25 @@ export class SessionDB {
    */
   search(query: string): DocumentLine[] {
     if (!this.db) return [];
+    const MAX_QUERY_LENGTH = 10_000;
+    if (query.length > MAX_QUERY_LENGTH) query = query.slice(0, MAX_QUERY_LENGTH);
 
+    // Sanitize FTS5 special characters to prevent query injection
+    const sanitized = query.replace(/['"*()\-|{}:^~\[\]]/g, " ").replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ").trim();
+    if (!sanitized) return [];
+
+    return this.searchRaw(sanitized);
+  }
+
+  /**
+   * Search with a raw FTS5 query (for trusted internal callers only)
+   * WARNING: Do not pass user input directly to this method
+   */
+  searchRaw(query: string): DocumentLine[] {
+    if (!this.db) return [];
+    if (!query.trim()) return [];
+
+    const MAX_SEARCH_RESULTS = 100_000;
     // Use FTS5 MATCH query
     const stmt = this.db.prepare(`
       SELECT d.lineNum, d.content
@@ -206,12 +241,13 @@ export class SessionDB {
       JOIN document_lines_fts f ON d.lineNum = f.rowid
       WHERE document_lines_fts MATCH ?
       ORDER BY d.lineNum
+      LIMIT ?
     `);
 
     try {
-      return stmt.all(query) as DocumentLine[];
-    } catch {
-      // If FTS5 query fails, fall back to empty
+      return stmt.all(query, MAX_SEARCH_RESULTS) as DocumentLine[];
+    } catch (err) {
+      console.error("[SessionDB] FTS5 query failed:", err instanceof Error ? err.message : String(err));
       return [];
     }
   }
@@ -222,29 +258,42 @@ export class SessionDB {
   createHandle(data: unknown[]): string {
     if (!this.db) throw new Error("Database not open");
 
-    this.handleCounter++;
-    const handle = `$res${this.handleCounter}`;
+    const MAX_HANDLE_ITEMS = 1_000_000;
+    if (data.length > MAX_HANDLE_ITEMS) {
+      data = data.slice(0, MAX_HANDLE_ITEMS);
+    }
+
+    if (this.handleCounter >= Number.MAX_SAFE_INTEGER - 1) {
+      throw new Error("Handle counter overflow");
+    }
+    const nextId = this.handleCounter + 1;
+    const handle = `$res${nextId}`;
     const now = Date.now();
 
-    // Insert handle metadata
+    // Insert handle metadata and data rows atomically in one transaction
     const insertHandle = this.db.prepare(`
       INSERT INTO handles (handle, type, count, created_at)
       VALUES (?, ?, ?, ?)
     `);
-    insertHandle.run(handle, "array", data.length, now);
 
-    // Insert data rows
     const insertData = this.db.prepare(`
       INSERT INTO handle_data (handle, idx, data) VALUES (?, ?, ?)
     `);
 
     const insertAll = this.db.transaction((items: unknown[]) => {
+      insertHandle.run(handle, "array", items.length, now);
       for (let i = 0; i < items.length; i++) {
-        insertData.run(handle, i, JSON.stringify(items[i]));
+        try {
+          insertData.run(handle, i, JSON.stringify(items[i]));
+        } catch {
+          // Skip non-serializable items (circular refs, BigInt, etc.)
+          insertData.run(handle, i, "null");
+        }
       }
     });
 
     insertAll(data);
+    this.handleCounter = nextId;
     return handle;
   }
 
@@ -262,17 +311,69 @@ export class SessionDB {
   }
 
   /**
-   * Get data stored in a handle
+   * Get a slice of data stored in a handle (avoids loading all rows)
    */
-  getHandleData(handle: string): unknown[] {
+  getHandleDataSlice(handle: string, limit: number, offset: number = 0): unknown[] {
     if (!this.db) return [];
+    const MAX_SLICE_LIMIT = 100_000;
+    if (!Number.isFinite(limit)) limit = 0;
+    limit = Math.min(Math.floor(limit), MAX_SLICE_LIMIT);
+    if (limit <= 0) return [];
+    if (!Number.isFinite(offset)) offset = 0;
+    offset = Math.max(0, Math.floor(offset));
     const stmt = this.db.prepare(`
       SELECT data FROM handle_data
       WHERE handle = ?
       ORDER BY idx
+      LIMIT ? OFFSET ?
     `);
-    const rows = stmt.all(handle) as Array<{ data: string }>;
-    return rows.map((r) => JSON.parse(r.data));
+    const rows = stmt.all(handle, limit, offset) as Array<{ data: string }>;
+    const MAX_JSON_DATA_SIZE = 10_000_000; // 10MB per entry
+    return rows.map((r) => {
+      try {
+        if (r.data.length > MAX_JSON_DATA_SIZE) return null;
+        return JSON.parse(r.data);
+      } catch (e) {
+        console.warn(`[SessionDB] Failed to parse handle data: ${e instanceof Error ? e.message : String(e)}`);
+        return null;
+      }
+    });
+  }
+
+  /**
+   * Get data stored in a handle
+   */
+  getHandleData(handle: string): unknown[] {
+    if (!this.db) return [];
+    const MAX_ITEMS = 1_000_000;
+    const MAX_JSON_DATA_SIZE = 10_000_000; // 10MB per entry
+    const stmt = this.db.prepare(`
+      SELECT data FROM handle_data
+      WHERE handle = ?
+      ORDER BY idx
+      LIMIT ?
+    `);
+    const rows = stmt.all(handle, MAX_ITEMS) as Array<{ data: string }>;
+    return rows.map((r) => {
+      try {
+        if (r.data.length > MAX_JSON_DATA_SIZE) return null;
+        return JSON.parse(r.data);
+      } catch (e) {
+        console.warn(`[SessionDB] Failed to parse handle data: ${e instanceof Error ? e.message : String(e)}`);
+        return null;
+      }
+    });
+  }
+
+  /**
+   * List all handle names
+   */
+  listHandles(): string[] {
+    if (!this.db) return [];
+    const MAX_HANDLES = 100_000;
+    const stmt = this.db.prepare("SELECT handle FROM handles ORDER BY handle LIMIT ?");
+    const rows = stmt.all(MAX_HANDLES) as Array<{ handle: string }>;
+    return rows.map((r) => r.handle);
   }
 
   /**
@@ -290,7 +391,14 @@ export class SessionDB {
    */
   saveCheckpoint(turn: number, bindings: Map<string, string>): void {
     if (!this.db) return;
+    if (!Number.isSafeInteger(turn) || turn < 0) {
+      throw new Error("Turn must be a non-negative integer");
+    }
     const bindingsJson = JSON.stringify(Object.fromEntries(bindings));
+    const MAX_CHECKPOINT_SIZE = 10_000_000; // 10MB
+    if (bindingsJson.length > MAX_CHECKPOINT_SIZE) {
+      throw new Error("Checkpoint too large");
+    }
     const stmt = this.db.prepare(`
       INSERT OR REPLACE INTO checkpoints (turn, bindings, timestamp)
       VALUES (?, ?, ?)
@@ -301,13 +409,29 @@ export class SessionDB {
   /**
    * Get a checkpoint
    */
+  getCheckpointTimestamp(turn: number): number | null {
+    if (!this.db) return null;
+    const stmt = this.db.prepare("SELECT timestamp FROM checkpoints WHERE turn = ?");
+    const row = stmt.get(turn) as { timestamp: number } | undefined;
+    return row ? row.timestamp : null;
+  }
+
   getCheckpoint(turn: number): Map<string, string> | null {
     if (!this.db) return null;
     const stmt = this.db.prepare("SELECT bindings FROM checkpoints WHERE turn = ?");
     const row = stmt.get(turn) as { bindings: string } | undefined;
     if (!row) return null;
-    const obj = JSON.parse(row.bindings) as Record<string, string>;
-    return new Map(Object.entries(obj));
+    try {
+      const MAX_CHECKPOINT_JSON_SIZE = 10_000_000; // 10MB
+      if (row.bindings.length > MAX_CHECKPOINT_JSON_SIZE) return null;
+      const obj = JSON.parse(row.bindings) as Record<string, string>;
+      const MAX_CHECKPOINT_KEYS = 100_000;
+      const entries = Object.entries(obj);
+      if (entries.length > MAX_CHECKPOINT_KEYS) return null;
+      return new Map(entries);
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -315,8 +439,9 @@ export class SessionDB {
    */
   getCheckpointTurns(): number[] {
     if (!this.db) return [];
-    const stmt = this.db.prepare("SELECT turn FROM checkpoints ORDER BY turn");
-    const rows = stmt.all() as Array<{ turn: number }>;
+    const MAX_CHECKPOINTS = 10_000;
+    const stmt = this.db.prepare("SELECT turn FROM checkpoints ORDER BY turn LIMIT ?");
+    const rows = stmt.all(MAX_CHECKPOINTS) as Array<{ turn: number }>;
     return rows.map((r) => r.turn);
   }
 
@@ -325,6 +450,7 @@ export class SessionDB {
    */
   deleteCheckpoint(turn: number): void {
     if (!this.db) return;
+    if (!Number.isSafeInteger(turn) || turn < 0) return;
     const stmt = this.db.prepare("DELETE FROM checkpoints WHERE turn = ?");
     stmt.run(turn);
   }
@@ -347,6 +473,30 @@ export class SessionDB {
    */
   storeSymbol(symbol: Omit<Symbol, "id">): number {
     if (!this.db) throw new Error("Database not open");
+    const MAX_NAME_LENGTH = 10_000;
+    const MAX_SIGNATURE_LENGTH = 50_000;
+    if (typeof symbol.name !== "string" || symbol.name.length > MAX_NAME_LENGTH) {
+      throw new Error("Invalid or too-long symbol name");
+    }
+    if (symbol.signature != null && (typeof symbol.signature !== "string" || symbol.signature.length > MAX_SIGNATURE_LENGTH)) {
+      throw new Error("Invalid or too-long signature");
+    }
+    const VALID_KINDS = new Set(["function", "method", "class", "interface", "type", "struct", "variable", "constant", "property", "enum", "module", "namespace", "trait"]);
+    if (typeof symbol.kind !== "string" || !VALID_KINDS.has(symbol.kind)) {
+      throw new Error("Invalid symbol kind");
+    }
+    if (!Number.isSafeInteger(symbol.startLine) || !Number.isSafeInteger(symbol.endLine) || symbol.startLine < 1 || symbol.endLine < 1 || symbol.startLine > symbol.endLine) {
+      throw new Error("Invalid line numbers");
+    }
+    if (symbol.startCol != null && !Number.isSafeInteger(symbol.startCol)) {
+      throw new Error("Invalid column numbers");
+    }
+    if (symbol.endCol != null && !Number.isSafeInteger(symbol.endCol)) {
+      throw new Error("Invalid column numbers");
+    }
+    if (symbol.parentSymbolId != null && !Number.isSafeInteger(symbol.parentSymbolId)) {
+      throw new Error("Invalid parentSymbolId");
+    }
 
     const stmt = this.db.prepare(`
       INSERT INTO symbols (name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId)
@@ -372,6 +522,7 @@ export class SessionDB {
    */
   getSymbol(id: number): Symbol | null {
     if (!this.db) return null;
+    if (!Number.isSafeInteger(id)) return null;
     const stmt = this.db.prepare(`
       SELECT id, name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId
       FROM symbols WHERE id = ?
@@ -385,11 +536,12 @@ export class SessionDB {
    */
   getAllSymbols(): Symbol[] {
     if (!this.db) return [];
+    const MAX_SYMBOLS = 100_000;
     const stmt = this.db.prepare(`
       SELECT id, name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId
-      FROM symbols ORDER BY startLine, startCol
+      FROM symbols ORDER BY startLine, startCol LIMIT ?
     `);
-    return stmt.all() as Symbol[];
+    return stmt.all(MAX_SYMBOLS) as Symbol[];
   }
 
   /**
@@ -397,11 +549,12 @@ export class SessionDB {
    */
   getSymbolsByKind(kind: SymbolKind): Symbol[] {
     if (!this.db) return [];
+    const MAX_SYMBOLS = 100_000;
     const stmt = this.db.prepare(`
       SELECT id, name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId
-      FROM symbols WHERE kind = ? ORDER BY startLine, startCol
+      FROM symbols WHERE kind = ? ORDER BY startLine, startCol LIMIT ?
     `);
-    return stmt.all(kind) as Symbol[];
+    return stmt.all(kind, MAX_SYMBOLS) as Symbol[];
   }
 
   /**
@@ -409,11 +562,14 @@ export class SessionDB {
    */
   getSymbolsAtLine(line: number): Symbol[] {
     if (!this.db) return [];
+    if (!Number.isFinite(line)) return [];
+    line = Math.floor(line);
+    const MAX_SYMBOLS = 100_000;
     const stmt = this.db.prepare(`
       SELECT id, name, kind, startLine, endLine, startCol, endCol, signature, parentSymbolId
-      FROM symbols WHERE startLine <= ? AND endLine >= ? ORDER BY startLine, startCol
+      FROM symbols WHERE startLine <= ? AND endLine >= ? ORDER BY startLine, startCol LIMIT ?
     `);
-    return stmt.all(line, line) as Symbol[];
+    return stmt.all(line, line, MAX_SYMBOLS) as Symbol[];
   }
 
   /**
@@ -448,7 +604,8 @@ export class SessionDB {
       DELETE FROM checkpoints;
       DELETE FROM symbols;
     `);
-    this.handleCounter = 0;
+    // Don't reset handleCounter — preserves monotonicity and prevents
+    // handle name collisions with previously issued handles
   }
 
   /**

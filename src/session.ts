@@ -72,6 +72,9 @@ export interface SessionManager {
  * const sameSandbox = await sessionManager.getOrCreate('/path/to/doc.txt', content, llmFn);
  * const result = await sameSandbox.execute('memory'); // Still has previous data
  */
+const MAX_SESSIONS = 100;
+const MAX_PATH_LENGTH = 4096;
+
 export function createSessionManager(): SessionManager {
   const sessions = new Map<string, Session>();
 
@@ -82,6 +85,9 @@ export function createSessionManager(): SessionManager {
       llmFn: LLMQueryFn,
       options?: SandboxOptions
     ): Promise<Sandbox> {
+      if (filePath.length > MAX_PATH_LENGTH) {
+        throw new Error(`File path too long (${filePath.length} chars, max ${MAX_PATH_LENGTH})`);
+      }
       const newHash = hashContent(content);
 
       // Check for existing session
@@ -98,6 +104,16 @@ export function createSessionManager(): SessionManager {
 
       // Create new sandbox
       const sandbox = await createSandbox(content, llmFn, options);
+
+      // Evict oldest session if at capacity
+      if (sessions.size >= MAX_SESSIONS) {
+        const oldest = sessions.keys().next().value;
+        if (oldest !== undefined) {
+          const oldSession = sessions.get(oldest);
+          if (oldSession) oldSession.sandbox.dispose();
+          sessions.delete(oldest);
+        }
+      }
 
       // Store session with content hash
       sessions.set(filePath, {

@@ -78,4 +78,102 @@ describe("Constraint Resolver", () => {
       expect(constraints).toHaveLength(0);
     });
   });
+
+  describe("missing term type coverage in recursion", () => {
+    it("should recurse into add term children for hasConstraints", () => {
+      const term = {
+        tag: "add" as const,
+        left: {
+          tag: "constrained" as const,
+          constraint: "Σ⚡μ" as const,
+          term: { tag: "lit" as const, value: 1 },
+        },
+        right: { tag: "lit" as const, value: 2 },
+      };
+      expect(hasConstraints(term as any)).toBe(true);
+    });
+
+    it("should recurse into extract term for hasConstraints", () => {
+      const term = {
+        tag: "extract" as const,
+        str: {
+          tag: "constrained" as const,
+          constraint: "∞/0" as const,
+          term: { tag: "input" as const },
+        },
+        pattern: "\\d+",
+        group: 0,
+      };
+      expect(hasConstraints(term as any)).toBe(true);
+    });
+
+    it("should recurse into reduce term for extractConstraints", () => {
+      const term = {
+        tag: "reduce" as const,
+        collection: {
+          tag: "constrained" as const,
+          constraint: "ε⚡φ" as const,
+          term: { tag: "lit" as const, value: [] },
+        },
+        init: { tag: "lit" as const, value: 0 },
+        fn: {
+          tag: "lambda" as const,
+          param: "acc",
+          body: { tag: "var" as const, name: "acc" },
+        },
+      };
+      const constraints = extractConstraints(term as any);
+      expect(constraints).toContain("ε⚡φ");
+    });
+
+    it("should recurse into filter term for extractConstraints", () => {
+      const term = {
+        tag: "filter" as const,
+        collection: {
+          tag: "constrained" as const,
+          constraint: "∞/0" as const,
+          term: { tag: "lit" as const, value: [] },
+        },
+        predicate: {
+          tag: "lambda" as const,
+          param: "x",
+          body: { tag: "lit" as const, value: true },
+        },
+      };
+      const constraints = extractConstraints(term as any);
+      expect(constraints).toContain("∞/0");
+    });
+
+    it("should recurse into map term for extractConstraints", () => {
+      const term = {
+        tag: "map" as const,
+        collection: { tag: "lit" as const, value: [] },
+        transform: {
+          tag: "constrained" as const,
+          constraint: "Σ⚡μ" as const,
+          term: {
+            tag: "lambda" as const,
+            param: "x",
+            body: { tag: "var" as const, name: "x" },
+          },
+        },
+      };
+      const constraints = extractConstraints(term as any);
+      expect(constraints).toContain("Σ⚡μ");
+    });
+
+    it("should recurse into add for resolveConstraints", () => {
+      const term = {
+        tag: "add" as const,
+        left: {
+          tag: "constrained" as const,
+          constraint: "Σ⚡μ" as const,
+          term: { tag: "lit" as const, value: 1 },
+        },
+        right: { tag: "lit" as const, value: 2 },
+      };
+      const result = resolveConstraints(term as any);
+      expect(result.transformations).toContain("Applied [Σ⚡μ]");
+    });
+  });
 });

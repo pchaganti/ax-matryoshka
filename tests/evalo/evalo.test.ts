@@ -122,7 +122,8 @@ describe("evalExtractor (forward mode)", () => {
         end: -1,
       };
       const result = evalExtractor(e, "hello");
-      expect(result).toBe("hell");
+      // Negative end is now rejected for security (prevents unexpected data extraction)
+      expect(result).toBe(null);
     });
   });
 
@@ -174,13 +175,13 @@ describe("evalExtractor (forward mode)", () => {
       expect(result).toBe(123);
     });
 
-    it("should return NaN for non-numeric", () => {
+    it("should return null for non-numeric", () => {
       const e: Extractor = {
         tag: "parseInt",
         str: { tag: "input" },
       };
       const result = evalExtractor(e, "hello");
-      expect(result).toBeNaN();
+      expect(result).toBeNull();
     });
   });
 
@@ -281,7 +282,8 @@ describe("evalExtractor (forward mode)", () => {
 describe("evalo (relational mode)", () => {
   describe("forward mode", () => {
     it("should unify output with evaluation result", () => {
-      const results = evalo({ tag: "input" }, "hello", null);
+      // Omit expectedOutput to mean "no constraint" (undefined)
+      const results = evalo({ tag: "input" }, "hello");
       expect(results).toContain("hello");
     });
 

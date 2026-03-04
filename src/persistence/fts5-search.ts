@@ -11,6 +11,7 @@
  */
 
 import type { SessionDB, DocumentLine } from "./session-db.js";
+import { validateRegex } from "../logic/lc-solver.js";
 
 export interface SearchResult extends DocumentLine {
   // Extended with optional fields for advanced queries
@@ -38,9 +39,10 @@ export class FTS5Search {
 
   /**
    * Basic search - returns results in line order
+   * Uses raw FTS5 query (caller is responsible for sanitization)
    */
   search(query: string): SearchResult[] {
-    return this.db.search(query);
+    return this.db.searchRaw(query);
   }
 
   /**
@@ -49,19 +51,29 @@ export class FTS5Search {
   searchByRelevance(query: string): SearchResult[] {
     // FTS5 uses bm25() for relevance ranking
     // Since we're using the SessionDB abstraction, we'll sort by occurrence count
-    const results = this.db.search(query);
+    const results = this.db.searchRaw(query);
 
     // Count occurrences of search terms in each result
-    const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0);
+    const MAX_SEARCH_TERMS = 100;
+    const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0).slice(0, MAX_SEARCH_TERMS);
+
+    // Pre-compute relevance scores to avoid recalculating per sort comparison
+    const scores = new Map<SearchResult, number>();
+    for (const r of results) {
+      const MAX_CONTENT_SCORING = 100_000;
+      const lower = r.content.length > MAX_CONTENT_SCORING ? r.content.slice(0, MAX_CONTENT_SCORING).toLowerCase() : r.content.toLowerCase();
+      const count = queryTerms.reduce((sum, term) => {
+        return sum + (lower.split(term).length - 1);
+      }, 0);
+      scores.set(r, count);
+    }
 
     return results.sort((a, b) => {
-      const aCount = queryTerms.reduce((sum, term) => {
-        return sum + (a.content.toLowerCase().split(term).length - 1);
-      }, 0);
-      const bCount = queryTerms.reduce((sum, term) => {
-        return sum + (b.content.toLowerCase().split(term).length - 1);
-      }, 0);
-      return bCount - aCount;  // Higher count first
+      const scoreB = scores.get(b) ?? 0;
+      const scoreA = scores.get(a) ?? 0;
+      if (scoreB > scoreA) return 1;
+      if (scoreB < scoreA) return -1;
+      return 0;
     });
   }
 
@@ -72,17 +84,29 @@ export class FTS5Search {
     query: string,
     options: HighlightOptions = {}
   ): HighlightResult[] {
-    const { openTag = "<mark>", closeTag = "</mark>" } = options;
-    const results = this.db.search(query);
+    // Sanitize tags to prevent XSS — strip all HTML tags except safe allowlist, event handlers, and JS URIs
+    const ALLOWED_TAGS = /^<\/?(mark|b|i|em|strong|u|span|code|pre|small|sub|sup)(\s+class="[a-zA-Z0-9 _-]*")?\s*>$/i;
+    const sanitizeTag = (tag: string) => {
+      // Strip all HTML tags that aren't in our allowlist
+      return tag.replace(/<[^>]*>/gi, (match) => ALLOWED_TAGS.test(match) ? match : "");
+    };
+    const openTag = sanitizeTag(options.openTag ?? "<mark>");
+    const closeTag = sanitizeTag(options.closeTag ?? "</mark>");
+    const results = this.db.searchRaw(query);
 
     // Extract search terms (handle phrases and operators)
     const terms = this.extractSearchTerms(query);
 
+    const MAX_HIGHLIGHT_LENGTH = 100_000;
     return results.map((result) => {
-      let highlighted = result.content;
+      let highlighted = result.content.length > MAX_HIGHLIGHT_LENGTH ? result.content.slice(0, MAX_HIGHLIGHT_LENGTH) : result.content;
       for (const term of terms) {
         const regex = new RegExp(`(${this.escapeRegex(term)})`, "gi");
         highlighted = highlighted.replace(regex, `${openTag}$1${closeTag}`);
+        if (highlighted.length > MAX_HIGHLIGHT_LENGTH) {
+          highlighted = highlighted.slice(0, MAX_HIGHLIGHT_LENGTH);
+          break;
+        }
       }
       return { ...result, highlighted };
     });
@@ -92,15 +116,20 @@ export class FTS5Search {
    * Search with relevant snippets
    */
   searchWithSnippets(query: string): SnippetResult[] {
-    const results = this.db.search(query);
+    const results = this.db.searchRaw(query);
     const terms = this.extractSearchTerms(query);
 
+    const MAX_SNIPPET_LENGTH = 100_000;
     return results.map((result) => {
       // For single-line documents, snippet is the content with highlight
-      let snippet = result.content;
+      let snippet = result.content.length > MAX_SNIPPET_LENGTH ? result.content.slice(0, MAX_SNIPPET_LENGTH) : result.content;
       for (const term of terms) {
         const regex = new RegExp(`(${this.escapeRegex(term)})`, "gi");
         snippet = snippet.replace(regex, "<mark>$1</mark>");
+        if (snippet.length > MAX_SNIPPET_LENGTH) {
+          snippet = snippet.slice(0, MAX_SNIPPET_LENGTH);
+          break;
+        }
       }
       return { ...result, snippet };
     });
@@ -110,8 +139,14 @@ export class FTS5Search {
    * Execute multiple searches efficiently
    */
   searchBatch(queries: string[]): Record<string, SearchResult[]> {
+    const MAX_BATCH_SIZE = 100;
+    const MAX_QUERY_LENGTH = 10_000;
+    if (queries.length > MAX_BATCH_SIZE) {
+      throw new Error(`Too many batch queries: ${queries.length} (max ${MAX_BATCH_SIZE})`);
+    }
     const results: Record<string, SearchResult[]> = {};
     for (const query of queries) {
+      if (query.length > MAX_QUERY_LENGTH) continue;
       results[query] = this.search(query);
     }
     return results;
@@ -130,8 +165,9 @@ export class FTS5Search {
 
     // Handle alternation pattern: error|warning
     if (/^\w+(\|\w+)+$/.test(pattern)) {
-      const terms = pattern.split("|");
-      const ftsQuery = terms.join(" OR ");
+      const MAX_ALTERNATION_TERMS = 100;
+      const terms = pattern.split("|").slice(0, MAX_ALTERNATION_TERMS);
+      const ftsQuery = terms.map(t => `"${t}"`).join(" OR ");
       return this.search(ftsQuery);
     }
 
@@ -144,12 +180,28 @@ export class FTS5Search {
    */
   private regexFallback(pattern: string): SearchResult[] {
     try {
-      const regex = new RegExp(pattern, "gi");
-      const allLines = this.db.getLines(1, this.db.getLineCount());
+      const validation = validateRegex(pattern);
+      if (!validation.valid) return [];
 
-      return allLines.filter((line) => regex.test(line.content));
+      const MAX_FALLBACK_RESULTS = 10000;
+      const regex = new RegExp(pattern, "i");
+      const totalLines = this.db.getLineCount();
+      const CHUNK_SIZE = 5000;
+      const results: SearchResult[] = [];
+
+      for (let start = 1; start <= totalLines; start += CHUNK_SIZE) {
+        const end = Math.min(start + CHUNK_SIZE - 1, totalLines);
+        const chunk = this.db.getLines(start, end);
+        for (const line of chunk) {
+          if (regex.test(line.content)) {
+            results.push(line);
+            if (results.length >= MAX_FALLBACK_RESULTS) return results;
+          }
+        }
+      }
+
+      return results;
     } catch {
-      // Invalid regex
       return [];
     }
   }
@@ -159,6 +211,7 @@ export class FTS5Search {
    */
   private extractSearchTerms(query: string): string[] {
     // Remove FTS5 operators and extract plain terms
+    const MAX_EXTRACTED_TERMS = 100;
     const cleaned = query
       .replace(/\bAND\b/gi, " ")
       .replace(/\bOR\b/gi, " ")
@@ -169,7 +222,8 @@ export class FTS5Search {
 
     return cleaned
       .split(/\s+/)
-      .filter((t) => t.length > 0 && !/^\d+$/.test(t));
+      .filter((t) => t.length > 0 && !/^\d+$/.test(t))
+      .slice(0, MAX_EXTRACTED_TERMS);
   }
 
   /**

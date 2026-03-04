@@ -15,6 +15,8 @@ import { ParserRegistry } from "../treesitter/parser-registry.js";
 import { SymbolExtractor } from "../treesitter/symbol-extractor.js";
 import { isExtensionSupported } from "../treesitter/language-map.js";
 
+const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
+
 /**
  * Result of a handle-based query execution
  */
@@ -69,6 +71,7 @@ export class HandleSession {
   private parserRegistry: ParserRegistry;
   private symbolExtractor: SymbolExtractor;
   private parserInitialized: boolean = false;
+  private initPromise: Promise<void> | null = null;
   private documentPath: string = "";
   private documentSize: number = 0;
   private loadedAt: Date | null = null;
@@ -91,8 +94,16 @@ export class HandleSession {
    */
   async init(): Promise<void> {
     if (!this.parserInitialized) {
-      await this.parserRegistry.init();
-      this.parserInitialized = true;
+      if (!this.initPromise) {
+        this.initPromise = this.parserRegistry.init().then(() => {
+          this.parserInitialized = true;
+        }).catch((err) => {
+          // Reset so the next call can retry
+          this.initPromise = null;
+          throw err;
+        });
+      }
+      await this.initPromise;
     }
   }
 
@@ -102,6 +113,9 @@ export class HandleSession {
    */
   async loadFile(filePath: string): Promise<{ lineCount: number; size: number }> {
     const content = await readFile(filePath, "utf-8");
+    if (content.length > MAX_DOCUMENT_SIZE) {
+      throw new Error(`File too large (${(content.length / 1024 / 1024).toFixed(1)}MB, max ${MAX_DOCUMENT_SIZE / 1024 / 1024}MB)`);
+    }
     return this.loadContentWithSymbols(content, filePath);
   }
 
@@ -170,15 +184,32 @@ export class HandleSession {
     return { lineCount, size: content.length };
   }
 
+  private symbolExtractionPromise: Promise<void> | null = null;
+  private loadGeneration: number = 0;
+
   /**
    * Extract and store symbols (async, fire-and-forget for sync load)
+   * Uses a generation counter to discard stale results from previous loads.
    */
   private extractSymbolsAsync(content: string, ext: string): void {
-    this.init()
-      .then(() => this.extractAndStoreSymbols(content, ext))
-      .catch(() => {
-        // Silently ignore errors - symbols just won't be available
+    const gen = ++this.loadGeneration;
+    this.symbolExtractionPromise = this.init()
+      .then(() => {
+        if (gen !== this.loadGeneration) return; // stale load, skip
+        return this.extractAndStoreSymbols(content, ext);
+      })
+      .catch((err) => {
+        console.error("[HandleSession] Symbol extraction failed:", err instanceof Error ? err.message : String(err));
       });
+  }
+
+  /**
+   * Wait for symbol extraction to complete (if any is in progress)
+   */
+  async waitForSymbols(): Promise<void> {
+    if (this.symbolExtractionPromise) {
+      await this.symbolExtractionPromise;
+    }
   }
 
   /**
@@ -236,7 +267,12 @@ export class HandleSession {
     }
 
     // If result is an array, store in handle registry
+    const MAX_HANDLES = 200;
     if (Array.isArray(result.value)) {
+      // Evict oldest handle if at limit
+      if (this.registry.handleCount() >= MAX_HANDLES) {
+        this.registry.evictOldest();
+      }
       const handle = this.registry.store(result.value);
       this.registry.setResults(handle);
 
@@ -269,20 +305,24 @@ export class HandleSession {
   expand(handle: string, options: ExpandOptions = {}): ExpandResult {
     this.lastAccessedAt = new Date();
 
-    const data = this.registry.get(handle);
-    if (data === null) {
+    // Check handle exists via metadata (avoids loading all data)
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) {
       return {
         success: false,
         error: `Invalid handle: ${handle}`,
       };
     }
 
-    const total = data.length;
-    const offset = options.offset ?? 0;
-    const limit = options.limit ?? total;
+    const MAX_DEFAULT_EXPAND_LIMIT = 1000;
+    const total = meta.count;
+    const rawOffset = options.offset ?? 0;
+    const offset = Math.max(0, Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0);
+    const rawLimit = options.limit ?? Math.min(total, MAX_DEFAULT_EXPAND_LIMIT);
+    const limit = Math.min(Math.max(0, Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 0), MAX_DEFAULT_EXPAND_LIMIT);
 
-    // Slice the data
-    let sliced = data.slice(offset, offset + limit);
+    // Use database-level pagination instead of loading all data then slicing
+    let sliced = this.db.getHandleDataSlice(handle, limit, offset);
 
     // Format if requested
     if (options.format === "lines") {
@@ -402,8 +442,21 @@ export class HandleSession {
    * Close the session and free resources
    */
   close(): void {
-    this.parserRegistry.dispose();
-    this.db.close();
+    try {
+      this.engine.dispose();
+    } catch (err) {
+      console.error("[HandleSession] Engine dispose failed:", err instanceof Error ? err.message : String(err));
+    }
+    try {
+      this.parserRegistry.dispose();
+    } catch (err) {
+      console.error("[HandleSession] Parser registry dispose failed:", err instanceof Error ? err.message : String(err));
+    }
+    try {
+      this.db.close();
+    } catch (err) {
+      console.error("[HandleSession] Database close failed:", err instanceof Error ? err.message : String(err));
+    }
   }
 
   /**

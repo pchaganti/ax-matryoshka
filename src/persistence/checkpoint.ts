@@ -32,6 +32,9 @@ export class CheckpointManager {
    * Save checkpoint at current turn
    */
   save(turn: number): void {
+    if (!Number.isSafeInteger(turn) || turn < 0) {
+      throw new Error("Invalid turn number");
+    }
     // Collect all handle references
     const handles = this.registry.listHandles();
     const resultsHandle = this.registry.getResults();
@@ -52,13 +55,23 @@ export class CheckpointManager {
    * Restore checkpoint for a turn
    */
   restore(turn: number): boolean {
+    if (!Number.isSafeInteger(turn) || turn < 0) return false;
     const bindings = this.db.getCheckpoint(turn);
     if (!bindings) return false;
 
-    // Restore RESULTS binding
+    // Restore RESULTS binding (or clear stale RESULTS if checkpoint has none)
     const resultsHandle = bindings.get("RESULTS");
-    if (resultsHandle) {
-      this.registry.setResults(resultsHandle);
+    if (resultsHandle && /^\$res\d+$/.test(resultsHandle)) {
+      // Verify handle still exists before restoring
+      const handleData = this.registry.get(resultsHandle);
+      if (handleData === null) {
+        // Handle was deleted, clear stale RESULTS
+        this.registry.clearResults();
+      } else {
+        this.registry.setResults(resultsHandle);
+      }
+    } else {
+      this.registry.clearResults();
     }
 
     return true;
@@ -75,6 +88,7 @@ export class CheckpointManager {
    * Delete a specific checkpoint
    */
   delete(turn: number): void {
+    if (!Number.isSafeInteger(turn) || turn < 0) return;
     this.db.deleteCheckpoint(turn);
   }
 
@@ -96,6 +110,10 @@ export class CheckpointManager {
    * Set custom session ID
    */
   setSessionId(id: string): void {
+    const MAX_SESSION_ID_LENGTH = 1000;
+    if (!id || id.length > MAX_SESSION_ID_LENGTH) {
+      throw new Error("Invalid session ID length");
+    }
     this.sessionId = id;
   }
 
@@ -111,9 +129,11 @@ export class CheckpointManager {
       typeof v === "string" && v.startsWith("$res")
     ).length;
 
+    const timestamp = this.db.getCheckpointTimestamp(turn) ?? Date.now();
+
     return {
       turn,
-      timestamp: Date.now(),  // Ideally stored with checkpoint
+      timestamp,
       handleCount,
     };
   }

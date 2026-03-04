@@ -18,10 +18,13 @@ export function reify(x: Term, s: Subst): Term {
   return walkAll(x, reifyS(x, new Map()));
 }
 
-function reifyS(x: Term, r: Subst): Subst {
+const MAX_REIFY_DEPTH = 200;
+
+function reifyS(x: Term, r: Subst, depth: number = 0): Subst {
+  if (depth > MAX_REIFY_DEPTH) return r;
   x = walk(x, r);
   if (isVar(x)) return reifyVar(x, r);
-  else if (isComp(x)) return reifyComp(x as CompoundTerm, r);
+  else if (isComp(x)) return reifyComp(x as CompoundTerm, r, depth);
   else return r;
 }
 
@@ -32,6 +35,6 @@ function reifyVar(v: Var, r: Subst): Subst {
   return new Map(r).set(v, `_${r.size}`);
 }
 
-function reifyComp(x: CompoundTerm, r: Subst): Subst {
-  return keysIn(x).reduce((r, k) => reifyS(x[k], r), r);
+function reifyComp(x: CompoundTerm, r: Subst, depth: number = 0): Subst {
+  return keysIn(x).reduce((r, k) => reifyS(x[k], r, depth + 1), r);
 }

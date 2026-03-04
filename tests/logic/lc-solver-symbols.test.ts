@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { solve, type SolverTools, type Bindings } from "../../src/logic/lc-solver.js";
+import { solve, validateRegex, type SolverTools, type Bindings } from "../../src/logic/lc-solver.js";
 import { parse } from "../../src/logic/lc-parser.js";
 import { SessionDB } from "../../src/persistence/session-db.js";
 import type { Symbol } from "../../src/treesitter/types.js";
@@ -275,6 +275,43 @@ type ID = string | number;
       expect(Array.isArray(refs)).toBe(true);
       expect(refs.length).toBe(0);
     });
+
+    it("should not throw when name contains regex metacharacters", () => {
+      // Names with regex metacharacters should be escaped, not throw
+      const result = parse('(find_references "foo(bar")');
+      expect(result.success).toBe(true);
+
+      const solved = solve(result.term!, tools, bindings);
+      // Should not throw - metacharacters are escaped
+      expect(solved.success).toBe(true);
+      const refs = solved.value as Array<{ line: string; lineNum: number }>;
+      expect(Array.isArray(refs)).toBe(true);
+    });
+  });
+
+  describe("evaluation depth limit", () => {
+    it("should throw on deeply nested lambda application instead of crashing", () => {
+      // Build a deeply nested application: (app (app (app ... )))
+      // This tests that evaluate() has a depth guard
+      // We'll construct a term that causes deep recursion via evaluate
+      let deepCommand = '"base"';
+      for (let i = 0; i < 200; i++) {
+        deepCommand = `(replace ${deepCommand} "base" "base")`;
+      }
+
+      const result = parse(deepCommand);
+      if (!result.success || !result.term) {
+        // Parser may reject very deep nesting — that's also acceptable
+        return;
+      }
+
+      const solved = solve(result.term, tools, bindings);
+      // Either it succeeds (if depth is within limit) or fails with depth error
+      // The important thing is it doesn't crash with stack overflow
+      if (!solved.success) {
+        expect(solved.error).toMatch(/depth|recursion/i);
+      }
+    });
   });
 
   describe("integration scenarios", () => {
@@ -302,6 +339,135 @@ type ID = string | number;
       const solved = solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       expect(solved.value).toBe(2);
+    });
+  });
+
+  describe("regex validation in string operations", () => {
+    it("should reject match with nested-quantifier regex (ReDoS)", () => {
+      // Directly invoke solve with a match term containing a dangerous regex
+      const term = {
+        tag: "match" as const,
+        str: { tag: "lit" as const, value: "test string" },
+        pattern: "(a+)+",
+        group: 0,
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/backtracking|invalid regex|match:/i);
+    });
+
+    it("should reject replace with nested-quantifier regex (ReDoS)", () => {
+      const term = {
+        tag: "replace" as const,
+        str: { tag: "lit" as const, value: "test string" },
+        from: "(a+)+",
+        to: "x",
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/backtracking|invalid regex|replace:/i);
+    });
+
+    it("should reject extract with nested-quantifier regex (ReDoS)", () => {
+      const term = {
+        tag: "extract" as const,
+        str: { tag: "lit" as const, value: "test string" },
+        pattern: "(a+)+",
+        group: 0,
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/backtracking|invalid regex|extract:/i);
+    });
+  });
+
+  describe("empty regex validation", () => {
+    it("should reject empty regex pattern", () => {
+      const result = validateRegex("");
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain("Empty");
+    });
+  });
+
+  describe("add type validation", () => {
+    it("should throw when adding non-numeric operands", () => {
+      const term = {
+        tag: "add" as const,
+        left: { tag: "lit" as const, value: "hello" },
+        right: { tag: "lit" as const, value: 5 },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/expected numbers/i);
+    });
+
+    it("should succeed with valid numeric operands", () => {
+      const term = {
+        tag: "add" as const,
+        left: { tag: "lit" as const, value: 3 },
+        right: { tag: "lit" as const, value: 5 },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(8);
+    });
+  });
+
+  describe("negative group index guard", () => {
+    it("should return null for negative group index in match", () => {
+      const term = {
+        tag: "match" as const,
+        str: { tag: "lit" as const, value: "hello world" },
+        pattern: "(\\w+)",
+        group: -1,
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
+    });
+  });
+
+  describe("parseDate input length limit", () => {
+    it("should return null for excessively long date string", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "A".repeat(500) },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
+    });
+  });
+
+  describe("parseDate month/day validation", () => {
+    it("should reject Feb 31 as invalid date", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "02/31/2024" },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
+    });
+
+    it("should reject month 13 as invalid date", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "2024-13-01" },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
+    });
+
+    it("should reject month 0 as invalid date", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "2024-00-15" },
+      };
+      const result = solve(term as any, tools, bindings);
+      expect(result.success).toBe(true);
+      expect(result.value).toBeNull();
     });
   });
 });

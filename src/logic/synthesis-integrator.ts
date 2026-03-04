@@ -74,7 +74,7 @@ const MONTH_NAMES: Record<string, string> = {
   jun: "06",
   jul: "07",
   aug: "08",
-  sep: "09",
+  sep: "09", sept: "09",
   oct: "10",
   nov: "11",
   dec: "12",
@@ -91,10 +91,23 @@ const MONTH_NAMES: Record<string, string> = {
   december: "12",
 };
 
+/** Max days per month (non-leap year defaults; Feb adjusted for leap years) */
+const DAYS_IN_MONTH = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+function maxDaysInMonth(month: number, year: number): number {
+  if (month < 1 || month > 12) return 0; // Invalid month
+  if (month === 2 && (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0))) return 29;
+  return DAYS_IN_MONTH[month] ?? 31;
+}
+
+/** Inline JS code string for daysInMonth validation */
+const DAYS_IN_MONTH_JS = `const _dim = [0,31,28,31,30,31,30,31,31,30,31,30,31];
+          function _maxDays(mo, yr) { if (mo===2 && (yr%4===0 && (yr%100!==0 || yr%400===0))) return 29; return _dim[mo] || 31; }`;
+
 /**
  * SynthesisIntegrator - Automatic synthesis on operation failure
  */
 export class SynthesisIntegrator {
+  private static readonly MAX_CACHE_SIZE = 200;
   private fnCache: Map<string, (input: string) => unknown>;
   private codeCache: Map<string, string>;
   private coordinator: SynthesisCoordinator;
@@ -120,23 +133,31 @@ export class SynthesisIntegrator {
     }
 
     // Check for conflicting examples
-    const inputMap = new Map<string, unknown>();
+    const inputMap = new Map<string, string>();
     for (const ex of examples) {
-      if (inputMap.has(ex.input) && inputMap.get(ex.input) !== ex.output) {
+      let outputKey: string;
+      try {
+        outputKey = JSON.stringify(ex.output);
+      } catch {
+        outputKey = String(ex.output);
+      }
+      if (inputMap.has(ex.input) && inputMap.get(ex.input) !== outputKey) {
         return {
           success: false,
           error: "Conflicting examples: same input with different outputs",
         };
       }
-      inputMap.set(ex.input, ex.output);
+      inputMap.set(ex.input, outputKey);
     }
 
     // Generate cache key
     const cacheKey = this.generateCacheKey(operation, examples);
 
-    // Check cache first
+    // Check cache first (re-insert to mark as recently used for LRU)
     const cached = this.fnCache.get(cacheKey);
     if (cached) {
+      this.fnCache.delete(cacheKey);
+      this.fnCache.set(cacheKey, cached);
       return {
         success: true,
         fn: cached,
@@ -175,8 +196,10 @@ export class SynthesisIntegrator {
     // Cache successful synthesis
     if (result.success && result.fn) {
       this.fnCache.set(cacheKey, result.fn);
+      this.evictIfNeeded(this.fnCache);
       if (result.code) {
         this.codeCache.set(cacheKey, result.code);
+        this.evictIfNeeded(this.codeCache);
       }
       result.cacheKey = cacheKey;
     }
@@ -188,17 +211,15 @@ export class SynthesisIntegrator {
    * Get cached function by key
    */
   getCached(key: string): ((input: string) => unknown) | null {
-    // Try exact match first
+    // Try exact match first (re-insert for LRU)
     if (this.fnCache.has(key)) {
-      return this.fnCache.get(key)!;
+      const fn = this.fnCache.get(key)!;
+      this.fnCache.delete(key);
+      this.fnCache.set(key, fn);
+      return fn;
     }
 
-    // Try partial match
-    for (const [cacheKey, fn] of this.fnCache.entries()) {
-      if (cacheKey.startsWith(key) || key.startsWith(cacheKey.split(":")[0])) {
-        return fn;
-      }
-    }
+    // No partial match — different suffixes may need different parsing logic
 
     return null;
   }
@@ -208,6 +229,19 @@ export class SynthesisIntegrator {
    */
   cacheFunction(key: string, fn: (input: string) => unknown): void {
     this.fnCache.set(key, fn);
+    this.evictIfNeeded(this.fnCache);
+  }
+
+  /**
+   * Evict least recently used entries when cache exceeds max size.
+   * LRU is maintained by re-inserting entries on access (Map preserves insertion order).
+   */
+  private evictIfNeeded<V>(cache: Map<string, V>): void {
+    while (cache.size > SynthesisIntegrator.MAX_CACHE_SIZE) {
+      const lruKey = cache.keys().next().value;
+      if (lruKey !== undefined) cache.delete(lruKey);
+      else break;
+    }
   }
 
   /**
@@ -259,7 +293,7 @@ export class SynthesisIntegrator {
     const hasEuFormat = inputs.some((i) => /\d\.\d{3},\d{2}/.test(i)); // 1.234,56
 
     let code: string;
-    let fn: (input: string) => number;
+    let fn: (input: string) => number | null;
 
     // Detect apostrophe format (Swiss: 1'234.50)
     const hasApostrophe = inputs.some((i) => i.includes("'"));
@@ -268,51 +302,61 @@ export class SynthesisIntegrator {
       // Swiss format: 1'234.50
       code = `(s) => {
         const cleaned = s.replace(/[^0-9.]/g, '');
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) || !isFinite(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s.replace(/[^0-9.]/g, "");
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) || !isFinite(r) ? null : r;
       };
     } else if (hasEuFormat || (hasEuroSymbol && inputs.some((i) => i.includes(",")))) {
       // EU format: 1.234,56€
       code = `(s) => {
         const cleaned = s.replace(/[€$¥£\\s]/g, '').replace(/\\./g, '').replace(',', '.');
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) || !isFinite(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s
           .replace(/[€$¥£\s]/g, "")
           .replace(/\./g, "")
           .replace(",", ".");
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) || !isFinite(r) ? null : r;
       };
     } else if (hasYenSymbol) {
       // Yen format: ¥123,456 (no decimals typically)
       code = `(s) => {
         const cleaned = s.replace(/[¥,\\s]/g, '');
-        return parseInt(cleaned, 10);
+        const r = parseInt(cleaned, 10);
+        return isNaN(r) || !Number.isSafeInteger(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s.replace(/[¥,\s]/g, "");
-        return parseInt(cleaned, 10);
+        const r = parseInt(cleaned, 10);
+        return isNaN(r) || !Number.isSafeInteger(r) ? null : r;
       };
     } else {
       // US/Default format: $1,234.56
       code = `(s) => {
         const cleaned = s.replace(/[$€¥£,\\s]/g, '');
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) || !isFinite(r) ? null : r;
       }`;
       fn = (s: string) => {
         const cleaned = s.replace(/[$€¥£,\s]/g, "");
-        return parseFloat(cleaned);
+        const r = parseFloat(cleaned);
+        return isNaN(r) || !isFinite(r) ? null : r;
       };
     }
 
     // Verify against examples
     const allMatch = examples.every((e) => {
       const result = fn(e.input);
+      if (result === null) return false;
       const expected = e.output as number;
+      if (typeof result !== "number" || isNaN(result) || isNaN(expected)) return false;
       return Math.abs(result - expected) < 0.01;
     });
 
@@ -345,7 +389,7 @@ export class SynthesisIntegrator {
     const hasDash = inputs.some((i) => i.includes("-"));
 
     let code: string;
-    let fn: (input: string) => string;
+    let fn: (input: string) => unknown;
 
     if (hasMonthName) {
       // DD-Mon-YYYY format
@@ -359,7 +403,7 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const match = s.match(/(\d{1,2})[-\s]?(\w{3,})[-\s]?(\d{4})/i);
-        if (!match) return "";
+        if (!match) return null;
         const [_, day, month, year] = match;
         const monthNum = MONTH_NAMES[month.toLowerCase()] || "01";
         return `${year}-${monthNum}-${day.padStart(2, "0")}`;
@@ -370,32 +414,66 @@ export class SynthesisIntegrator {
       if (hasShortYear) {
         // Short year format: DD/MM/YY
         code = `(s) => {
+          ${DAYS_IN_MONTH_JS}
           const match = s.match(/(\\d{1,2})\\/(\\d{1,2})\\/(\\d{2})(?!\\d)/);
           if (!match) return null;
           const [_, day, month, shortYear] = match;
+          const m = parseInt(month, 10);
+          const d = parseInt(day, 10);
+          const yr = parseInt(shortYear, 10) > 50 ? 1900 + parseInt(shortYear, 10) : 2000 + parseInt(shortYear, 10);
+          if (m < 1 || m > 12 || d < 1 || d > _maxDays(m, yr)) return null;
           const year = parseInt(shortYear, 10) > 50 ? '19' + shortYear : '20' + shortYear;
           return \`\${year}-\${month.padStart(2, '0')}-\${day.padStart(2, '0')}\`;
         }`;
         fn = (s: string) => {
           const match = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{2})(?!\d)/);
-          if (!match) return "";
+          if (!match) return null;
           const [_, day, month, shortYear] = match;
+          const m = parseInt(month, 10);
+          const d = parseInt(day, 10);
+          const yr = parseInt(shortYear, 10) > 50 ? 1900 + parseInt(shortYear, 10) : 2000 + parseInt(shortYear, 10);
+          if (m < 1 || m > 12 || d < 1 || d > maxDaysInMonth(m, yr)) return null;
           const year = parseInt(shortYear, 10) > 50 ? "19" + shortYear : "20" + shortYear;
           return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
         };
       } else {
-        // Full year format: DD/MM/YYYY
+        // Full year format: try MM/DD/YYYY first (US), then DD/MM/YYYY (EU)
         code = `(s) => {
+          ${DAYS_IN_MONTH_JS}
           const match = s.match(/(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})/);
           if (!match) return null;
-          const [_, day, month, year] = match;
-          return \`\${year}-\${month.padStart(2, '0')}-\${day.padStart(2, '0')}\`;
+          const [_, p1, p2, year] = match;
+          const yr = parseInt(year, 10);
+          const m1 = parseInt(p1, 10);
+          const d1 = parseInt(p2, 10);
+          if (m1 >= 1 && m1 <= 12 && d1 >= 1 && d1 <= _maxDays(m1, yr)) {
+            return \`\${year}-\${p1.padStart(2, '0')}-\${p2.padStart(2, '0')}\`;
+          }
+          const d2 = parseInt(p1, 10);
+          const m2 = parseInt(p2, 10);
+          if (m2 >= 1 && m2 <= 12 && d2 >= 1 && d2 <= _maxDays(m2, yr)) {
+            return \`\${year}-\${p2.padStart(2, '0')}-\${p1.padStart(2, '0')}\`;
+          }
+          return null;
         }`;
         fn = (s: string) => {
           const match = s.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-          if (!match) return "";
-          const [_, day, month, year] = match;
-          return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+          if (!match) return null;
+          const [_, p1, p2, year] = match;
+          const yr = parseInt(year, 10);
+          // Try MM/DD/YYYY (US) first
+          const m1 = parseInt(p1, 10);
+          const d1 = parseInt(p2, 10);
+          if (m1 >= 1 && m1 <= 12 && d1 >= 1 && d1 <= maxDaysInMonth(m1, yr)) {
+            return `${year}-${p1.padStart(2, "0")}-${p2.padStart(2, "0")}`;
+          }
+          // Fall back to DD/MM/YYYY (EU)
+          const d2 = parseInt(p1, 10);
+          const m2 = parseInt(p2, 10);
+          if (m2 >= 1 && m2 <= 12 && d2 >= 1 && d2 <= maxDaysInMonth(m2, yr)) {
+            return `${year}-${p2.padStart(2, "0")}-${p1.padStart(2, "0")}`;
+          }
+          return null;
         };
       }
     } else {
@@ -407,7 +485,7 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const d = new Date(s);
-        if (isNaN(d.getTime())) return "";
+        if (isNaN(d.getTime())) return null;
         return d.toISOString().split("T")[0];
       };
     }
@@ -440,7 +518,7 @@ export class SynthesisIntegrator {
     const hasCommas = inputs.some((i) => /\d,\d{3}/.test(i));
 
     let code: string;
-    let fn: (input: string) => number;
+    let fn: (input: string) => number | null;
 
     if (hasPercent) {
       code = `(s) => {
@@ -449,7 +527,7 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const match = s.match(/([\d.]+)%/);
-        return match ? parseFloat(match[1]) : NaN;
+        return match ? parseFloat(match[1]) : null;
       };
     } else if (hasCommas) {
       code = `(s) => {
@@ -458,7 +536,7 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const match = s.match(/([\d,]+)/);
-        return match ? parseInt(match[1].replace(/,/g, ""), 10) : NaN;
+        return match ? parseInt(match[1].replace(/,/g, ""), 10) : null;
       };
     } else {
       code = `(s) => {
@@ -467,14 +545,16 @@ export class SynthesisIntegrator {
       }`;
       fn = (s: string) => {
         const match = s.match(/([\d.]+)/);
-        return match ? parseFloat(match[1]) : NaN;
+        return match ? parseFloat(match[1]) : null;
       };
     }
 
     // Verify against examples
     const allMatch = examples.every((e) => {
       const result = fn(e.input);
+      if (result === null) return false;
       const expected = e.output as number;
+      if (typeof result !== "number" || isNaN(result) || isNaN(expected)) return false;
       return Math.abs(result - expected) < 0.01;
     });
 
@@ -497,10 +577,12 @@ export class SynthesisIntegrator {
   ): SynthesisOutcome {
     const trueExamples = examples
       .filter((e) => e.output === true)
-      .map((e) => e.input);
+      .map((e) => e.input)
+      .filter((s) => s.length > 0);
     const falseExamples = examples
       .filter((e) => e.output === false)
-      .map((e) => e.input);
+      .map((e) => e.input)
+      .filter((s) => s.length > 0);
 
     if (trueExamples.length === 0 || falseExamples.length === 0) {
       return {
@@ -528,7 +610,7 @@ export class SynthesisIntegrator {
       return this.synthesizePredicateViaRegex(trueExamples, falseExamples);
     }
 
-    const code = `(s) => /${pattern}/.test(s)`;
+    const code = `(s) => new RegExp(${JSON.stringify(pattern)}).test(s)`;
     const fn = (s: string) => regex.test(s);
 
     // Verify
@@ -582,8 +664,12 @@ export class SynthesisIntegrator {
     examples: Array<{ input: string; output: unknown }>
   ): SynthesisOutcome {
     // Group examples by output
+    const MAX_OUTPUT_GROUPS = 100;
     const outputGroups = new Map<unknown, string[]>();
     for (const ex of examples) {
+      if (!outputGroups.has(ex.output) && outputGroups.size >= MAX_OUTPUT_GROUPS) {
+        continue; // Cap unique output groups
+      }
       const group = outputGroups.get(ex.output) || [];
       group.push(ex.input);
       outputGroups.set(ex.output, group);
@@ -606,8 +692,30 @@ export class SynthesisIntegrator {
       };
     }
 
+    // Filter out rules with invalid/dangerous regex patterns
+    const MAX_SAFE_RULES = 50;
+    const safeRules = rules.filter(rule => {
+      try {
+        if (rule.pattern.length > 500) return false;
+        // Check for ReDoS patterns (nested quantifiers)
+        if (/(\((?:[^()]*[+*{])[^()]*\))[+*{]|\(\?[^)]*[+*{][^)]*\)[+*{]/.test(rule.pattern)) return false;
+        // Check for quantifier-on-quantifier patterns like (\w+)* or [a-z]+*
+        if (/[+*}]\s*[+*{]/.test(rule.pattern)) return false;
+        new RegExp(rule.pattern);
+        return true;
+      } catch {
+        return false;
+      }
+    }).slice(0, MAX_SAFE_RULES);
+    if (safeRules.length === 0) {
+      return {
+        success: false,
+        error: "No safe classifier rules could be synthesized",
+      };
+    }
+
     const code = `(s) => {
-      const rules = ${JSON.stringify(rules)};
+      const rules = ${JSON.stringify(safeRules)};
       for (const rule of rules) {
         try {
           if (new RegExp(rule.pattern).test(s)) {
@@ -619,7 +727,7 @@ export class SynthesisIntegrator {
     }`;
 
     const fn = (s: string) => {
-      for (const rule of rules) {
+      for (const rule of safeRules) {
         try {
           if (new RegExp(rule.pattern).test(s)) {
             return rule.output;
@@ -687,7 +795,23 @@ export class SynthesisIntegrator {
         if (testProgram(program, relationalExamples)) {
           const code = `(input) => ${exprToCode(program)}`;
           try {
-            const fn = new Function("input", `return ${exprToCode(program)}`) as (
+            const generatedCode = exprToCode(program);
+            // Cap generated code length to prevent DoS
+            const MAX_GENERATED_CODE_LENGTH = 50_000;
+            if (generatedCode.length > MAX_GENERATED_CODE_LENGTH) continue;
+            // Validate synthesized code before execution
+            const dangerousPatterns = [
+              /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+              /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+              /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+              /\bReflect\b/, /\bProxy\b/, /\bwith\b/, /\bdelete\b/, /\barguments\b/,
+              /\bObject\b/, /\.prototype\b/,
+              /\[['"]/, // Block bracket property access like input['constructor']
+              /`/, // Block template literals
+            ];
+            const hasDangerous = dangerousPatterns.some(p => p.test(generatedCode));
+            if (hasDangerous) continue;
+            const fn = new Function("input", `return ${generatedCode}`) as (
               input: string
             ) => unknown;
 
@@ -772,12 +896,15 @@ export class SynthesisIntegrator {
 
     // Strategy 2: Find OR pattern - individual patterns for each true example
     // that don't match any false examples
+    const MAX_PATTERNS = 100;
     const individualPatterns: string[] = [];
 
     for (const trueEx of trueExamples) {
+      if (individualPatterns.length >= MAX_PATTERNS) break;
       // Try bracket patterns [WORD]
       const brackets = trueEx.match(/\[\w+\]/g) || [];
       for (const bracket of brackets) {
+        if (individualPatterns.length >= MAX_PATTERNS) break;
         if (!falseExamples.some((f) => f.includes(bracket))) {
           const escaped = bracket.replace(/[[\]]/g, "\\$&");
           if (!individualPatterns.includes(escaped)) {
@@ -787,12 +914,14 @@ export class SynthesisIntegrator {
       }
 
       // Try prefix patterns like "ERROR:" or "WARN:"
-      const prefixMatch = trueEx.match(/^(\w+):/);
-      if (prefixMatch) {
-        const prefix = prefixMatch[1];
-        if (!falseExamples.some((f) => f.startsWith(prefix + ":"))) {
-          if (!individualPatterns.includes(prefix)) {
-            individualPatterns.push(prefix);
+      if (individualPatterns.length < MAX_PATTERNS) {
+        const prefixMatch = trueEx.match(/^(\w+):/);
+        if (prefixMatch) {
+          const prefix = prefixMatch[1];
+          if (!falseExamples.some((f) => f.startsWith(prefix + ":"))) {
+            if (!individualPatterns.includes(prefix)) {
+              individualPatterns.push(prefix);
+            }
           }
         }
       }
@@ -800,6 +929,7 @@ export class SynthesisIntegrator {
       // Try keywords that are unique to this true example
       const words = trueEx.match(/\b[A-Z]+\b/g) || [];
       for (const word of words) {
+        if (individualPatterns.length >= MAX_PATTERNS) break;
         if (!falseExamples.some((f) => f.includes(word))) {
           if (!individualPatterns.includes(word)) {
             individualPatterns.push(word);
@@ -811,6 +941,7 @@ export class SynthesisIntegrator {
     // Verify that the OR pattern covers all true examples
     if (individualPatterns.length > 0) {
       const orPattern = individualPatterns.join("|");
+      if (orPattern.length > 5000) return null; // Cap pattern length
       try {
         const regex = new RegExp(orPattern);
         const allTrueMatch = trueExamples.every((t) => regex.test(t));
@@ -858,7 +989,7 @@ export class SynthesisIntegrator {
       const pattern = coordResult.regex;
       try {
         const regex = new RegExp(pattern);
-        const code = `(s) => /${pattern}/.test(s)`;
+        const code = `(s) => new RegExp(${JSON.stringify(pattern)}).test(s)`;
         const fn = (s: string) => regex.test(s);
 
         return {
@@ -891,9 +1022,13 @@ export class SynthesisIntegrator {
     }
 
     // Look for common substrings
-    const first = strings[0];
+    const MAX_SEARCH_LENGTH = 1000;
+    const MAX_ITERATIONS = 50_000;
+    let iterations = 0;
+    const first = strings[0].length > MAX_SEARCH_LENGTH ? strings[0].slice(0, MAX_SEARCH_LENGTH) : strings[0];
     for (let len = Math.min(10, first.length); len >= 3; len--) {
       for (let i = 0; i <= first.length - len; i++) {
+        if (++iterations > MAX_ITERATIONS) return null;
         const substr = first.substring(i, i + len);
         if (strings.every((s) => s.includes(substr))) {
           return this.escapeRegex(substr);
@@ -916,7 +1051,7 @@ export class SynthesisIntegrator {
 
     for (let i = 0; i < first.length; i++) {
       const char = first[i];
-      if (strings.every((s) => s[i] === char)) {
+      if (strings.every((s) => i < s.length && s[i] === char)) {
         prefix += char;
       } else {
         break;
@@ -952,12 +1087,14 @@ export class SynthesisIntegrator {
   private hashExamples(
     examples: Array<{ input: string; output: unknown }>
   ): string {
-    const str = examples.map((e) => `${e.input}:${e.output}`).join("|");
+    const MAX_HASH_INPUT_LENGTH = 100_000;
+    let str = examples.map((e) => `${e.input}:${e.output}`).join("|");
+    if (str.length > MAX_HASH_INPUT_LENGTH) str = str.slice(0, MAX_HASH_INPUT_LENGTH);
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
       hash = (hash << 5) - hash + char;
-      hash = hash & hash;
+      hash = hash | 0;
     }
     return Math.abs(hash).toString(16).substring(0, 8);
   }

@@ -168,6 +168,15 @@ describe("verifyResult", () => {
       expect(result.valid).toBe(false);
       expect(result.errors[0]).toContain("maximum length");
     });
+
+    it("should reject ReDoS pattern as invalid", () => {
+      const constraint: SynthesisConstraint = {
+        output: { type: "string", pattern: "(a+)+" },
+      };
+      const result = verifyResult("aaa", constraint);
+      expect(result.valid).toBe(false);
+      expect(result.errors[0]).toContain("pattern");
+    });
   });
 
   describe("array constraints", () => {
@@ -209,7 +218,7 @@ describe("verifyResult", () => {
       };
       const result = verifyResult([1, "two", 3], constraint);
       expect(result.valid).toBe(false);
-      expect(result.errors[0]).toContain("item");
+      expect(result.errors[0]).toContain("string");
     });
 
     it("should accept empty array when minItems is 0 or undefined", () => {
@@ -349,8 +358,10 @@ describe("verifyInvariant", () => {
   });
 
   it("should evaluate type checks", () => {
-    expect(verifyInvariant(42, "typeof result === 'number'")).toBe(true);
-    expect(verifyInvariant("hello", "typeof result === 'string'")).toBe(true);
+    // Quotes are now blocked in invariants to prevent string-concatenation bypass of keyword blocklist
+    // typeof checks with quotes should return false (blocked by safety check)
+    expect(verifyInvariant(42, "typeof result === 'number'")).toBe(false);
+    expect(verifyInvariant("hello", "typeof result === 'string'")).toBe(false);
   });
 
   it("should return false for invalid expressions", () => {
@@ -361,5 +372,74 @@ describe("verifyInvariant", () => {
     // Should not execute arbitrary code
     expect(verifyInvariant(42, "process.exit(1)")).toBe(false);
     expect(verifyInvariant(42, "require('fs')")).toBe(false);
+  });
+
+  it("should reject bracket access to dangerous properties", () => {
+    expect(verifyInvariant({}, 'result["constructor"]')).toBe(false);
+    expect(verifyInvariant({}, 'result["__proto__"]')).toBe(false);
+    expect(verifyInvariant({}, 'result["prototype"]')).toBe(false);
+  });
+
+  it("should reject function calls (parentheses)", () => {
+    expect(verifyInvariant("hello", "result.toString()")).toBe(false);
+    expect(verifyInvariant(42, "(function(){})()")).toBe(false);
+  });
+
+  it("should still allow valid comparison expressions", () => {
+    expect(verifyInvariant(42, "result > 0")).toBe(true);
+    expect(verifyInvariant("hello", "result.length > 3")).toBe(true);
+    expect(verifyInvariant(10, "result === 10")).toBe(true);
+    expect(verifyInvariant([1, 2], "result.length > 0")).toBe(true);
+  });
+
+  it("should reject invariant containing 'this'", () => {
+    expect(verifyInvariant({}, "this.constructor")).toBe(false);
+  });
+
+  it("should reject invariant containing 'global'", () => {
+    expect(verifyInvariant({}, "global.process")).toBe(false);
+  });
+
+  it("should reject invariant containing 'window'", () => {
+    expect(verifyInvariant({}, "window.location")).toBe(false);
+  });
+
+  it("should reject invariant containing 'self'", () => {
+    expect(verifyInvariant({}, "self.postMessage")).toBe(false);
+  });
+
+  it("should reject invariant containing 'valueOf'", () => {
+    expect(verifyInvariant({}, "result.valueOf")).toBe(false);
+  });
+
+  it("should reject invariant containing 'hasOwnProperty'", () => {
+    expect(verifyInvariant({}, "result.hasOwnProperty")).toBe(false);
+  });
+
+  it("should reject assignment expressions", () => {
+    expect(verifyInvariant(42, "result = 0")).toBe(false);
+  });
+
+  it("should reject Atomics in invariant", () => {
+    expect(verifyInvariant({}, "Atomics")).toBe(false);
+  });
+
+  it("should reject SharedArrayBuffer in invariant", () => {
+    expect(verifyInvariant({}, "SharedArrayBuffer")).toBe(false);
+  });
+
+  it("should reject WebAssembly in invariant", () => {
+    expect(verifyInvariant({}, "WebAssembly")).toBe(false);
+  });
+
+  it("should reject Buffer in invariant", () => {
+    expect(verifyInvariant({}, "Buffer")).toBe(false);
+  });
+
+  it("should still allow comparison operators", () => {
+    expect(verifyInvariant(42, "result === 42")).toBe(true);
+    expect(verifyInvariant(42, "result !== 0")).toBe(true);
+    expect(verifyInvariant(42, "result >= 42")).toBe(true);
+    expect(verifyInvariant(42, "result <= 42")).toBe(true);
   });
 });

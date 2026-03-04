@@ -60,6 +60,7 @@ interface Session {
 export class HttpAdapter {
   private session: Session | null = null;
   private server: http.Server | null = null;
+  private helpResponse: LatticeResponse | null = null;
   private port: number;
   private host: string;
   private cors: boolean;
@@ -67,10 +68,16 @@ export class HttpAdapter {
   private timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
   constructor(options: HttpAdapterOptions = {}) {
-    this.port = options.port ?? 3456;
-    this.host = options.host ?? "localhost";
+    const rawPort = options.port ?? 3456;
+    this.port = Number.isSafeInteger(rawPort) && rawPort >= 0 && rawPort <= 65535 ? rawPort : 3456;
+    const rawHost = options.host ?? "localhost";
+    this.host = typeof rawHost === "string" && /^[a-zA-Z0-9._-]+$/.test(rawHost) && rawHost.length <= 255 ? rawHost : "localhost";
     this.cors = options.cors ?? true;
-    this.timeoutMs = (options.timeoutSeconds ?? 600) * 1000;
+    const MAX_TIMEOUT_SECONDS = 86400; // 24 hours
+    const rawTimeout = options.timeoutSeconds ?? 600;
+    const safeTimeout = Number.isFinite(rawTimeout) && rawTimeout > 0 ? Math.min(rawTimeout, MAX_TIMEOUT_SECONDS) : 600;
+    const rawTimeoutMs = safeTimeout * 1000;
+    this.timeoutMs = Number.isSafeInteger(rawTimeoutMs) ? rawTimeoutMs : 600_000;
   }
 
   private resetInactivityTimer(): void {
@@ -95,6 +102,12 @@ export class HttpAdapter {
         `Duration: ${Math.round(duration / 1000)}s | ` +
         `Queries: ${this.session.queryCount}`
       );
+      // Dispose engine resources to free memory
+      try {
+        this.session.tool.getEngine().dispose();
+      } catch {
+        // Ignore dispose errors during cleanup
+      }
       this.session = null;
     }
 
@@ -112,7 +125,7 @@ export class HttpAdapter {
     const now = new Date();
     const age = Math.round((now.getTime() - this.session.loadedAt.getTime()) / 1000);
     const idle = Math.round((now.getTime() - this.session.lastAccessedAt.getTime()) / 1000);
-    const timeoutIn = Math.max(0, Math.round((this.timeoutMs - idle * 1000) / 1000));
+    const timeoutIn = Math.max(0, Math.round(this.timeoutMs / 1000 - idle));
 
     return {
       active: true,
@@ -130,14 +143,25 @@ export class HttpAdapter {
    */
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.server = http.createServer(async (req, res) => {
-        await this.handleRequest(req, res);
+      this.server = http.createServer((req, res) => {
+        this.handleRequest(req, res).catch((err) => {
+          if (!res.headersSent) {
+            // Sanitize: send generic message to client, log full error internally
+            console.error("[HTTP] Internal server error:", err instanceof Error ? err.message : String(err));
+            this.sendError(res, 500, "Internal server error");
+          }
+        });
       });
+      this.server.requestTimeout = 30_000;  // 30s max per request
+      this.server.headersTimeout = 10_000;  // 10s for headers
+      this.server.keepAliveTimeout = 10_000; // Match headersTimeout
 
       this.server.on("error", reject);
 
       this.server.listen(this.port, this.host, () => {
-        console.log(`Lattice HTTP server running at http://${this.host}:${this.port}`);
+        const addr = this.server!.address() as { port: number };
+        const boundPort = addr?.port ?? this.port;
+        console.log(`Lattice HTTP server running at http://${this.host}:${boundPort}`);
         console.log(`Session timeout: ${this.timeoutMs / 1000} seconds`);
         console.log("Endpoints:");
         console.log("  POST /load      - Load a document (starts session)");
@@ -178,7 +202,9 @@ export class HttpAdapter {
   ): Promise<void> {
     // CORS headers
     if (this.cors) {
-      res.setHeader("Access-Control-Allow-Origin", "*");
+      const origin = req.headers.origin || "";
+      const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/.test(origin);
+      res.setHeader("Access-Control-Allow-Origin", isLocalhost ? origin : "http://localhost");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
@@ -191,7 +217,9 @@ export class HttpAdapter {
 
     res.setHeader("Content-Type", "application/json");
 
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
+    // Use socket port instead of untrusted Host header to prevent host header injection
+    const localPort = (this.server?.address() as { port: number })?.port ?? this.port;
+    const url = new URL(req.url || "/", `http://127.0.0.1:${localPort}`);
     const path = url.pathname;
 
     try {
@@ -203,6 +231,7 @@ export class HttpAdapter {
             this.sendError(res, 405, "Method not allowed");
             return;
           }
+          if (!this.validateJsonContentType(req, res)) return;
           response = await this.handleLoad(req);
           break;
 
@@ -211,6 +240,7 @@ export class HttpAdapter {
             this.sendError(res, 405, "Method not allowed");
             return;
           }
+          if (!this.validateJsonContentType(req, res)) return;
           response = await this.handleQuery(req);
           break;
 
@@ -246,7 +276,10 @@ export class HttpAdapter {
           break;
 
         case "/help":
-          response = new LatticeTool().execute({ type: "help" });
+          if (!this.helpResponse) {
+            this.helpResponse = new LatticeTool().execute({ type: "help" });
+          }
+          response = this.helpResponse;
           break;
 
         case "/health":
@@ -260,13 +293,17 @@ export class HttpAdapter {
           break;
 
         default:
-          this.sendError(res, 404, `Unknown endpoint: ${path}`);
+          const safePath = path.slice(0, 200);
+          this.sendError(res, 404, `Unknown endpoint: ${safePath}`);
           return;
       }
 
       this.sendResponse(res, response);
     } catch (err) {
-      this.sendError(res, 500, err instanceof Error ? err.message : String(err));
+      console.error("[HTTP] Request handler error:", err instanceof Error ? err.message : String(err));
+      if (!res.headersSent) {
+        this.sendError(res, 500, "Internal server error");
+      }
     }
   }
 
@@ -366,27 +403,51 @@ export class HttpAdapter {
    * Read and parse JSON body
    */
   private readBody(req: http.IncomingMessage): Promise<Record<string, unknown>> {
+    const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB
+    // Pre-check content-length header to reject oversized requests immediately
+    const contentLength = parseInt(req.headers["content-length"] || "", 10);
+    if (!isNaN(contentLength) && (!Number.isSafeInteger(contentLength) || contentLength < 0 || contentLength > MAX_BODY_SIZE)) {
+      req.destroy();
+      return Promise.reject(new Error("Request body too large"));
+    }
     return new Promise((resolve, reject) => {
-      let data = "";
+      const chunks: Buffer[] = [];
+      let totalBytes = 0;
+      let settled = false;
 
-      req.on("data", (chunk) => {
-        data += chunk;
+      req.on("data", (chunk: Buffer) => {
+        if (settled) return;
+        totalBytes += chunk.length;
+        if (!Number.isSafeInteger(totalBytes) || totalBytes > MAX_BODY_SIZE) {
+          settled = true;
+          req.destroy();
+          reject(new Error("Request body too large"));
+          return;
+        }
+        chunks.push(chunk);
       });
 
       req.on("end", () => {
-        if (!data) {
+        if (settled) return;
+        settled = true;
+        if (chunks.length === 0) {
           resolve({});
           return;
         }
 
         try {
+          const data = Buffer.concat(chunks).toString("utf8");
           resolve(JSON.parse(data));
         } catch {
           reject(new Error("Invalid JSON body"));
         }
       });
 
-      req.on("error", reject);
+      req.on("error", (err) => {
+        if (settled) return;
+        settled = true;
+        reject(err);
+      });
     });
   }
 
@@ -399,11 +460,31 @@ export class HttpAdapter {
   }
 
   /**
+   * Validate Content-Type header for POST endpoints that require JSON
+   */
+  private validateJsonContentType(req: http.IncomingMessage, res: http.ServerResponse): boolean {
+    const MAX_HEADER_LENGTH = 256;
+    const rawContentType = req.headers["content-type"] || "";
+    if (rawContentType.length > MAX_HEADER_LENGTH) {
+      this.sendError(res, 400, "Content-Type header too long");
+      return false;
+    }
+    const contentType = rawContentType.split(";")[0].trim().toLowerCase();
+    if (contentType !== "application/json") {
+      this.sendError(res, 415, "Content-Type must be application/json");
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Send an error response
    */
   private sendError(res: http.ServerResponse, status: number, message: string): void {
+    const MAX_ERROR_LENGTH = 2000;
+    const safeMessage = message.length > MAX_ERROR_LENGTH ? message.slice(0, MAX_ERROR_LENGTH) : message;
     res.writeHead(status);
-    res.end(JSON.stringify({ success: false, error: message }));
+    res.end(JSON.stringify({ success: false, error: safeMessage }));
   }
 
   /**
@@ -414,10 +495,12 @@ export class HttpAdapter {
   }
 
   /**
-   * Get server info
+   * Get server info (port reflects the actual bound port after start)
    */
   getServerInfo(): { host: string; port: number; timeoutSeconds: number } {
-    return { host: this.host, port: this.port, timeoutSeconds: this.timeoutMs / 1000 };
+    // After start(), use the actual bound port (important when configured port is 0)
+    const actualPort = (this.server?.address() as { port: number } | null)?.port ?? this.port;
+    return { host: this.host, port: actualPort, timeoutSeconds: this.timeoutMs / 1000 };
   }
 }
 
@@ -503,28 +586,45 @@ Examples:
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--port" && args[i + 1]) {
-      port = parseInt(args[++i], 10);
+      const portArg = args[++i];
+      const parsed = parseInt(portArg, 10);
+      if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 65535) {
+        console.error(`Invalid port: ${portArg}. Must be 1-65535.`);
+        process.exit(1);
+      }
+      port = parsed;
     } else if (args[i] === "--host" && args[i + 1]) {
       host = args[++i];
+      // Validate host is a reasonable hostname/IP
+      if (!/^[a-zA-Z0-9._-]+$/.test(host) || host.length > 255) {
+        console.error(`Invalid host: ${host}. Must be a valid hostname or IP address.`);
+        process.exit(1);
+      }
     } else if (args[i] === "--timeout" && args[i + 1]) {
-      timeoutSeconds = parseInt(args[++i], 10);
+      const MAX_TIMEOUT_SECONDS = 86400; // 24 hours
+      const timeoutArg = args[++i];
+      const parsed = parseInt(timeoutArg, 10);
+      if (isNaN(parsed) || parsed < 1 || parsed > MAX_TIMEOUT_SECONDS) {
+        console.error(`Invalid timeout: ${timeoutArg}. Must be 1-${MAX_TIMEOUT_SECONDS}.`);
+        process.exit(1);
+      }
+      timeoutSeconds = parsed;
     } else if (args[i] === "--no-cors") {
       cors = false;
     }
   }
 
+  const adapter = startHttpAdapter({ port, host, cors, timeoutSeconds });
+
   // Handle shutdown gracefully
-  process.on("SIGINT", () => {
-    console.log("\n[Lattice] Shutting down...");
-    process.exit(0);
-  });
-
-  process.on("SIGTERM", () => {
-    console.log("[Lattice] Terminating...");
-    process.exit(0);
-  });
-
-  startHttpAdapter({ port, host, cors, timeoutSeconds }).catch((err) => {
+  adapter.then((a) => {
+    const shutdown = () => {
+      console.log("\n[Lattice] Shutting down...");
+      a.stop().then(() => process.exit(0)).catch(() => process.exit(1));
+    };
+    process.on("SIGINT", shutdown);
+    process.on("SIGTERM", shutdown);
+  }).catch((err) => {
     console.error("Fatal error:", err);
     process.exit(1);
   });

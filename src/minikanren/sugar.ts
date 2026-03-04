@@ -18,6 +18,8 @@ const FIRST = Symbol('ramo.FIRST');
 const REST = Symbol('ramo.REST');
 export const WILD = Symbol('ramo.WILD');
 
+const MAX_SUGAR_DEPTH = 500;
+
 export interface Pair<A, D> {
   [FIRST]: A;
   [REST]: D;
@@ -35,30 +37,36 @@ export function rest<A, D>(p: Pair<A, D>): D {
   return p[REST];
 }
 
-export function unsweeten(x: Term): Term {
+export function unsweeten(x: Term, depth: number = 0): Term {
+  if (depth > MAX_SUGAR_DEPTH) return x;
   if (x === WILD) return Var.new();
-  else if (Array.isArray(x)) return unsweetenArray(x);
-  else if (isComp(x)) return unsweetenComp(x as CompoundTerm);
+  else if (Array.isArray(x)) return unsweetenArray(x, depth);
+  else if (isComp(x)) return unsweetenComp(x as CompoundTerm, depth);
   else return x;
 }
 
-function unsweetenArray(xs: Term[]): Term {
+const MAX_ARRAY_LENGTH = 5000;
+
+function unsweetenArray(xs: Term[], depth: number = 0): Term {
+  if (depth > MAX_SUGAR_DEPTH) return NIL;
   if (xs.length === 0) return NIL;
-  else return cons(unsweeten(xs[0]), unsweetenArray(xs.slice(1)));
+  if (xs.length > MAX_ARRAY_LENGTH) return NIL;
+  else return cons(unsweeten(xs[0], depth + 1), unsweetenArray(xs.slice(1), depth + 1));
 }
 
-function unsweetenComp(x: CompoundTerm): Term {
+function unsweetenComp(x: CompoundTerm, depth: number = 0): Term {
   const x1 = Object.create(Object.getPrototypeOf(x));
   for (let k of keysIn(x)) {
-    x1[k] = unsweeten(x[k]);
+    x1[k] = unsweeten(x[k], depth + 1);
   }
   return x1;
 }
 
-export function sweeten(x: Term): Term {
+export function sweeten(x: Term, depth: number = 0): Term {
+  if (depth > MAX_SUGAR_DEPTH) return x;
   if (x === NIL) return [];
-  else if (isPair(x)) return sweetenPair(x as Pair<any, any>);
-  else if (isComp(x)) return sweetenComp(x as CompoundTerm);
+  else if (isPair(x)) return sweetenPair(x as Pair<any, any>, depth);
+  else if (isComp(x)) return sweetenComp(x as CompoundTerm, depth);
   else return x;
 }
 
@@ -68,16 +76,26 @@ function isPair(x: Term) {
 
 // Here we only re-sugar a cons-pair as a JavaScript array if it
 // represents a proper list.
-function sweetenPair(p: Pair<any, any>): Term {
-  const f = sweeten(first(p));
-  const r = sweeten(rest(p));
-  return Array.isArray(r) ? [f, ...r] : cons(f, r);
+const MAX_LIST_LENGTH = 5000;
+
+function sweetenPair(p: Pair<any, any>, depth: number = 0, listLen: number = 0): Term {
+  if (depth > MAX_SUGAR_DEPTH) return p;
+  if (listLen > MAX_LIST_LENGTH) return p;
+  const f = sweeten(first(p), depth + 1);
+  const r = rest(p);
+  if (r === NIL) return [f];
+  if (isPair(r)) {
+    const sweetR = sweetenPair(r as Pair<any, any>, depth + 1, listLen + 1);
+    return Array.isArray(sweetR) ? [f, ...sweetR] : cons(f, sweeten(r, depth + 1));
+  }
+  const sweetR = sweeten(r, depth + 1);
+  return Array.isArray(sweetR) ? [f, ...sweetR] : cons(f, sweetR);
 }
 
-function sweetenComp(x: CompoundTerm): Term {
+function sweetenComp(x: CompoundTerm, depth: number = 0): Term {
   const x1 = Object.create(Object.getPrototypeOf(x));
   for (let k of keysIn(x)) {
-    x1[k] = sweeten(x[k]);
+    x1[k] = sweeten(x[k], depth + 1);
   }
   return x1;
 }

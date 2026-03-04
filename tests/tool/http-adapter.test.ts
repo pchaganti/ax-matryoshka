@@ -5,9 +5,9 @@ describe("HttpAdapter", () => {
   let adapter: HttpAdapter;
 
   beforeEach(() => {
-    // Use a random port to avoid conflicts
-    const port = 10000 + Math.floor(Math.random() * 10000);
-    adapter = new HttpAdapter({ port, host: "localhost" });
+    // Use port 0 to let the OS assign a free port, avoiding conflicts on CI
+    // Use 127.0.0.1 instead of localhost to avoid IPv4/IPv6 mismatch on Linux CI
+    adapter = new HttpAdapter({ port: 0, host: "127.0.0.1" });
   });
 
   afterEach(async () => {
@@ -58,12 +58,60 @@ describe("HttpAdapter", () => {
     });
   });
 
+  describe("server timeouts", () => {
+    it("should have requestTimeout set after start", async () => {
+      await adapter.start();
+      // Access internal server to verify timeouts are configured
+      const server = (adapter as unknown as { server: { requestTimeout: number; headersTimeout: number } }).server;
+      expect(server.requestTimeout).toBe(30_000);
+      expect(server.headersTimeout).toBe(10_000);
+    });
+  });
+
+  describe("content-type validation", () => {
+    it("should return 415 for POST with wrong content-type", async () => {
+      await adapter.start();
+      const { port } = adapter.getServerInfo();
+
+      const response = await fetch(`http://127.0.0.1:${port}/load`, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain" },
+        body: "not json",
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(415);
+      expect(data.success).toBe(false);
+      expect(data.error).toContain("application/json");
+    });
+
+    it("should allow POST to /reset without content-type", async () => {
+      await adapter.start();
+      const { port } = adapter.getServerInfo();
+
+      // Load a document first so /reset has a session
+      await fetch(`http://127.0.0.1:${port}/load`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: "test" }),
+      });
+
+      const response = await fetch(`http://127.0.0.1:${port}/reset`, {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.success).toBe(true);
+    });
+  });
+
   describe("HTTP endpoints (integration)", () => {
     it("should handle /health endpoint", async () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/health`);
+      const response = await fetch(`http://127.0.0.1:${port}/health`);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -76,7 +124,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/help`);
+      const response = await fetch(`http://127.0.0.1:${port}/help`);
       const data = await response.json();
 
       expect(response.status).toBe(200);
@@ -84,11 +132,24 @@ describe("HttpAdapter", () => {
       expect(data.message).toContain("grep");
     });
 
+    it("should return same content for consecutive /help requests", async () => {
+      await adapter.start();
+      const { port } = adapter.getServerInfo();
+
+      const response1 = await fetch(`http://127.0.0.1:${port}/help`);
+      const data1 = await response1.json();
+
+      const response2 = await fetch(`http://127.0.0.1:${port}/help`);
+      const data2 = await response2.json();
+
+      expect(data1.message).toBe(data2.message);
+    });
+
     it("should handle /bindings without session", async () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/bindings`);
+      const response = await fetch(`http://127.0.0.1:${port}/bindings`);
       const data = await response.json();
 
       // Bindings requires an active session
@@ -101,7 +162,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/stats`);
+      const response = await fetch(`http://127.0.0.1:${port}/stats`);
       const data = await response.json();
 
       expect(response.status).toBe(400);
@@ -112,7 +173,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/load`, {
+      const response = await fetch(`http://127.0.0.1:${port}/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "test line\nanother line", name: "test-doc" }),
@@ -129,14 +190,14 @@ describe("HttpAdapter", () => {
       const { port } = adapter.getServerInfo();
 
       // Load first
-      await fetch(`http://localhost:${port}/load`, {
+      await fetch(`http://127.0.0.1:${port}/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "error here\nok line\nerror again" }),
       });
 
       // Query
-      const response = await fetch(`http://localhost:${port}/query`, {
+      const response = await fetch(`http://127.0.0.1:${port}/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: '(grep "error")' }),
@@ -153,19 +214,19 @@ describe("HttpAdapter", () => {
       const { port } = adapter.getServerInfo();
 
       // Load and query first
-      await fetch(`http://localhost:${port}/load`, {
+      await fetch(`http://127.0.0.1:${port}/load`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: "test" }),
       });
-      await fetch(`http://localhost:${port}/query`, {
+      await fetch(`http://127.0.0.1:${port}/query`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ command: '(grep "test")' }),
       });
 
       // Reset
-      const response = await fetch(`http://localhost:${port}/reset`, {
+      const response = await fetch(`http://127.0.0.1:${port}/reset`, {
         method: "POST",
       });
       const data = await response.json();
@@ -174,7 +235,7 @@ describe("HttpAdapter", () => {
       expect(data.success).toBe(true);
 
       // Verify bindings cleared
-      const bindingsResponse = await fetch(`http://localhost:${port}/bindings`);
+      const bindingsResponse = await fetch(`http://127.0.0.1:${port}/bindings`);
       const bindingsData = await bindingsResponse.json();
       expect(bindingsData.message).toBe("No bindings");
     });
@@ -183,7 +244,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/unknown`);
+      const response = await fetch(`http://127.0.0.1:${port}/unknown`);
       const data = await response.json();
 
       expect(response.status).toBe(404);
@@ -194,7 +255,7 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/load`, {
+      const response = await fetch(`http://127.0.0.1:${port}/load`, {
         method: "GET",
       });
       const data = await response.json();
@@ -207,12 +268,13 @@ describe("HttpAdapter", () => {
       await adapter.start();
       const { port } = adapter.getServerInfo();
 
-      const response = await fetch(`http://localhost:${port}/query`, {
+      const response = await fetch(`http://127.0.0.1:${port}/query`, {
         method: "OPTIONS",
       });
 
       expect(response.status).toBe(204);
-      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("*");
+      expect(response.headers.get("Access-Control-Allow-Origin")).toBe("http://localhost");
     });
+
   });
 });

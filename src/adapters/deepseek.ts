@@ -22,6 +22,7 @@ function buildSystemPrompt(
   toolInterfaces: string,
   hints?: RAGHints
 ): string {
+  if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const formattedLength = contextLength.toLocaleString();
 
   return `# Role
@@ -109,7 +110,8 @@ Provide JavaScript code to continue analysis.`;
  * Error feedback for DeepSeek
  */
 function getErrorFeedback(error: string): string {
-  return `Execution error: ${error}
+  const safeError = error.slice(0, 500);
+  return `Execution error: ${safeError}
 
 Please fix the code and provide a corrected version:
 \`\`\`javascript

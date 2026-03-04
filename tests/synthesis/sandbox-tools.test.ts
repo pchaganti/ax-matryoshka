@@ -195,14 +195,14 @@ describe("Sandbox Synthesis Tools", () => {
       expect(result.logs[0]).toBe("string");
     });
 
-    it("should return evaluable code", async () => {
+    it("should return compilable code (via new Function, not eval)", async () => {
       const result = await sandbox.execute(`
         const code = get_extractor_code([
           { input: '123', output: 123 },
           { input: '456', output: 456 }
         ]);
-        // Evaluate the code to get a function
-        const fn = eval(code);
+        // Compile the code to get a function using new Function
+        const fn = new Function("return " + code)();
         const result = fn('789');
         console.log(result);
       `);
@@ -268,6 +268,22 @@ describe("Sandbox Synthesis Tools", () => {
     });
   });
 
+  describe("sandbox security", () => {
+    it("should NOT expose eval in sandbox context", async () => {
+      const result = await sandbox.execute(`
+        try {
+          const r = eval("1+1");
+          console.log("eval accessible: " + r);
+        } catch (e) {
+          console.log("eval blocked: " + e.message);
+        }
+      `);
+
+      // eval should not be accessible - either throws or is not a function
+      expect(result.logs[0]).toMatch(/eval blocked|eval is not/);
+    });
+  });
+
   describe("error handling", () => {
     it("should handle empty arrays gracefully", async () => {
       const result = await sandbox.execute(`
@@ -318,6 +334,53 @@ describe("Sandbox with synthesis - backward compatibility", () => {
       expect(result.logs[0]).toBe("3");
       expect(result.logs[1]).toBe("Line 1\nLine 2");
       expect(result.logs[2]).toBe("3");
+    } finally {
+      sandbox.dispose();
+    }
+  });
+
+  it("should cap grep results at 10000 matches", async () => {
+    // Create a large document where every line matches
+    const lines = Array.from({ length: 15000 }, (_, i) => `data line ${i}`);
+    const bigContent = lines.join("\n");
+
+    const bigSandbox = await createSandboxWithSynthesis(
+      bigContent,
+      async () => "mock",
+      new SynthesisCoordinator(),
+      {}
+    );
+
+    try {
+      const result = await bigSandbox.execute(`
+        const matches = grep('data');
+        console.log(matches.length);
+      `);
+
+      expect(result.error).toBeUndefined();
+      // Should be capped at 10000, not 15000
+      expect(parseInt(result.logs[0])).toBeLessThanOrEqual(10000);
+    } finally {
+      bigSandbox.dispose();
+    }
+  });
+
+  it("should return empty array for ReDoS pattern in grep", async () => {
+    const sandbox = await createSandboxWithSynthesis(
+      "aaaaaaaaaa test data",
+      async () => "mock",
+      new SynthesisCoordinator(),
+      {}
+    );
+
+    try {
+      const result = await sandbox.execute(`
+        const matches = grep('(a+)+');
+        console.log(JSON.stringify(matches));
+      `);
+
+      expect(result.error).toBeUndefined();
+      expect(result.logs[0]).toBe("[]");
     } finally {
       sandbox.dispose();
     }

@@ -18,7 +18,9 @@ import type { Extractor, Type } from "./types.js";
  * This is a static analysis - we don't run the extractor,
  * we just analyze its structure to determine what type it produces.
  */
-export function inferType(extractor: Extractor): Type {
+export function inferType(extractor: Extractor, depth: number = 0): Type {
+  const MAX_DEPTH = 100;
+  if (depth >= MAX_DEPTH) return "unknown";
   switch (extractor.tag) {
     case "input":
       // Input is always a string
@@ -60,8 +62,8 @@ export function inferType(extractor: Extractor): Type {
 
     case "if": {
       // If returns the common type of both branches
-      const thenType = inferType(extractor.then);
-      const elseType = inferType(extractor.else);
+      const thenType = inferType(extractor.then, depth + 1);
+      const elseType = inferType(extractor.else, depth + 1);
 
       if (thenType === elseType) {
         return thenType;
@@ -69,6 +71,9 @@ export function inferType(extractor: Extractor): Type {
       // Different types - return unknown
       return "unknown";
     }
+
+    default:
+      return "unknown";
   }
 }
 
@@ -98,16 +103,26 @@ export function canProduceType(extractor: Extractor, targetType: Type): boolean 
   }
 
   // Special case: extractors that return string/number can also return null
-  // (e.g., match returns null on no match)
+  // (e.g., match returns null on no match, parseInt/parseFloat on NaN)
   if (targetType === "null") {
     // Operations that can return null:
     // - match (no match)
     // - split (index out of bounds)
+    // - parseInt/parseFloat (NaN → null)
+    // - add (non-numeric operands → null)
+    // - replace/slice (str may be null from upstream)
     switch (extractor.tag) {
       case "match":
       case "split":
+      case "parseInt":
+      case "parseFloat":
+      case "add":
         return true;
       default:
+        // Check if any child extractor can produce null (propagation)
+        if ("str" in extractor && extractor.str) {
+          return canProduceType(extractor.str as Extractor, "null");
+        }
         return false;
     }
   }
@@ -131,8 +146,20 @@ export function possibleTypes(extractor: Extractor): Type[] {
   switch (extractor.tag) {
     case "match":
     case "split":
+    case "parseInt":
+    case "parseFloat":
+    case "add":
       if (!types.includes("null")) {
         types.push("null");
+      }
+      break;
+    case "replace":
+    case "slice":
+      // These can return null if their input (e.g., from match) is null
+      if (extractor.str && possibleTypes(extractor.str).includes("null")) {
+        if (!types.includes("null")) {
+          types.push("null");
+        }
       }
       break;
   }

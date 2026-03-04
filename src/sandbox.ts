@@ -154,6 +154,7 @@ export async function createSandbox(
   const { maxSubCalls = 10 } = options;
 
   // Persistent state across executions
+  const MAX_LOGS = 5000;
   const logs: string[] = [];
   const memory: unknown[] = [];
   let subCallCount = 0;
@@ -168,7 +169,7 @@ export async function createSandbox(
       start: lines.slice(0, 5).join("\n"),
       middle: lines
         .slice(
-          Math.floor(lines.length / 2) - 2,
+          Math.max(0, Math.floor(lines.length / 2) - 2),
           Math.floor(lines.length / 2) + 3
         )
         .join("\n"),
@@ -220,12 +221,24 @@ export async function createSandbox(
       return llmQueryFn(prompt, options);
     },
 
-    // Safe built-ins
+    // Safe built-ins — use frozen proxies to block constructor chain escape
     JSON,
     Math,
     Date,
     Array,
-    Object,
+    Object: Object.freeze(Object.create(null, {
+      keys: { value: Object.keys, enumerable: true },
+      values: { value: Object.values, enumerable: true },
+      entries: { value: Object.entries, enumerable: true },
+      assign: { value: Object.assign, enumerable: true },
+      freeze: { value: Object.freeze, enumerable: true },
+      fromEntries: { value: Object.fromEntries, enumerable: true },
+      getOwnPropertyNames: { value: Object.getOwnPropertyNames, enumerable: true },
+      hasOwn: { value: Object.hasOwn, enumerable: true },
+      is: { value: Object.is, enumerable: true },
+      create: { value: Object.create, enumerable: true },
+      defineProperty: { value: Object.defineProperty, enumerable: true },
+    })),
     String,
     Number,
     Boolean,
@@ -242,7 +255,13 @@ export async function createSandbox(
 
     // Async iteration support
     Symbol,
+
+    // Block eval to prevent code injection
+    eval: () => { throw new Error("eval is not allowed in sandbox"); },
   };
+
+  // Prevent constructor chain escape (this.constructor.constructor("return process")())
+  Object.defineProperty(sandboxGlobals, 'constructor', { value: undefined, writable: false, configurable: false });
 
   // Create VM context
   const vmContext = vm.createContext(sandboxGlobals);
@@ -281,11 +300,15 @@ export async function createSandbox(
      * @returns {Array<{match: string, line: string, lineNum: number, index: number, groups: string[]}>}
      */
     function grep(pattern, flags) {
+      var MAX_GREP_MATCHES = 10000;
+      var MAX_PATTERN_LENGTH = 1000;
+      if (!pattern || pattern.length > MAX_PATTERN_LENGTH) return [];
       // Default to global + multiline + case-insensitive for line-based searching
-      let f = flags || '';
+      let f = (flags || '').replace(/[^gimsuy]/g, '');
       if (!f.includes('g')) f += 'g';
       if (!f.includes('m')) f += 'm';
       if (!f.includes('i')) f += 'i';  // Case-insensitive by default
+      try { new RegExp(pattern); } catch(e) { return []; }
       const regex = new RegExp(pattern, f);
       const results = [];
       let match;
@@ -310,6 +333,8 @@ export async function createSandbox(
         if (match[0].length === 0) {
           regex.lastIndex++;
         }
+
+        if (results.length >= MAX_GREP_MATCHES) break;
       }
 
       return results;
@@ -357,11 +382,13 @@ export async function createSandbox(
      * @returns {string} The extracted lines joined with newlines
      */
     function locate_line(start, end) {
+      if (!Number.isInteger(start) || !Number.isSafeInteger(start)) return '';
+      if (end !== undefined && (!Number.isInteger(end) || !Number.isSafeInteger(end))) return '';
       const totalLines = __linesArray.length;
 
-      // Convert to 0-based index, handle negative
-      let startIdx = start < 0 ? totalLines + start : start - 1;
-      let endIdx = end === undefined ? startIdx : (end < 0 ? totalLines + end : end - 1);
+      // Convert to 0-based index, handle negative (clamp to 0)
+      let startIdx = start < 0 ? Math.max(0, totalLines + start) : start - 1;
+      let endIdx = end === undefined ? startIdx : (end < 0 ? Math.max(0, totalLines + end) : end - 1);
 
       // Bounds check
       if (startIdx < 0 || startIdx >= totalLines) return '';
@@ -421,8 +448,9 @@ export async function createSandbox(
 
         // Run declarations at context level first (persists across turns)
         if (declarations.length > 0) {
+          const DECL_TIMEOUT = Math.max(100, Math.min(5000, timeoutMs));
           const declScript = new vm.Script(declarations.join('\n'));
-          declScript.runInContext(vmContext);
+          declScript.runInContext(vmContext, { timeout: DECL_TIMEOUT });
         }
 
         // Then run main code in async IIFE for proper async handling
@@ -474,6 +502,10 @@ export async function createSandbox(
         sandboxGlobals.console.log = originalLog;
         sandboxGlobals.console.error = originalError;
         sandboxGlobals.console.warn = originalWarn;
+        // Cap persistent logs to prevent unbounded growth
+        if (logs.length > MAX_LOGS) {
+          logs.splice(0, logs.length - MAX_LOGS);
+        }
       }
     },
 
@@ -502,7 +534,7 @@ export function createTextStats(context: string) {
       start: lines.slice(0, 5).join("\n"),
       middle: lines
         .slice(
-          Math.floor(lines.length / 2) - 2,
+          Math.max(0, Math.floor(lines.length / 2) - 2),
           Math.floor(lines.length / 2) + 3
         )
         .join("\n"),

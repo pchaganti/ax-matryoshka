@@ -7,6 +7,9 @@
  * Calculate Levenshtein distance between two strings
  */
 export function levenshteinDistance(a: string, b: string): number {
+  const MAX_STR_LENGTH = 1_000;
+  if (a.length > MAX_STR_LENGTH) a = a.slice(0, MAX_STR_LENGTH);
+  if (b.length > MAX_STR_LENGTH) b = b.slice(0, MAX_STR_LENGTH);
   const matrix: number[][] = [];
 
   for (let i = 0; i <= b.length; i++) {
@@ -43,13 +46,22 @@ export function findSimilar(
   maxDistance: number = 3,
   maxResults: number = 5
 ): Array<{ value: string; distance: number }> {
+  if (!Number.isFinite(maxDistance) || maxDistance < 0) maxDistance = 3;
+  if (!Number.isFinite(maxResults) || maxResults < 1) maxResults = 5;
+  maxResults = Math.min(Math.floor(maxResults), 1000);
+  const MAX_CANDIDATES = 10_000;
+  if (candidates.length > MAX_CANDIDATES) candidates = candidates.slice(0, MAX_CANDIDATES);
   const results = candidates
     .map(candidate => ({
       value: candidate,
       distance: levenshteinDistance(input.toLowerCase(), candidate.toLowerCase()),
     }))
     .filter(r => r.distance <= maxDistance)
-    .sort((a, b) => a.distance - b.distance)
+    .sort((a, b) => {
+      if (a.distance < b.distance) return -1;
+      if (a.distance > b.distance) return 1;
+      return 0;
+    })
     .slice(0, maxResults);
 
   return results;
@@ -375,7 +387,7 @@ function analyzeInvalidRegex(pattern: string): ErrorAnalysis {
   const specialChars = ["$", ".", "*", "+", "?", "^", "[", "]", "(", ")", "{", "}", "|", "\\"];
   const unescaped = specialChars.filter(c => {
     const idx = pattern.indexOf(c);
-    return idx > 0 && pattern[idx - 1] !== "\\";
+    return idx >= 0 && (idx === 0 || pattern[idx - 1] !== "\\");
   });
 
   if (unescaped.length > 0) {

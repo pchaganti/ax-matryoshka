@@ -46,8 +46,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Extract integer from dollar currency",
     inputPattern: /^\$[\d,]+$/,
     outputType: "number",
-    code: '(s) => parseInt(s.replace(/[$,]/g, ""), 10)',
-    testFn: (s) => parseInt(s.replace(/[$,]/g, ""), 10),
+    code: '(s) => { const n = parseInt(s.replace(/[$,]/g, ""), 10); return isNaN(n) ? null : n; }',
+    testFn: (s) => { const n = parseInt(s.replace(/[$,]/g, ""), 10); return isNaN(n) ? null : n; },
   },
 
   // Currency with decimals: $1,234.56 -> number
@@ -56,8 +56,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Extract decimal from dollar currency",
     inputPattern: /^\$[\d,]+\.\d+$/,
     outputType: "number",
-    code: '(s) => parseFloat(s.replace(/[$,]/g, ""))',
-    testFn: (s) => parseFloat(s.replace(/[$,]/g, "")),
+    code: '(s) => { const n = parseFloat(s.replace(/[$,]/g, "")); return isFinite(n) ? n : null; }',
+    testFn: (s) => { const n = parseFloat(s.replace(/[$,]/g, "")); return isFinite(n) ? n : null; },
   },
 
   // Plain integer: 123 -> number
@@ -66,8 +66,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Parse plain integer",
     inputPattern: /^\d+$/,
     outputType: "number",
-    code: "(s) => parseInt(s, 10)",
-    testFn: (s) => parseInt(s, 10),
+    code: "(s) => { const n = parseInt(s, 10); return Number.isSafeInteger(n) ? n : null; }",
+    testFn: (s) => { const n = parseInt(s, 10); return Number.isSafeInteger(n) ? n : null; },
   },
 
   // Integer with commas: 1,234,567 -> number
@@ -76,8 +76,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Parse integer with comma separators",
     inputPattern: /^[\d,]+$/,
     outputType: "number",
-    code: '(s) => parseInt(s.replace(/,/g, ""), 10)',
-    testFn: (s) => parseInt(s.replace(/,/g, ""), 10),
+    code: '(s) => { const n = parseInt(s.replace(/,/g, ""), 10); return Number.isSafeInteger(n) ? n : null; }',
+    testFn: (s) => { const n = parseInt(s.replace(/,/g, ""), 10); return Number.isSafeInteger(n) ? n : null; },
   },
 
   // Percentage: 50% -> 0.5
@@ -86,8 +86,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Convert percentage to decimal",
     inputPattern: /^\d+(\.\d+)?%$/,
     outputType: "number",
-    code: '(s) => parseFloat(s.replace("%", "")) / 100',
-    testFn: (s) => parseFloat(s.replace("%", "")) / 100,
+    code: '(s) => { const n = parseFloat(s.replace("%", "")) / 100; return isFinite(n) ? n : null; }',
+    testFn: (s) => { const n = parseFloat(s.replace("%", "")) / 100; return isFinite(n) ? n : null; },
   },
 
   // Key: Value -> Value (string)
@@ -135,8 +135,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Split by comma",
     inputPattern: /^[^,]+,[^,]+(,[^,]+)*$/,
     outputType: "array",
-    code: "(s) => s.split(',').map(x => x.trim())",
-    testFn: (s) => s.split(",").map((x) => x.trim()),
+    code: "(s) => s.split(',', 1000).map(x => x.trim())",
+    testFn: (s) => s.split(",", 1000).map((x) => x.trim()),
   },
 
   // Pipe-separated -> array
@@ -145,8 +145,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Split by pipe",
     inputPattern: /^[^|]+\|[^|]+(\|[^|]+)*$/,
     outputType: "array",
-    code: "(s) => s.split('|').map(x => x.trim())",
-    testFn: (s) => s.split("|").map((x) => x.trim()),
+    code: "(s) => s.split('|', 1000).map(x => x.trim())",
+    testFn: (s) => s.split("|", 1000).map((x) => x.trim()),
   },
 
   // [bracketed] -> content
@@ -155,8 +155,8 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
     description: "Extract content from square brackets",
     inputPattern: /^\[.+\]$/,
     outputType: "string",
-    code: "(s) => s.slice(1, -1)",
-    testFn: (s) => s.slice(1, -1),
+    code: "(s) => s.length >= 2 ? s.slice(1, -1) : null",
+    testFn: (s: string) => s.length >= 2 ? s.slice(1, -1) : null,
   },
 
   // Log level extraction: [timestamp] LEVEL: message -> LEVEL
@@ -176,15 +176,17 @@ export const EXTRACTOR_TEMPLATES: ExtractorTemplate[] = [
 /**
  * Deep equality check for validation
  */
-function deepEqual(a: unknown, b: unknown): boolean {
+function deepEqual(a: unknown, b: unknown, depth: number = 0): boolean {
+  if (depth > 50) return false;
   if (a === b) return true;
   if (typeof a !== typeof b) return false;
   if (typeof a === "number" && typeof b === "number") {
+    if (Number.isNaN(a) && Number.isNaN(b)) return true;
     return Math.abs(a - b) < 0.0001; // Float tolerance
   }
   if (Array.isArray(a) && Array.isArray(b)) {
     if (a.length !== b.length) return false;
-    return a.every((v, i) => deepEqual(v, b[i]));
+    return a.every((v, i) => deepEqual(v, b[i], depth + 1));
   }
   if (
     typeof a === "object" &&
@@ -198,7 +200,8 @@ function deepEqual(a: unknown, b: unknown): boolean {
     return aKeys.every((k) =>
       deepEqual(
         (a as Record<string, unknown>)[k],
-        (b as Record<string, unknown>)[k]
+        (b as Record<string, unknown>)[k],
+        depth + 1
       )
     );
   }
@@ -246,12 +249,15 @@ function findCommonSuffix(strings: string[]): string {
   let suffix = strings[0];
   for (const s of strings.slice(1)) {
     while (!s.endsWith(suffix)) {
-      suffix = suffix.slice(1);
+      suffix = suffix.slice(1); // Remove from start to shrink the suffix
       if (suffix === "") return "";
     }
   }
   return suffix;
 }
+// Note: slice(1) is correct here — we're finding the longest common suffix by
+// progressively removing characters from the *beginning* of the candidate suffix
+// string until all strings end with it. E.g., "hello" → "ello" → "llo" → "lo"...
 
 /**
  * Synthesize an extractor from examples
@@ -344,8 +350,12 @@ function tryPrefixSuffixExtraction(
 ): Extractor | null {
   if (outputType !== "string") return null;
 
-  const inputs = examples.map((e) => e.input);
-  const outputs = examples.map((e) => String(e.output));
+  // Filter out examples with null/undefined outputs — String(null) produces "null"
+  // which causes false-positive pattern matching
+  const validExamples = examples.filter((e) => e.output != null);
+  if (validExamples.length === 0) return null;
+  const inputs = validExamples.map((e) => e.input);
+  const outputs = validExamples.map((e) => String(e.output));
 
   // Check if outputs are substrings of inputs with common prefix/suffix removed
   const inputPrefix = findCommonPrefix(inputs);
@@ -354,7 +364,7 @@ function tryPrefixSuffixExtraction(
   if (inputPrefix.length === 0 && inputSuffix.length === 0) return null;
 
   // Check if removing prefix/suffix gives us the outputs
-  const allMatch = examples.every((e, i) => {
+  const allMatch = validExamples.every((e, i) => {
     const endIdx = inputSuffix.length > 0 ? -inputSuffix.length : undefined;
     const stripped = e.input.slice(inputPrefix.length, endIdx);
     return stripped === outputs[i];
@@ -376,7 +386,7 @@ function tryPrefixSuffixExtraction(
 
     return {
       name: "prefix_suffix_strip",
-      description: `Remove prefix "${inputPrefix}" and suffix "${inputSuffix}"`,
+      description: `Remove prefix ${JSON.stringify(inputPrefix.slice(0, 50))} and suffix ${JSON.stringify(inputSuffix.slice(0, 50))}`,
       code,
       test: testFn,
     };
@@ -402,17 +412,22 @@ function tryDelimiterFieldExtraction(
     if (!allHaveDelim) continue;
 
     // Find which field index produces the output
-    for (let fieldIdx = 0; fieldIdx < 10; fieldIdx++) {
+    if (examples.length === 0) continue;
+    const MAX_FIELDS = 1000;
+    const maxFields = Math.min(MAX_FIELDS, examples.reduce((max, e) => Math.max(max, e.input.split(delim, MAX_FIELDS + 1).length), 0));
+    for (let fieldIdx = 0; fieldIdx < maxFields; fieldIdx++) {
+      const MAX_INPUT_LENGTH = 100_000;
       const allMatch = examples.every((e) => {
-        const fields = e.input.split(delim).map((f) => f.trim());
+        if (e.input.length > MAX_INPUT_LENGTH) return false;
+        const fields = e.input.split(delim, MAX_FIELDS).map((f) => f.trim());
         return fields[fieldIdx] === String(e.output);
       });
 
       if (allMatch) {
-        const escapedDelim = delim === "|" ? "\\|" : delim;
+        const escapedDelim = delim.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
         const code = `(s) => s.split('${escapedDelim}').map(x => x.trim())[${fieldIdx}]`;
         const testFn = (s: string) =>
-          s.split(delim).map((x) => x.trim())[fieldIdx];
+          s.split(delim, MAX_FIELDS).map((x) => x.trim())[fieldIdx] ?? null;
 
         return {
           name: `delimiter_field_${fieldIdx}`,
@@ -445,15 +460,18 @@ function tryStructuredExtraction(
       const match = e.input.match(currencyPattern);
       if (!match) return false;
       const value = parseFloat(match[0].replace(/[$,]/g, ""));
+      if (!isFinite(value)) return false;
       return deepEqual(value, e.output);
     });
 
     if (allMatch) {
       const code =
-        '(s) => { const m = s.match(/\\$[\\d,]+(\\.[\\d]+)?/); return m ? parseFloat(m[0].replace(/[$,]/g, "")) : null; }';
+        '(s) => { const m = s.match(/\\$[\\d,]+(\\.[\\d]+)?/); if (!m) return null; const n = parseFloat(m[0].replace(/[$,]/g, "")); return isFinite(n) ? n : null; }';
       const testFn = (s: string) => {
         const m = s.match(/\$[\d,]+(\.\d+)?/);
-        return m ? parseFloat(m[0].replace(/[$,]/g, "")) : null;
+        if (!m) return null;
+        const n = parseFloat(m[0].replace(/[$,]/g, ""));
+        return isFinite(n) ? n : null;
       };
 
       return {
@@ -472,15 +490,18 @@ function tryStructuredExtraction(
     const match = e.input.match(numberPattern);
     if (!match) return false;
     const value = parseFloat(match[0]);
+    if (!isFinite(value)) return false;
     return deepEqual(value, e.output);
   });
 
   if (allMatch) {
     const code =
-      "(s) => { const m = s.match(/\\d+(\\.\\d+)?/); return m ? parseFloat(m[0]) : null; }";
+      "(s) => { const m = s.match(/\\d+(\\.\\d+)?/); if (!m) return null; const n = parseFloat(m[0]); return isFinite(n) ? n : null; }";
     const testFn = (s: string) => {
       const m = s.match(/\d+(\.\d+)?/);
-      return m ? parseFloat(m[0]) : null;
+      if (!m) return null;
+      const n = parseFloat(m[0]);
+      return isFinite(n) ? n : null;
     };
 
     return {
@@ -516,8 +537,8 @@ function tryRegexExtraction(
       return {
         name: "bracket_content",
         description: "Extract content from brackets",
-        code: "(s) => s.slice(1, -1)",
-        test: (s) => s.slice(1, -1),
+        code: "(s) => s.length >= 2 ? s.slice(1, -1) : null",
+        test: (s: string) => s.length >= 2 ? s.slice(1, -1) : null,
       };
     }
   }
@@ -535,8 +556,8 @@ function tryRegexExtraction(
       return {
         name: "paren_content",
         description: "Extract content from parentheses",
-        code: "(s) => s.slice(1, -1)",
-        test: (s) => s.slice(1, -1),
+        code: "(s) => s.length >= 2 ? s.slice(1, -1) : null",
+        test: (s: string) => s.length >= 2 ? s.slice(1, -1) : null,
       };
     }
   }

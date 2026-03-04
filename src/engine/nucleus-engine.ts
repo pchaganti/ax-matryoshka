@@ -11,7 +11,7 @@
 import { readFile } from "node:fs/promises";
 import { parse as parseLC } from "../logic/lc-parser.js";
 import { inferType, typeToString } from "../logic/type-inference.js";
-import { solve as solveTerm, type SolverTools, type Bindings } from "../logic/lc-solver.js";
+import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } from "../logic/lc-solver.js";
 
 /**
  * Result of executing a Nucleus command
@@ -45,7 +45,7 @@ function createSolverTools(context: string): SolverTools {
       start: lines.slice(0, 5).join("\n"),
       middle: lines
         .slice(
-          Math.floor(lines.length / 2) - 2,
+          Math.max(0, Math.floor(lines.length / 2) - 2),
           Math.floor(lines.length / 2) + 3
         )
         .join("\n"),
@@ -54,6 +54,7 @@ function createSolverTools(context: string): SolverTools {
   };
 
   function fuzzyMatch(str: string, query: string): number {
+    if (!query || query.length === 0) return 0;
     const strLower = str.toLowerCase();
     const queryLower = query.toLowerCase();
 
@@ -83,6 +84,16 @@ function createSolverTools(context: string): SolverTools {
     context,
 
     grep: (pattern: string) => {
+      const MAX_GREP_MATCHES = 10000;
+      const MAX_PATTERN_LENGTH = 1000;
+      const MAX_CAPTURE_GROUPS = 50;
+      if (pattern.length > MAX_PATTERN_LENGTH) return [];
+      const validation = validateRegex(pattern);
+      if (!validation.valid) return [];
+      // Cap capture groups to prevent huge result objects
+      // Replace escaped backslashes first, then escaped chars, to correctly handle \\(
+      const unescapedParens = pattern.replace(/\\\\/g, "").replace(/\\./g, "").match(/\(/g);
+      if (unescapedParens && unescapedParens.length > MAX_CAPTURE_GROUPS) return [];
       const flags = "gmi";
       const regex = new RegExp(pattern, flags);
       const results: Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }> = [];
@@ -98,21 +109,29 @@ function createSolverTools(context: string): SolverTools {
           line: line,
           lineNum: lineNum,
           index: match.index,
-          groups: match.slice(1),
+          groups: match.slice(1).filter((g): g is string => g !== undefined),
         });
 
         if (match[0].length === 0) {
           regex.lastIndex++;
         }
+
+        if (results.length >= MAX_GREP_MATCHES) break;
       }
 
       return results;
     },
 
     fuzzy_search: (query: string, limit: number = 10) => {
+      const MAX_QUERY_LENGTH = 500;
+      const MAX_FUZZY_LINES = 50_000;
+      if (query.length > MAX_QUERY_LENGTH) return [];
+      if (!Number.isFinite(limit)) limit = 10;
+      const clampedLimit = Math.max(1, Math.min(Math.floor(limit), 1000));
       const results: Array<{ line: string; lineNum: number; score: number }> = [];
+      const lineCount = Math.min(lines.length, MAX_FUZZY_LINES);
 
-      for (let i = 0; i < lines.length; i++) {
+      for (let i = 0; i < lineCount; i++) {
         const score = fuzzyMatch(lines[i], query);
         if (score > 0) {
           results.push({
@@ -123,8 +142,12 @@ function createSolverTools(context: string): SolverTools {
         }
       }
 
-      results.sort((a, b) => b.score - a.score);
-      return results.slice(0, limit);
+      results.sort((a, b) => {
+        if (b.score > a.score) return 1;
+        if (b.score < a.score) return -1;
+        return 0;
+      });
+      return results.slice(0, clampedLimit);
     },
 
     text_stats: () => ({ ...textStats }),
@@ -147,6 +170,7 @@ function createSolverTools(context: string): SolverTools {
  * ```
  */
 export class NucleusEngine {
+  private static readonly MAX_TURN_BINDINGS = 100;
   private context: string = "";
   private bindings: Bindings = new Map();
   private solverTools: SolverTools | null = null;
@@ -169,8 +193,9 @@ export class NucleusEngine {
    * Load a document from a string
    */
   loadContent(content: string): void {
-    this.context = content;
-    this.solverTools = createSolverTools(content);
+    const trimmed = content.trim();
+    this.context = trimmed.length > 0 ? content : "";
+    this.solverTools = trimmed.length > 0 ? createSolverTools(content) : null;
     this.bindings.clear();
     this.turnCounter = 0;
 
@@ -250,7 +275,9 @@ export class NucleusEngine {
         (solverResult.value as { _type: string })._type === "synthesized-fn"
       ) {
         const fnObj = solverResult.value as { _type: string; name: string; fn: unknown; code: string };
-        this.bindings.set(`_fn_${fnObj.name}`, fnObj);
+        if (typeof fnObj.name === "string" && fnObj.name.length <= 256 && /^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(fnObj.name)) {
+          this.bindings.set(`_fn_${fnObj.name}`, fnObj);
+        }
         if (this.verbose) {
           console.log(`[Engine] Registered function "${fnObj.name}" as _fn_${fnObj.name}`);
         }
@@ -266,6 +293,9 @@ export class NucleusEngine {
       }
     }
 
+    // Evict old turn bindings to prevent unbounded growth
+    this.evictOldTurnBindings();
+
     return {
       success: solverResult.success,
       value: solverResult.value,
@@ -273,6 +303,26 @@ export class NucleusEngine {
       error: solverResult.error,
       type: typeResult.type ? typeToString(typeResult.type) : undefined,
     };
+  }
+
+  /**
+   * Evict oldest turn bindings (_N) when exceeding the cap
+   */
+  private evictOldTurnBindings(): void {
+    const turnKeys = [...this.bindings.keys()]
+      .filter(k => /^_\d+$/.test(k))
+      .sort((a, b) => {
+        const aNum = parseInt(a.slice(1), 10);
+        const bNum = parseInt(b.slice(1), 10);
+        if (!Number.isFinite(aNum) || !Number.isFinite(bNum)) return 0;
+        if (aNum < bNum) return -1;
+        if (aNum > bNum) return 1;
+        return 0;
+      });
+    while (turnKeys.length > NucleusEngine.MAX_TURN_BINDINGS) {
+      const oldest = turnKeys.shift()!;
+      this.bindings.delete(oldest);
+    }
   }
 
   /**
@@ -289,8 +339,10 @@ export class NucleusEngine {
    * Get current variable bindings
    */
   getBindings(): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
+    const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
+    const result: Record<string, unknown> = Object.create(null);
     for (const [key, value] of this.bindings) {
+      if (DANGEROUS_KEYS.has(key)) continue;
       // Summarize arrays to avoid huge output
       if (Array.isArray(value)) {
         result[key] = `Array[${value.length}]`;
@@ -312,6 +364,9 @@ export class NucleusEngine {
    * Set a binding manually
    */
   setBinding(name: string, value: unknown): void {
+    if (!name || name.length > 256 || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+      throw new Error("Invalid binding name");
+    }
     this.bindings.set(name, value);
   }
 
@@ -324,6 +379,13 @@ export class NucleusEngine {
     if (this.verbose) {
       console.log("[Engine] State reset");
     }
+  }
+
+  dispose(): void {
+    this.bindings.clear();
+    this.turnCounter = 0;
+    this.context = "";
+    this.solverTools = null;
   }
 
   /**

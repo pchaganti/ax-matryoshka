@@ -51,6 +51,7 @@ export async function createSandboxWithSynthesis(
   };
 
   // Persistent state across executions
+  const MAX_LOGS = 5000;
   const logs: string[] = [];
   const memory: unknown[] = [];
   let subCallCount = 0;
@@ -65,7 +66,7 @@ export async function createSandboxWithSynthesis(
       start: lines.slice(0, 5).join("\n"),
       middle: lines
         .slice(
-          Math.floor(lines.length / 2) - 2,
+          Math.max(0, Math.floor(lines.length / 2) - 2),
           Math.floor(lines.length / 2) + 3
         )
         .join("\n"),
@@ -109,16 +110,32 @@ export async function createSandboxWithSynthesis(
     },
 
     synthesize_extractor: (
-      examples: Array<{ input: string; output: unknown }>
+      examples: Array<{ input: string; output: string | number | boolean | null }>
     ): ((s: string) => unknown) | null => {
+      const MAX_EXAMPLES = 50;
       if (!examples || examples.length === 0) {
         log(`[Synthesis] synthesize_extractor called with empty examples`);
         return null;
       }
 
+      // Cap examples to prevent excessive synthesis time
+      if (examples.length > MAX_EXAMPLES) {
+        examples = examples.slice(0, MAX_EXAMPLES);
+      }
+
+      // Validate output types — reject objects/arrays/functions
+      examples = examples.filter(e => {
+        const output = e.output;
+        return typeof output === "string" || typeof output === "number" || typeof output === "boolean" || output === null;
+      });
+      if (examples.length === 0) return null;
+
+      const MAX_JSON_LOG_LENGTH = 1000;
       log(`[Synthesis] synthesize_extractor called with ${examples.length} constraints:`);
       examples.slice(0, 3).forEach((ex, i) => {
-        log(`  [${i + 1}] "${ex.input}" -> ${JSON.stringify(ex.output)}`);
+        const jsonStr = JSON.stringify(ex.output);
+        const safeJson = jsonStr.length > MAX_JSON_LOG_LENGTH ? jsonStr.slice(0, MAX_JSON_LOG_LENGTH) + "..." : jsonStr;
+        log(`  [${i + 1}] "${ex.input}" -> ${safeJson}`);
       });
       if (examples.length > 3) {
         log(`  ... and ${examples.length - 3} more`);
@@ -184,7 +201,9 @@ export async function createSandboxWithSynthesis(
         if (inputMap.has(ex.input)) {
           const existing = inputMap.get(ex.input);
           if (existing !== ex.output) {
-            log(`[Synthesis] CONFLICT: Same input "${ex.input}" has different outputs: ${JSON.stringify(existing)} vs ${JSON.stringify(ex.output)}`);
+            const existJson = JSON.stringify(existing);
+            const outJson = JSON.stringify(ex.output);
+            log(`[Synthesis] CONFLICT: Same input "${ex.input}" has different outputs: ${existJson.length > 1000 ? existJson.slice(0, 1000) + "..." : existJson} vs ${outJson.length > 1000 ? outJson.slice(0, 1000) + "..." : outJson}`);
             return null; // Conflicting outputs for same input
           }
         }
@@ -235,6 +254,7 @@ export async function createSandboxWithSynthesis(
     },
 
     extract_with_regex: (pattern: string, str: string): string | null => {
+      if (!coordinator.validateRegex(pattern)) return null;
       try {
         const regex = new RegExp(pattern);
         const match = str.match(regex);
@@ -258,13 +278,19 @@ export async function createSandboxWithSynthesis(
     // Console with log capture
     console: {
       log: (...args: unknown[]) => {
-        logs.push(args.map((a) => String(a)).join(" "));
+        const MAX_LOG_ENTRY = 10_000;
+        const MAX_ARG_LENGTH = 1_000;
+        logs.push(args.map((a) => String(a).slice(0, MAX_ARG_LENGTH)).join(" ").slice(0, MAX_LOG_ENTRY));
       },
       error: (...args: unknown[]) => {
-        logs.push(`[ERROR] ${args.map((a) => String(a)).join(" ")}`);
+        const MAX_LOG_ENTRY = 10_000;
+        const MAX_ARG_LENGTH = 1_000;
+        logs.push(`[ERROR] ${args.map((a) => String(a).slice(0, MAX_ARG_LENGTH)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
       },
       warn: (...args: unknown[]) => {
-        logs.push(`[WARN] ${args.map((a) => String(a)).join(" ")}`);
+        const MAX_LOG_ENTRY = 10_000;
+        const MAX_ARG_LENGTH = 1_000;
+        logs.push(`[WARN] ${args.map((a) => String(a).slice(0, MAX_ARG_LENGTH)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
       },
     },
 
@@ -293,7 +319,11 @@ export async function createSandboxWithSynthesis(
         );
       }
 
-      return llmQueryFn(prompt, queryOptions);
+      const result = await llmQueryFn(prompt, queryOptions);
+      if (disposed) {
+        throw new Error("Sandbox was disposed during LLM query");
+      }
+      return result;
     },
 
     // Safe built-ins
@@ -301,7 +331,19 @@ export async function createSandboxWithSynthesis(
     Math,
     Date,
     Array,
-    Object,
+    Object: Object.freeze(Object.create(null, {
+      keys: { value: Object.keys, enumerable: true },
+      values: { value: Object.values, enumerable: true },
+      entries: { value: Object.entries, enumerable: true },
+      // Object.assign removed — can enable prototype pollution via __proto__ keys
+      freeze: { value: Object.freeze, enumerable: true },
+      // Object.fromEntries removed — can create objects with __proto__ keys
+      getOwnPropertyNames: { value: Object.getOwnPropertyNames, enumerable: true },
+      hasOwn: { value: Object.hasOwn, enumerable: true },
+      is: { value: Object.is, enumerable: true },
+      create: { value: Object.create, enumerable: true },
+      // Object.defineProperty removed — can define getters/setters bypassing sandbox
+    })),
     String,
     Number,
     Boolean,
@@ -311,15 +353,23 @@ export async function createSandboxWithSynthesis(
     Promise,
     parseInt,
     parseFloat,
-    isNaN,
-    isFinite,
+    isNaN: Number.isNaN,
+    isFinite: Number.isFinite,
     encodeURIComponent,
     decodeURIComponent,
-    eval, // Needed for get_extractor_code tests
+    // Override eval to prevent arbitrary code execution in sandbox
+    eval: () => { throw new Error("eval is not allowed in sandbox"); },
 
     // Async iteration support
     Symbol,
   };
+
+  // Lock down constructor to prevent VM escape via this.constructor.constructor
+  Object.defineProperty(sandboxGlobals, 'constructor', {
+    value: undefined,
+    writable: false,
+    configurable: false,
+  });
 
   // Create VM context
   const vmContext = vm.createContext(sandboxGlobals);
@@ -347,17 +397,28 @@ export async function createSandboxWithSynthesis(
     /**
      * grep - Fast regex search returning matches with line numbers
      */
+    var MAX_GREP_RESULTS = 10000;
+    var MAX_GREP_ITERATIONS = 1000000;
+    var MAX_CONTEXT_LENGTH = 50_000_000;
     function grep(pattern, flags) {
-      let f = flags || '';
+      if (!pattern || typeof pattern !== "string") return [];
+      if (pattern.length > 500) return [];
+      if (/(\\((?:[^()]*[+*])[^()]*\\))[+*]/.test(pattern)) return [];
+      try { new RegExp(pattern); } catch(e) { return []; }
+      if (flags && typeof flags !== "string") flags = "";
+      let f = (flags || '').replace(/[^gimsuy]/g, '');
       if (!f.includes('g')) f += 'g';
       if (!f.includes('m')) f += 'm';
       if (!f.includes('i')) f += 'i';
       const regex = new RegExp(pattern, f);
       const results = [];
       let match;
+      var iterations = 0;
+      var searchContext = context.length > MAX_CONTEXT_LENGTH ? context.slice(0, MAX_CONTEXT_LENGTH) : context;
 
-      while ((match = regex.exec(context)) !== null) {
-        const beforeMatch = context.slice(0, match.index);
+      while ((match = regex.exec(searchContext)) !== null) {
+        if (++iterations >= MAX_GREP_ITERATIONS) break;
+        const beforeMatch = searchContext.slice(0, match.index);
         const lineNum = (beforeMatch.match(/\\n/g) || []).length + 1;
         const line = __linesArray[lineNum - 1] || '';
 
@@ -368,6 +429,10 @@ export async function createSandboxWithSynthesis(
           index: match.index,
           groups: match.slice(1)
         });
+
+        if (results.length >= MAX_GREP_RESULTS) {
+          break;
+        }
 
         if (match[0].length === 0) {
           regex.lastIndex++;
@@ -380,11 +445,15 @@ export async function createSandboxWithSynthesis(
     /**
      * count_tokens - Estimate token count for text
      */
+    var MAX_TOKEN_WORDS = 100000;
     function count_tokens(text) {
-      const str = text === undefined ? context : text;
+      const MAX_TOKEN_INPUT = 1_000_000;
+      var str = text === undefined ? context : text;
       if (!str || str.length === 0) return 0;
+      if (str.length > MAX_TOKEN_INPUT) str = str.slice(0, MAX_TOKEN_INPUT);
 
-      const words = str.split(/\\s+/).filter(w => w.length > 0);
+      var words = str.split(/\\s+/).filter(w => w.length > 0);
+      if (words.length > MAX_TOKEN_WORDS) words = words.slice(0, MAX_TOKEN_WORDS);
       let tokenCount = 0;
 
       for (const word of words) {
@@ -408,8 +477,8 @@ export async function createSandboxWithSynthesis(
      */
     function locate_line(start, end) {
       const totalLines = __linesArray.length;
-      let startIdx = start < 0 ? totalLines + start : start - 1;
-      let endIdx = end === undefined ? startIdx : (end < 0 ? totalLines + end : end - 1);
+      let startIdx = start <= 0 ? Math.max(0, totalLines + start) : start - 1;
+      let endIdx = end === undefined ? startIdx : (end <= 0 ? Math.max(0, totalLines + end) : end - 1);
 
       if (startIdx < 0 || startIdx >= totalLines) return '';
       if (endIdx < 0) endIdx = 0;
@@ -420,6 +489,9 @@ export async function createSandboxWithSynthesis(
         startIdx = endIdx;
         endIdx = tmp;
       }
+
+      // Clamp startIdx to 0 after swap (could be negative from swap with negative endIdx)
+      startIdx = Math.max(0, startIdx);
 
       return __linesArray.slice(startIdx, endIdx + 1).join('\\n');
     }
@@ -590,18 +662,19 @@ export async function createSandboxWithSynthesis(
       const originalError = sandboxGlobals.console.error;
       const originalWarn = sandboxGlobals.console.warn;
 
+      const MAX_LOG_ENTRY = 10_000;
       sandboxGlobals.console.log = (...args: unknown[]) => {
-        const msg = args.map((a) => String(a)).join(" ");
+        const msg = args.map((a) => String(a)).join(" ").slice(0, MAX_LOG_ENTRY);
         executionLogs.push(msg);
         logs.push(msg);
       };
       sandboxGlobals.console.error = (...args: unknown[]) => {
-        const msg = `[ERROR] ${args.map((a) => String(a)).join(" ")}`;
+        const msg = `[ERROR] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY);
         executionLogs.push(msg);
         logs.push(msg);
       };
       sandboxGlobals.console.warn = (...args: unknown[]) => {
-        const msg = `[WARN] ${args.map((a) => String(a)).join(" ")}`;
+        const msg = `[WARN] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY);
         executionLogs.push(msg);
         logs.push(msg);
       };
@@ -610,7 +683,12 @@ export async function createSandboxWithSynthesis(
         const { declarations, mainCode } = extractDeclarations(code);
 
         if (declarations.length > 0) {
-          const declScript = new vm.Script(declarations.join("\n"));
+          const MAX_DECL_LENGTH = 100_000;
+          const declCode = declarations.join("\n");
+          if (declCode.length > MAX_DECL_LENGTH) {
+            throw new Error("Declaration script too large");
+          }
+          const declScript = new vm.Script(declCode);
           declScript.runInContext(vmContext);
         }
 
@@ -659,6 +737,9 @@ export async function createSandboxWithSynthesis(
         sandboxGlobals.console.log = originalLog;
         sandboxGlobals.console.error = originalError;
         sandboxGlobals.console.warn = originalWarn;
+        if (logs.length > MAX_LOGS) {
+          logs.splice(0, logs.length - MAX_LOGS);
+        }
       }
     },
 

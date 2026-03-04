@@ -265,5 +265,89 @@ describe("Relational Solver", () => {
       expect(result.apply("xyz456uvw")).toBe(456);
     });
   });
+
+  describe("parseCurrency recursion depth limit", () => {
+    it("should not stack overflow on deeply nested parentheses", () => {
+      // Create deeply nested negative parens: ((((($1,234)))))
+      let input = "$100";
+      for (let i = 0; i < 200; i++) {
+        input = `(${input})`;
+      }
+      // This should either return null or a number, but not throw stack overflow
+      const result = synthesizeFromExamples([
+        { input: "$100", output: 100 },
+        { input: "$200", output: 200 },
+      ]);
+      if (result.success) {
+        expect(() => result.apply(input)).not.toThrow();
+      }
+    });
+  });
+
+  describe("parseDateImpl month/day validation", () => {
+    it("should reject invalid month in US format (13/01/2024)", () => {
+      const result = synthesizeFromExamples([
+        { input: "01/15/2024", output: "2024-01-15" },
+        { input: "02/20/2024", output: "2024-02-20" },
+      ]);
+      if (result.success) {
+        // Month 13 should return null, not "2024-13-01"
+        const output = result.apply("13/01/2024");
+        if (typeof output === "string" && output.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const month = parseInt(output.split("-")[1], 10);
+          expect(month).toBeLessThanOrEqual(12);
+          expect(month).toBeGreaterThanOrEqual(1);
+        }
+      }
+    });
+
+    it("should reject invalid day in date (32nd of January)", () => {
+      const result = synthesizeFromExamples([
+        { input: "01/15/2024", output: "2024-01-15" },
+        { input: "02/20/2024", output: "2024-02-20" },
+      ]);
+      if (result.success) {
+        const output = result.apply("01/32/2024");
+        if (typeof output === "string" && output.match(/^\d{4}-\d{2}-\d{2}$/)) {
+          const day = parseInt(output.split("-")[2], 10);
+          expect(day).toBeLessThanOrEqual(31);
+        }
+      }
+    });
+  });
+
+  describe("regex validation in primitives", () => {
+    it("should return null for match with nested-quantifier regex (ReDoS)", () => {
+      const composition: Composition = { steps: [{ primitive: "match" as Primitive, args: { pattern: "(a+)+", group: 0 } }] };
+      const result = evaluateComposition(composition, "aaaaaaaaaaaaaaaaaa!");
+      expect(result).toBeNull();
+    });
+
+    it("should return null for replace with nested-quantifier regex (ReDoS)", () => {
+      const composition: Composition = { steps: [{ primitive: "replace" as Primitive, args: { from: "(a+)+", to: "x" } }] };
+      const result = evaluateComposition(composition, "aaaaaaaaaaaaaaaaaa!");
+      expect(result).toBeNull();
+    });
+  });
+
+  describe("NaN guard in parseInt/parseFloat primitives", () => {
+    it("should return null instead of NaN for parseInt of non-numeric input", () => {
+      const composition: Composition = { steps: [{ primitive: "parseInt" as Primitive, args: {} }] };
+      const result = evaluateComposition(composition, "hello");
+      expect(result).toBeNull();
+    });
+
+    it("should return null instead of NaN for parseFloat of non-numeric input", () => {
+      const composition: Composition = { steps: [{ primitive: "parseFloat" as Primitive, args: {} }] };
+      const result = evaluateComposition(composition, "hello");
+      expect(result).toBeNull();
+    });
+
+    it("should return valid number for parseInt of numeric input", () => {
+      const composition: Composition = { steps: [{ primitive: "parseInt" as Primitive, args: {} }] };
+      const result = evaluateComposition(composition, "42");
+      expect(result).toBe(42);
+    });
+  });
 });
 

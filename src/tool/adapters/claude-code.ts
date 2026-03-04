@@ -137,16 +137,22 @@ export class ClaudeCodeAdapter {
 
     switch (name) {
       case "lattice_load":
+        if (typeof args.filePath !== "string") {
+          throw new Error("lattice_load: filePath must be a string");
+        }
         response = await this.tool.executeAsync({
           type: "load",
-          filePath: args.filePath as string,
+          filePath: args.filePath,
         });
         break;
 
       case "lattice_query":
+        if (typeof args.command !== "string") {
+          throw new Error("lattice_query: command must be a string");
+        }
         response = this.tool.execute({
           type: "query",
-          command: args.command as string,
+          command: args.command,
         });
         break;
 
@@ -195,8 +201,10 @@ export class ClaudeCodeAdapter {
         // Show preview of array results
         const preview = arr.slice(0, 15).map((item) => {
           if (typeof item === "object" && item !== null && "line" in item) {
-            const gr = item as { line: string; lineNum: number };
-            return `[${gr.lineNum}] ${gr.line.slice(0, 100)}`;
+            const gr = item as Record<string, unknown>;
+            if (typeof gr.line === "string" && typeof gr.lineNum === "number") {
+              return `[${gr.lineNum}] ${gr.line.slice(0, 100)}`;
+            }
           }
           return JSON.stringify(item).slice(0, 100);
         });

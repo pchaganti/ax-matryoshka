@@ -44,11 +44,14 @@ function customToConfig(language: string, custom: GrammarConfig): LanguageConfig
  * Get all language configurations (built-in + custom)
  * Custom configs override built-in ones with the same name
  */
+const DANGEROUS_LANG_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "hasOwnProperty", "toString", "valueOf", "toLocaleString", "isPrototypeOf", "propertyIsEnumerable"]);
+
 export function getAllLanguageConfigs(): Record<string, LanguageConfig> {
   const configs: Record<string, LanguageConfig> = {};
 
   // Add built-in grammars
   for (const [lang, builtin] of Object.entries(BUILTIN_GRAMMARS)) {
+    if (DANGEROUS_LANG_KEYS.has(lang)) continue;
     configs[lang] = builtinToConfig(lang, builtin);
   }
 
@@ -56,6 +59,7 @@ export function getAllLanguageConfigs(): Record<string, LanguageConfig> {
   try {
     const custom = getCustomGrammars();
     for (const [lang, grammar] of Object.entries(custom)) {
+      if (DANGEROUS_LANG_KEYS.has(lang)) continue;
       configs[lang] = customToConfig(lang, grammar);
     }
   } catch {
@@ -74,6 +78,7 @@ function buildExtensionMap(): Map<string, string> {
 
   for (const [lang, config] of Object.entries(configs)) {
     for (const ext of config.extensions) {
+      if (typeof ext !== "string") continue;
       map.set(ext.toLowerCase(), lang);
     }
   }
@@ -112,9 +117,12 @@ export function getLanguageForExtension(ext: string): SupportedLanguage | null {
 /**
  * Get the language configuration for a language
  */
+const DANGEROUS_CONFIG_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
+
 export function getLanguageConfig(language: string): LanguageConfig | null {
+  if (DANGEROUS_CONFIG_KEYS.has(language)) return null;
   const configs = getAllLanguageConfigs();
-  return configs[language] ?? null;
+  return Object.hasOwn(configs, language) ? configs[language] : null;
 }
 
 /**

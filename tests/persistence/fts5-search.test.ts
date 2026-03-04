@@ -220,5 +220,52 @@ error error on this line`;
       // Should still work, just uses regex fallback
       expect(results.length).toBeGreaterThan(0);
     });
+
+    it("should return empty for ReDoS patterns instead of hanging", () => {
+      // Catastrophic backtracking pattern
+      const results = search.grepToFTS("(a+)+$");
+
+      // Should return empty (rejected by validateRegex), not hang
+      expect(results).toHaveLength(0);
+    });
+
+    it("should return correct results via chunked regex fallback on large documents", () => {
+      // Create a document with many lines to exercise chunked iteration
+      const lines: string[] = [];
+      for (let i = 0; i < 6000; i++) {
+        lines.push(i % 1000 === 0 ? `MARKER-LINE ${i}` : `normal line ${i}`);
+      }
+      const largeDoc = lines.join("\n");
+
+      const largeDb = new SessionDB();
+      largeDb.loadDocument(largeDoc);
+      const largeSearch = new FTS5Search(largeDb);
+
+      // Complex regex triggers regexFallback
+      const results = largeSearch.grepToFTS("MARKER-LINE \\d+");
+      expect(results.length).toBe(6); // lines 0, 1000, 2000, 3000, 4000, 5000
+
+      largeDb.close();
+    });
+
+    it("should still work with character class patterns via regex fallback", () => {
+      const results = search.grepToFTS("[A-Z]+");
+
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    it("should match ALL lines containing pattern without skipping every other line", () => {
+      // Regression guard: "g" flag with test() skips alternating matches
+      const repeatDb = new SessionDB();
+      const lines = Array.from({ length: 20 }, (_, i) => `error on line ${i}`);
+      repeatDb.loadDocument(lines.join("\n"));
+      const repeatSearch = new FTS5Search(repeatDb);
+
+      // Regex fallback path (character class triggers it)
+      const results = repeatSearch.grepToFTS("[e]rror");
+      expect(results.length).toBe(20);
+
+      repeatDb.close();
+    });
   });
 });

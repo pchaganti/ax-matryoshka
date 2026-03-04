@@ -158,30 +158,35 @@ export class EvolutionarySynthesizer {
 
     if (typeof sampleOutput === "number") {
       // For numbers, try various parsing approaches
+      // Use new RegExp(JSON.stringify()) to avoid template literal escaping issues
+      const safePattern = JSON.stringify(pattern);
       strategies.push(
         `(s) => {
-        const m = s.match(/${this.escapeRegexInString(pattern)}/);
+        const m = s.match(new RegExp(${safePattern}));
         if (!m) return null;
-        return parseFloat((m[1] || m[0]).replace(/[,$]/g, ''));
+        const r = parseFloat((m[1] || m[0]).replace(/[,$]/g, ''));
+        return isNaN(r) ? null : r;
       }`
       );
 
       strategies.push(
         `(s) => {
-        const m = s.match(/${this.escapeRegexInString(pattern)}/);
+        const m = s.match(new RegExp(${safePattern}));
         if (!m) return null;
-        return parseInt((m[1] || m[0]).replace(/[,$]/g, ''), 10);
+        const r = parseInt((m[1] || m[0]).replace(/[,$]/g, ''), 10);
+        return isNaN(r) || !Number.isSafeInteger(r) ? null : r;
       }`
       );
 
-      // Direct parseInt for simple numbers
-      strategies.push(`(s) => parseInt(s.replace(/[^\\d.-]/g, ''), 10)`);
+      // Direct parseInt for simple numbers (with NaN guard)
+      strategies.push(`(s) => { const r = parseInt(s.replace(/[^\\d.-]/g, ''), 10); return isNaN(r) || !Number.isSafeInteger(r) ? null : r; }`);
 
-      strategies.push(`(s) => parseFloat(s.replace(/[^\\d.-]/g, ''))`);
+      strategies.push(`(s) => { const r = parseFloat(s.replace(/[^\\d.-]/g, '')); return isNaN(r) || !isFinite(r) ? null : r; }`);
     } else if (typeof sampleOutput === "string") {
+      const safePattern = JSON.stringify(pattern);
       strategies.push(
         `(s) => {
-        const m = s.match(/${this.escapeRegexInString(pattern)}/);
+        const m = s.match(new RegExp(${safePattern}));
         return m ? (m[1] || m[0]) : null;
       }`
       );
@@ -219,7 +224,7 @@ export class EvolutionarySynthesizer {
       outputs.every((o) => typeof o === "number") &&
       inputs.every((i) => /^\d+$/.test(i))
     ) {
-      return "(s) => parseInt(s, 10)";
+      return "(s) => { const r = parseInt(s, 10); return isNaN(r) || !Number.isSafeInteger(r) ? null : r; }";
     }
 
     // Check for currency pattern
@@ -227,7 +232,7 @@ export class EvolutionarySynthesizer {
       outputs.every((o) => typeof o === "number") &&
       inputs.every((i) => /^\$[\d,]+$/.test(i))
     ) {
-      return '(s) => parseInt(s.replace(/[$,]/g, ""), 10)';
+      return '(s) => { const r = parseInt(s.replace(/[$,]/g, ""), 10); return isNaN(r) || !Number.isSafeInteger(r) ? null : r; }';
     }
 
     // Check for key:value pattern
@@ -242,21 +247,40 @@ export class EvolutionarySynthesizer {
   }
 
   /**
-   * Escape special characters for use inside a regex string in code
-   */
-  private escapeRegexInString(pattern: string): string {
-    return pattern.replace(/\\/g, "\\\\");
-  }
-
-  /**
    * Validate a solution against examples
    */
   validateSolution(
     code: string,
     examples: Array<{ input: string; output: unknown }>
   ): boolean {
+    // Cap code length to prevent memory exhaustion during Function construction
+    const MAX_CODE_LENGTH = 50_000;
+    if (code.length > MAX_CODE_LENGTH) return false;
+
+    // Block dangerous patterns in synthesized code
+    const DANGEROUS_PATTERNS = [
+      /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+      /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+      /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+      /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
+      /\bwindow\b/, /\bdocument\b/, /\bprototype\b/,
+      // Block Object.constructor/Object.getPrototypeOf but allow Object.keys/values/entries
+      /\bObject\s*\.\s*(?:constructor|getPrototypeOf|setPrototypeOf|defineProperty|__proto__)\b/,
+    ];
+    for (const pattern of DANGEROUS_PATTERNS) {
+      if (pattern.test(code)) {
+        return false;
+      }
+    }
+    // Block bracket notation with strings (dynamic property access bypass)
+    if (/\[\s*['"]/.test(code)) return false;
+    // Block template literals
+    if (/`/.test(code)) return false;
+    // Block unicode/hex escape sequences
+    if (/\\u[0-9a-fA-F]{4}|\\u\{[0-9a-fA-F]+\}|\\x[0-9a-fA-F]{2}/.test(code)) return false;
+
     try {
-      const fn = eval(code);
+      const fn = new Function("return " + code)();
       return examples.every((e) => {
         const result = fn(e.input);
         return this.deepEqual(result, e.output);
@@ -269,15 +293,17 @@ export class EvolutionarySynthesizer {
   /**
    * Deep equality check
    */
-  private deepEqual(a: unknown, b: unknown): boolean {
+  private deepEqual(a: unknown, b: unknown, depth: number = 0): boolean {
+    if (depth > 50) return false; // Prevent stack overflow on deep/circular structures
     if (a === b) return true;
     if (typeof a !== typeof b) return false;
     if (typeof a === "number" && typeof b === "number") {
+      if (Number.isNaN(a) && Number.isNaN(b)) return true;
       return Math.abs(a - b) < 0.0001; // Float tolerance
     }
     if (Array.isArray(a) && Array.isArray(b)) {
       if (a.length !== b.length) return false;
-      return a.every((v, i) => this.deepEqual(v, b[i]));
+      return a.every((v, i) => this.deepEqual(v, b[i], depth + 1));
     }
     if (
       typeof a === "object" &&
@@ -291,7 +317,8 @@ export class EvolutionarySynthesizer {
       return aKeys.every((k) =>
         this.deepEqual(
           (a as Record<string, unknown>)[k],
-          (b as Record<string, unknown>)[k]
+          (b as Record<string, unknown>)[k],
+          depth + 1
         )
       );
     }
@@ -308,6 +335,11 @@ export class EvolutionarySynthesizer {
     const transformComp = components.find((c) => c.type === "transformer");
 
     if (regexComp && transformComp && regexComp.pattern && transformComp.code) {
+      // Validate transformer code is a safe arrow function or function expression
+      const safeCodePattern = /^(\(?\w*\)?\s*=>|function\s*\()/;
+      if (!safeCodePattern.test(transformComp.code.trim())) {
+        return null; // Reject unsafe code patterns
+      }
       // The pattern is stored ready for use with new RegExp(), so we use that approach
       // rather than a regex literal to avoid escaping issues
       const composedCode = `(s) => {
@@ -317,6 +349,20 @@ export class EvolutionarySynthesizer {
         const transform = ${transformComp.code};
         return transform(extracted);
       }`;
+
+      // Block dangerous patterns in composed code
+      const DANGEROUS_PATTERNS = [
+        /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+        /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+        /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+        /\bReflect\b/, /\bProxy\b/,
+        /\bObject\s*\.\s*(?:constructor|getPrototypeOf|setPrototypeOf|defineProperty|__proto__|create|assign)\b/,
+      ];
+      for (const pattern of DANGEROUS_PATTERNS) {
+        if (pattern.test(composedCode)) {
+          return null;
+        }
+      }
 
       return this.knowledgeBase.derive([regexComp, transformComp], {
         id: `composed_${Date.now()}_${this.idCounter++}`,

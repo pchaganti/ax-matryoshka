@@ -9,7 +9,6 @@
 import { readFile } from "node:fs/promises";
 import { createSandboxWithSynthesis, type SandboxWithSynthesis } from "./synthesis/sandbox-tools.js";
 import { SynthesisCoordinator } from "./synthesis/coordinator.js";
-import { collectExamplesFromResult, extractGrepResults } from "./synthesis/example-collector.js";
 import { createToolRegistry, getToolInterfaces } from "./tools.js";
 import type { LLMQueryFn } from "./llm/types.js";
 import type { ModelAdapter, FinalVarMarker, RAGHints } from "./adapters/types.js";
@@ -21,14 +20,18 @@ import { analyzeExecution, getEncouragement } from "./feedback/execution-feedbac
 import { parse as parseLC } from "./logic/lc-parser.js";
 import { isClassifyTerm, validateClassifyExamples } from "./logic/lc-compiler.js";
 import { inferType, typeToString } from "./logic/type-inference.js";
-import { solve as solveTerm, type SolverTools, type Bindings } from "./logic/lc-solver.js";
+import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } from "./logic/lc-solver.js";
 
 /**
  * Create SolverTools from document content
  * These are the same tools the sandbox provides, but standalone for the solver
  */
 function createSolverTools(context: string): SolverTools {
-  const lines = context.split("\n");
+  const MAX_SOLVER_LINES = 500_000;
+  let lines = context.split("\n");
+  if (lines.length > MAX_SOLVER_LINES) {
+    lines = lines.slice(0, MAX_SOLVER_LINES);
+  }
 
   // Pre-compute text stats
   const textStats = {
@@ -38,7 +41,7 @@ function createSolverTools(context: string): SolverTools {
       start: lines.slice(0, 5).join("\n"),
       middle: lines
         .slice(
-          Math.floor(lines.length / 2) - 2,
+          Math.max(0, Math.floor(lines.length / 2) - 2),
           Math.floor(lines.length / 2) + 3
         )
         .join("\n"),
@@ -49,6 +52,7 @@ function createSolverTools(context: string): SolverTools {
   // Fuzzy search implementation
   // Adapted from FUZZY_SEARCH_IMPL for direct use
   function fuzzyMatch(str: string, query: string): number {
+    if (!query || query.length > 1000) return 0;
     const strLower = str.toLowerCase();
     const queryLower = query.toLowerCase();
 
@@ -82,6 +86,11 @@ function createSolverTools(context: string): SolverTools {
     context,
 
     grep: (pattern: string) => {
+      const MAX_GREP_MATCHES = 10000;
+      const MAX_PATTERN_LENGTH = 1000;
+      if (!pattern || pattern.length > MAX_PATTERN_LENGTH) return [];
+      const validation = validateRegex(pattern);
+      if (!validation.valid) return [];
       const flags = "gmi";
       const regex = new RegExp(pattern, flags);
       const results: Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }> = [];
@@ -97,18 +106,21 @@ function createSolverTools(context: string): SolverTools {
           line: line,
           lineNum: lineNum,
           index: match.index,
-          groups: match.slice(1),
+          groups: match.slice(1).filter((g: string | undefined) => g !== undefined),
         });
 
         if (match[0].length === 0) {
           regex.lastIndex++;
         }
+
+        if (results.length >= MAX_GREP_MATCHES) break;
       }
 
       return results;
     },
 
     fuzzy_search: (query: string, limit: number = 10) => {
+      limit = Math.max(1, Math.min(Math.floor(limit) || 10, 1000));
       const results: Array<{ line: string; lineNum: number; score: number }> = [];
 
       for (let i = 0; i < lines.length; i++) {
@@ -135,92 +147,6 @@ function createSolverTools(context: string): SolverTools {
 export type { FinalVarMarker } from "./adapters/types.js";
 
 /**
- * Analyze grep results and automatically synthesize extractors
- * Returns synthesized code to inject into feedback, or null if no synthesis needed
- */
-function synthesizeFromGrepResults(
-  logs: string[],
-  code: string,
-  coordinator: SynthesisCoordinator,
-  verbose: boolean
-): string | null {
-  // Only process if this looks like a grep call
-  if (!code.includes("grep(")) {
-    return null;
-  }
-
-  // Try to parse grep results from logs
-  const grepResults = extractGrepResults(logs);
-  if (grepResults.length === 0) {
-    return null;
-  }
-
-  // Look for currency values in the grep results
-  const currencyExamples: Array<{ input: string; output: number }> = [];
-  const currencyPattern = /\$[\d,]+/;
-
-  for (const gr of grepResults) {
-    const match = gr.line.match(currencyPattern);
-    if (match) {
-      const rawValue = match[0];
-      const numericValue = parseFloat(rawValue.replace(/[$,]/g, ""));
-      if (!isNaN(numericValue)) {
-        currencyExamples.push({ input: rawValue, output: numericValue });
-      }
-    }
-  }
-
-  if (currencyExamples.length < 2) {
-    return null; // Need at least 2 examples for synthesis
-  }
-
-  // Collect examples for the coordinator
-  collectExamplesFromResult({ result: null, logs }, code, coordinator);
-
-  // Synthesize an extractor from the examples
-  const synthesisResult = coordinator.synthesize({
-    type: "extractor",
-    description: "currency_extractor",
-    positiveExamples: currencyExamples.map(e => e.input),
-    expectedOutputs: currencyExamples.map(e => e.output),
-  });
-
-  if (!synthesisResult.success) {
-    return null;
-  }
-
-  if (verbose) {
-    console.log(`[Synthesis] Automatically synthesized extractor from ${currencyExamples.length} examples`);
-  }
-
-  // Generate code that uses the synthesized extractor
-  const synthesizedCode = `
-## SYNTHESIZED EXTRACTOR (use this instead of writing your own regex!)
-
-I detected currency values in the grep results and synthesized an extractor for you.
-Use this code to extract and sum the values:
-
-\`\`\`javascript
-// Synthesized extractor from examples: ${currencyExamples.slice(0, 3).map(e => e.input).join(", ")}
-let total = 0;
-for (const hit of hits) {
-  // Extract currency value from each line
-  const match = hit.line.match(/\\$([\\d,]+)/);
-  if (match) {
-    const value = parseFloat(match[1].replace(/,/g, ""));
-    total += value;
-    console.log(hit.line, "->", value);
-  }
-}
-console.log("Total:", total);
-\`\`\`
-
-Use THIS code in your next turn. Do NOT hardcode values or make up data.`;
-
-  return synthesizedCode;
-}
-
-/**
  * Generate classifier guidance from grep output
  * Shows the model concrete example lines to use with (classify ...)
  */
@@ -235,8 +161,12 @@ function generateClassifierGuidance(
   // First, try to find and parse multi-line JSON
   const fullLog = logs.join("\n");
 
+  // Cap fullLog length before regex match to prevent ReDoS on huge logs
+  const MAX_LOG_SEARCH = 100_000;
+  const searchLog = fullLog.length > MAX_LOG_SEARCH ? fullLog.slice(0, MAX_LOG_SEARCH) : fullLog;
+
   // Look for JSON array pattern in the combined logs
-  const jsonMatch = fullLog.match(/\[\s*\{[\s\S]*?\}\s*\]/);
+  const jsonMatch = searchLog.match(/\[\s*\{[\s\S]*?\}\s*\]/);
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[0]);
@@ -283,18 +213,19 @@ function generateClassifierGuidance(
 
   for (const idx of indices) {
     const line = grepResults[idx].line;
-    // Escape quotes for S-expression string
-    const escaped = line.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    // Escape backslashes first, then double quotes for S-expression string embedding
+    const escaped = line.slice(0, 500).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
     examples.push(escaped);
   }
 
   // Generate the guidance with concrete examples
+  const safeQuery = query.slice(0, 200).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/`/g, "\\`");
   return `
 ## NEXT STEP: Build classifier from these EXACT lines
 
 Your grep found ${grepResults.length} matches. Now use (classify ...) to filter.
 
-Look at the query: "${query}"
+Look at the query: "${safeQuery}"
 - Mark lines that answer the query as \`true\`
 - Mark lines that don't answer the query as \`false\`
 
@@ -332,6 +263,7 @@ export function buildSystemPrompt(
   contextLength: number,
   toolInterfaces: string
 ): string {
+  if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const formattedLength = contextLength.toLocaleString();
 
   return `You are a headless JavaScript runtime. You have NO EYES. You cannot read the document directly.
@@ -396,14 +328,17 @@ Reminder: You are blind. Write code to see.
  */
 export function extractCode(response: string): string | null {
   // Match typescript, ts, javascript, or js code blocks
-  const codeBlockRegex = /```(?:typescript|ts|javascript|js)\n([\s\S]*?)```/;
-  const match = response.match(codeBlockRegex);
+  // Use indexOf-based approach to avoid ReDoS with [\s\S]*? on unclosed fences
+  const openPattern = /```(?:typescript|ts|javascript|js)\n/;
+  const openMatch = response.match(openPattern);
+  if (!openMatch || openMatch.index === undefined) return null;
 
-  if (match && match[1]) {
-    return match[1].trim();
-  }
+  const codeStart = openMatch.index + openMatch[0].length;
+  const closeIdx = response.indexOf("```", codeStart);
+  if (closeIdx === -1) return null;
 
-  return null;
+  const code = response.slice(codeStart, closeIdx).trim();
+  return code || null;
 }
 
 /**
@@ -418,8 +353,9 @@ export function extractFinalAnswer(
   }
 
   // Check for FINAL_VAR(variableName)
+  const DANGEROUS_VAR_NAMES = /^(__proto__|constructor|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|hasOwnProperty|toString|valueOf|toLocaleString|isPrototypeOf|propertyIsEnumerable)$/i;
   const varMatch = response.match(/FINAL_VAR\((\w+)\)/);
-  if (varMatch) {
+  if (varMatch && !DANGEROUS_VAR_NAMES.test(varMatch[1])) {
     return { type: "var", name: varMatch[1] };
   }
 
@@ -434,20 +370,21 @@ export function extractFinalAnswer(
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[1]);
-      // Check for common answer field names
-      if (parsed.summary) return parsed.summary;
-      if (parsed.response) return parsed.response;
-      if (parsed.answer) return parsed.answer;
+      // Check for common answer field names — ensure string return
+      if (parsed.summary) return typeof parsed.summary === "string" ? parsed.summary : String(parsed.summary);
+      if (parsed.response) return typeof parsed.response === "string" ? parsed.response : String(parsed.response);
+      if (parsed.answer) return typeof parsed.answer === "string" ? parsed.answer : String(parsed.answer);
       // Check for any field that looks like a final value (case-insensitive)
       const valueFields = ['total', 'result', 'value', 'totalsales', 'total_sales', 'count', 'sum', 'answer', 'totals'];
+      const MAX_JSON_KEYS = 1000;
       const keys = Object.keys(parsed);
+      if (keys.length > MAX_JSON_KEYS) return null;
       const foundKey = keys.find(k => valueFields.includes(k.toLowerCase().replace(/_/g, '')));
-      const foundValue = foundKey;
 
-      if (foundValue !== undefined) {
-        const value = parsed[foundValue];
+      if (foundKey !== undefined) {
+        const value = parsed[foundKey];
         if (parsed.notes) {
-          return `${parsed.notes}\n\nResult: ${typeof value === 'number' ? value.toLocaleString() : value}`;
+          return `${parsed.notes}\n\nResult: ${typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString() : value}`;
         }
         return JSON.stringify(parsed, null, 2);
       }
@@ -463,13 +400,13 @@ export function extractFinalAnswer(
  * Try to parse a numeric value from a string result
  */
 function parseNumericResult(result: unknown): number | null {
-  if (typeof result === "number") return result;
+  if (typeof result === "number") return Number.isFinite(result) ? result : null;
   if (typeof result === "string") {
     // Handle strings like "Total: 13000000" or "13,000,000"
     const match = result.match(/[\d,]+(?:\.\d+)?/);
     if (match) {
       const parsed = parseFloat(match[0].replace(/,/g, ""));
-      if (!isNaN(parsed)) return parsed;
+      if (!isNaN(parsed) && Number.isFinite(parsed)) return parsed;
     }
   }
   return null;
@@ -527,14 +464,26 @@ export async function runRLM(
   const {
     llmClient,
     adapter = createNucleusAdapter(),
-    maxTurns = 10,
-    turnTimeoutMs = 30000,
-    maxSubCalls = 10,
+    maxTurns: rawMaxTurns = 10,
+    turnTimeoutMs: rawTurnTimeoutMs = 30000,
+    maxSubCalls: rawMaxSubCalls = 10,
     verbose = false,
     constraint,
     ragEnabled = true,
-    sessionId = `session-${Date.now()}`,
+    sessionId: rawSessionId = `session-${Date.now()}`,
   } = options;
+
+  // Validate sessionId
+  const safeSessionId = typeof rawSessionId === "string" && rawSessionId.length > 0 && rawSessionId.length <= 256 && /^[a-zA-Z0-9_-]+$/.test(rawSessionId)
+    ? rawSessionId
+    : `session-${Date.now()}`;
+  const sessionId = safeSessionId;
+
+  // Validate numeric config parameters
+  const MAX_TIMEOUT = 300_000; // 5 minutes
+  const maxTurns = Number.isFinite(rawMaxTurns) && rawMaxTurns >= 1 ? Math.floor(rawMaxTurns) : 10;
+  const turnTimeoutMs = Number.isFinite(rawTurnTimeoutMs) && rawTurnTimeoutMs >= 100 && rawTurnTimeoutMs <= MAX_TIMEOUT ? Math.floor(rawTurnTimeoutMs) : 30000;
+  const maxSubCalls = Number.isFinite(rawMaxSubCalls) && rawMaxSubCalls >= 1 ? Math.floor(rawMaxSubCalls) : 10;
 
   const log = (msg: string) => {
     if (verbose) console.log(msg);
@@ -545,20 +494,25 @@ export async function runRLM(
   let ragHints: RAGHints | undefined;
 
   if (ragEnabled) {
-    ragManager = getRAGManager();
-    const hints = ragManager.getHints(query, 2);
-    const hintsText = ragManager.formatHintsForPrompt(hints);
-    const selfCorrectionText = ragManager.generateSelfCorrectionFeedback(sessionId);
+    try {
+      ragManager = getRAGManager();
+      const hints = ragManager.getHints(query, 2);
+      const hintsText = ragManager.formatHintsForPrompt(hints);
+      const selfCorrectionText = ragManager.generateSelfCorrectionFeedback(sessionId);
 
-    if (hintsText || selfCorrectionText) {
-      ragHints = {
-        hintsText,
-        selfCorrectionText: selfCorrectionText || undefined,
-      };
-      log(`[RAG] Retrieved ${hints.length} hints for query`);
-      if (selfCorrectionText) {
-        log(`[RAG] Including self-correction feedback from previous failures`);
+      if (hintsText || selfCorrectionText) {
+        ragHints = {
+          hintsText,
+          selfCorrectionText: selfCorrectionText || undefined,
+        };
+        log(`[RAG] Retrieved ${hints.length} hints for query`);
+        if (selfCorrectionText) {
+          log(`[RAG] Including self-correction feedback from previous failures`);
+        }
       }
+    } catch (err) {
+      log(`[RAG] Failed to retrieve hints: ${err instanceof Error ? err.message : String(err)}`);
+      ragManager = null;
     }
   }
 
@@ -614,10 +568,10 @@ export async function runRLM(
     userMessage += `\n\n## OUTPUT CONSTRAINTS\n`;
     userMessage += `Your final answer MUST satisfy these constraints:\n`;
     userMessage += `- Type: ${constraint.output.type}\n`;
-    if (constraint.output.min !== undefined) {
+    if (constraint.output.min !== undefined && Number.isFinite(constraint.output.min)) {
       userMessage += `- Minimum: ${constraint.output.min}\n`;
     }
-    if (constraint.output.max !== undefined) {
+    if (constraint.output.max !== undefined && Number.isFinite(constraint.output.max)) {
       userMessage += `- Maximum: ${constraint.output.max}\n`;
     }
     if (constraint.output.integer) {
@@ -625,18 +579,43 @@ export async function runRLM(
     }
     if (constraint.invariants) {
       for (const inv of constraint.invariants) {
-        userMessage += `- Invariant: ${inv}\n`;
+        userMessage += `- Invariant: ${String(inv).slice(0, 500)}\n`;
       }
     }
     userMessage += `\nBefore returning your answer, VERIFY it satisfies these constraints.`;
     log(`[RLM] Output constraint: ${constraint.output.type}`);
   }
 
-  // Build conversation history
+  // Build conversation history with sliding window to prevent unbounded growth
+  const MAX_HISTORY_ENTRIES = 40;
   const history: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
     { role: "system", content: systemPrompt },
     { role: "user", content: userMessage },
   ];
+
+  // Prune old history entries while keeping the system prompt and initial user message
+  const pruneHistory = () => {
+    while (history.length > MAX_HISTORY_ENTRIES) {
+      // Remove one assistant+user pair (2 entries) at index 2, preserving system prompt and initial user message
+      // Validate we're removing a complete assistant+user pair to maintain alternating roles
+      if (history.length > 3 && history[2]?.role === "assistant" && history[3]?.role === "user") {
+        history.splice(2, 2);
+      } else if (history.length > 3 && history[2]?.role === "user" && history[3]?.role === "assistant") {
+        // Misaligned but still a pair — remove both to maintain parity
+        history.splice(2, 2);
+      } else {
+        // Safety: roles are misaligned and no valid pair found
+        if (history.length <= 2) {
+          break;
+        }
+        history.splice(2, Math.min(2, history.length - 2));
+        // Break if splice couldn't reduce the length (prevents infinite loop)
+        if (history.length > MAX_HISTORY_ENTRIES) {
+          break;
+        }
+      }
+    }
+  };
 
   // Track whether code has been executed (to detect hallucination risk)
   let codeExecuted = false;
@@ -671,6 +650,7 @@ export async function runRLM(
         return `Error: LLM returned empty response at turn ${turn}`;
       }
       history.push({ role: "assistant", content: response });
+      pruneHistory();
 
       // Extract and execute code FIRST (before checking final answer)
       // This ensures if response has both code and final marker, code runs first
@@ -714,14 +694,16 @@ Try again with proper formatting.`;
             history.push({ role: "user", content: feedback });
             continue;
           }
-          return extractedAnswer;
+          const verification = verifyAndReturnResult(extractedAnswer, constraint, log);
+          return verification.valid ? verification.result : extractedAnswer;
         }
 
         codeExecuted = true;
         noCodeCount = 0; // Reset no-code counter on successful code extraction
 
-        // Check if code is being repeated
-        const isRepeatedCode = code.trim() === lastCode.trim();
+        // Check if code is being repeated (skip if either is empty)
+        const trimmedCode = code.trim();
+        const isRepeatedCode = trimmedCode.length > 0 && trimmedCode === lastCode.trim();
         if (isRepeatedCode) {
           log(`[Turn ${turn}] WARNING: Repeated code detected`);
           history.push({ role: "user", content: adapter.getRepeatedCodeFeedback(lastResultCount) });
@@ -787,7 +769,6 @@ Try again with proper formatting.`;
           log(`[Turn ${turn}] Available bindings: ${[...solverBindings.keys()].join(", ")}`);
         }
 
-        const solverTools = createSolverTools(documentContent);
         const solverResult = solveTerm(lcResult.term, solverTools, solverBindings);
 
         // Convert solver result to sandbox-compatible result format
@@ -805,14 +786,38 @@ Try again with proper formatting.`;
           solverBindings.set(`_${turn}`, solverResult.value);
 
           if (Array.isArray(solverResult.value)) {
-            // Array result - update RESULTS and track count
-            solverBindings.set("RESULTS", solverResult.value);
+            // Array result - update RESULTS and track count, cap size to prevent memory exhaustion
+            const MAX_RESULTS_SIZE = 100000;
+            const cappedValue = solverResult.value.length > MAX_RESULTS_SIZE
+              ? solverResult.value.slice(0, MAX_RESULTS_SIZE)
+              : solverResult.value;
+            solverBindings.set("RESULTS", cappedValue);
             previousResultCount = lastResultCount;
-            lastResultCount = solverResult.value.length;
+            lastResultCount = cappedValue.length;
             log(`[Turn ${turn}] Bound result to RESULTS and _${turn}`);
           } else {
             // Scalar result - only bind to _N, preserve RESULTS
             log(`[Turn ${turn}] Bound scalar result to _${turn} (RESULTS preserved)`);
+          }
+          // Evict old turn bindings to prevent unbounded growth
+          const MAX_SOLVER_BINDINGS = 200;
+          if (solverBindings.size > MAX_SOLVER_BINDINGS) {
+            const keys = [...solverBindings.keys()];
+            const turnKeys = keys.filter(k => /^_\d+$/.test(k))
+              .sort((a, b) => {
+                const aNum = parseInt(a.slice(1), 10);
+                const bNum = parseInt(b.slice(1), 10);
+                if (!Number.isFinite(aNum) || !Number.isFinite(bNum)) return 0;
+                if (aNum < bNum) return -1;
+                if (aNum > bNum) return 1;
+                return 0;
+              });
+            const nonTurnCount = keys.length - turnKeys.length;
+            const maxTurnKeys = Math.max(1, MAX_SOLVER_BINDINGS - nonTurnCount);
+            const toRemove = turnKeys.slice(0, Math.max(0, turnKeys.length - maxTurnKeys));
+            for (const key of toRemove) {
+              solverBindings.delete(key);
+            }
           }
         } else {
           previousResultCount = lastResultCount;
@@ -823,7 +828,8 @@ Try again with proper formatting.`;
         const MAX_OUTPUT_LENGTH = 4000; // Max chars per output section
         const truncate = (s: string, max: number = MAX_OUTPUT_LENGTH): string => {
           if (s.length <= max) return s;
-          const half = Math.floor(max / 2) - 20;
+          const half = Math.max(0, Math.floor(max / 2) - 20);
+          if (half === 0) return s.slice(0, max);
           return s.slice(0, half) + `\n... [${s.length - max} chars truncated] ...\n` + s.slice(-half);
         };
 
@@ -860,7 +866,8 @@ Try again with proper formatting.`;
             doneCount++;
             if (doneCount >= 3 && lastMeaningfulOutput) {
               log(`[Turn ${turn}] Detected stuck pattern. Auto-terminating with last meaningful output.`);
-              return lastMeaningfulOutput;
+              const verification = verifyAndReturnResult(lastMeaningfulOutput, constraint, log);
+              return verification.valid ? verification.result : lastMeaningfulOutput;
             }
             // Add feedback to encourage different approach
             if (isRepeatedOutput) {
@@ -877,8 +884,8 @@ Try again with proper formatting.`;
             // Look for any substantial numeric data (4+ digits) or structured output
             const hasRawData = logsText.match(/[\d,]{4,}|"[^"]+"\s*:/);
 
-            if (computedMatch) {
-              // Look for the answer line
+            if (computedMatch && turn > 2) {
+              // Look for the answer line (only auto-terminate after initial exploration)
               const answerLine = result.logs.find(line =>
                 /(?:total|sum|result|answer|count|average|mean)[^:]*:/i.test(line)
               );
@@ -916,7 +923,7 @@ Try again with proper formatting.`;
           if (ragManager) {
             ragManager.recordFailure({
               query,
-              code: code,
+              code: code.slice(0, 500),
               error: result.error,
               timestamp: Date.now(),
               sessionId,
@@ -928,15 +935,15 @@ Try again with proper formatting.`;
         }
 
         if (result.result !== undefined && result.result !== null) {
-          const resultStr = JSON.stringify(result.result, null, 2);
+          let resultStr: string;
+          try {
+            const MAX_RESULT_JSON = 50_000;
+            resultStr = JSON.stringify(result.result, null, 2).slice(0, MAX_RESULT_JSON);
+          } catch {
+            resultStr = String(result.result);
+          }
           log(`[Turn ${turn}] Result: ${resultStr}`);
           feedback += `Result: ${truncate(resultStr)}\n`;
-        }
-
-        // Automatically synthesize extractors from grep results
-        const synthesizedCode = synthesizeFromGrepResults(result.logs, code, coordinator, verbose);
-        if (synthesizedCode) {
-          feedback += `\n${synthesizedCode}`;
         }
 
         // Generate classifier guidance for search results
@@ -966,13 +973,19 @@ Try again with proper formatting.`;
             let resultToReturn: unknown;
             if (typeof finalAnswer === "object" && finalAnswer.type === "var") {
               log(`[Turn ${turn}] Returning variable: ${finalAnswer.name}`);
-              const mem = sandbox.getMemory();
-              // If memory is empty but we have meaningful output, return that instead
-              if (mem.length === 0 && lastMeaningfulOutput) {
-                log(`[Turn ${turn}] Memory empty, returning last meaningful output instead`);
-                resultToReturn = lastMeaningfulOutput;
+              // Check solver bindings first (preferred), then sandbox memory
+              const solverValue = solverBindings?.get(finalAnswer.name) ?? solverBindings?.get("RESULTS");
+              if (solverValue !== undefined) {
+                log(`[Turn ${turn}] Found variable in solver bindings`);
+                resultToReturn = solverValue;
               } else {
-                resultToReturn = mem;
+                const mem = sandbox.getMemory();
+                if (mem.length === 0 && lastMeaningfulOutput) {
+                  log(`[Turn ${turn}] Memory empty, returning last meaningful output instead`);
+                  resultToReturn = lastMeaningfulOutput;
+                } else {
+                  resultToReturn = mem;
+                }
               }
             } else {
               resultToReturn = finalAnswer;
@@ -1026,7 +1039,8 @@ Try again with proper formatting.`;
           let resultToReturn: unknown;
           if (typeof finalAnswer === "object" && finalAnswer.type === "var") {
             log(`[Turn ${turn}] Returning variable: ${finalAnswer.name}`);
-            resultToReturn = sandbox.getMemory();
+            const solverValue = solverBindings?.get(finalAnswer.name) ?? solverBindings?.get("RESULTS");
+            resultToReturn = solverValue !== undefined ? solverValue : sandbox.getMemory();
           } else {
             resultToReturn = finalAnswer;
           }

@@ -404,8 +404,8 @@ describe("Synthesis Tool Correctness", () => {
 
       console.log("Generated code:", code);
 
-      // Verify the code works
-      const fn = eval(code);
+      // Verify the code works (using new Function, not eval)
+      const fn = new Function("return " + code)();
       const test = fn("$5,000");
       console.log("Test $5,000 ->", test, test === 5000 ? "PASS" : "FAIL");
     `);

@@ -34,6 +34,36 @@ export interface SolverTools {
 export type Bindings = Map<string, unknown>;
 
 /**
+ * Validate a regex pattern for safety (ReDoS protection)
+ */
+export function validateRegex(pattern: string): { valid: boolean; error?: string } {
+  // Reject empty patterns
+  if (!pattern) {
+    return { valid: false, error: "Empty regex pattern" };
+  }
+
+  // Reject excessively long patterns
+  if (pattern.length > 500) {
+    return { valid: false, error: `Regex pattern too long (${pattern.length} chars, max 500)` };
+  }
+
+  // Reject nested quantifiers that cause catastrophic backtracking
+  // Patterns like (a+)+, (a*)+, (a+)*, (a{1,})+, etc.
+  if (/(\((?:[^()]*[+*{])[^()]*\))[+*{]|\(\?[^)]*[+*{][^)]*\)[+*{]/.test(pattern)) {
+    return { valid: false, error: "Regex contains nested quantifiers which may cause catastrophic backtracking" };
+  }
+
+  // Verify the pattern is a valid regex
+  try {
+    new RegExp(pattern);
+  } catch (err) {
+    return { valid: false, error: `Invalid regex: ${err instanceof Error ? err.message : String(err)}` };
+  }
+
+  return { valid: true };
+}
+
+/**
  * Module-level synthesis integrator for caching across calls
  */
 const synthesisIntegrator = new SynthesisIntegrator();
@@ -60,7 +90,13 @@ export function solve(
   bindings: Bindings = new Map()
 ): SolveResult {
   const logs: string[] = [];
-  const log = (msg: string) => logs.push(msg);
+  const MAX_LOG_ENTRIES = 10000;
+  const MAX_LOG_MSG_LENGTH = 2000;
+  const log = (msg: string) => {
+    if (logs.length < MAX_LOG_ENTRIES) {
+      logs.push(msg.length > MAX_LOG_MSG_LENGTH ? msg.slice(0, MAX_LOG_MSG_LENGTH) + "..." : msg);
+    }
+  };
 
   // Log available bindings
   if (bindings.size > 0) {
@@ -70,7 +106,7 @@ export function solve(
   try {
     // Resolve constraints first
     const resolved = resolveConstraints(term);
-    const value = evaluate(resolved.term, tools, bindings, log);
+    const value = evaluate(resolved.term, tools, bindings, log, 0);
     return { success: true, value, logs };
   } catch (err) {
     return {
@@ -82,6 +118,8 @@ export function solve(
   }
 }
 
+const MAX_EVAL_DEPTH = 1000;
+
 /**
  * Evaluate an LC term
  * Impure operations execute directly, pure operations use miniKanren
@@ -90,8 +128,12 @@ function evaluate(
   term: LCTerm,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): unknown {
+  if (depth > MAX_EVAL_DEPTH) {
+    throw new Error("Maximum evaluation depth exceeded (possible infinite recursion)");
+  }
   switch (term.tag) {
     case "lit":
       return term.value;
@@ -118,10 +160,20 @@ function evaluate(
       // Smart escaping: if pattern contains special regex chars that look like
       // they should be literal (e.g., "$" for currency, "." alone), escape them
       let pattern = term.pattern;
-      const specialChars = /^[\$\.\^\*\+\?\[\]\(\)\{\}\|\\]$/;
-      if (specialChars.test(pattern)) {
+
+      // Empty pattern means "match all lines" — convert to wildcard
+      if (!pattern) {
+        pattern = "^";
+        log(`[Solver] Empty grep pattern -> "^" (match all lines)`);
+      } else if (/^[\$\.\^\*\+\?\[\]\(\)\{\}\|\\]$/.test(pattern)) {
         pattern = "\\" + pattern;
         log(`[Solver] Auto-escaped special regex char: "${term.pattern}" -> "${pattern}"`);
+      }
+
+      // Validate regex for safety (ReDoS protection)
+      const regexValidation = validateRegex(pattern);
+      if (!regexValidation.valid) {
+        throw new Error(`Invalid regex pattern: ${regexValidation.error}`);
       }
 
       log(`[Solver] Executing grep("${pattern}")`);
@@ -137,8 +189,9 @@ function evaluate(
     }
 
     case "fuzzy_search": {
-      log(`[Solver] Executing fuzzy_search("${term.query}", ${term.limit ?? 10})`);
-      const results = tools.fuzzy_search(term.query, term.limit ?? 10);
+      const fuzzyLimit = Math.min(Math.max(1, term.limit ?? 10), 1000);
+      log(`[Solver] Executing fuzzy_search("${term.query}", ${fuzzyLimit})`);
+      const results = tools.fuzzy_search(term.query, fuzzyLimit);
       log(`[Solver] Found ${results.length} fuzzy matches`);
       return results;
     }
@@ -151,11 +204,16 @@ function evaluate(
     }
 
     case "lines": {
+      // Validate start/end are finite positive integers
+      if (!Number.isFinite(term.start) || !Number.isFinite(term.end) || term.start < 1 || term.end < 1) {
+        log(`[Solver] Invalid line range: ${term.start} to ${term.end}`);
+        return [];
+      }
       log(`[Solver] Getting lines ${term.start} to ${term.end}`);
       const allLines = tools.context.split("\n");
       // Convert to 0-indexed and clamp to valid range
-      const startIdx = Math.max(0, term.start - 1);
-      const endIdx = Math.min(allLines.length, term.end);
+      const startIdx = Math.max(0, Math.floor(term.start) - 1);
+      const endIdx = Math.min(allLines.length, Math.floor(term.end));
       const selectedLines = allLines.slice(startIdx, endIdx);
       log(`[Solver] Retrieved ${selectedLines.length} lines`);
       // Return array of strings to be compatible with filter/map
@@ -168,7 +226,7 @@ function evaluate(
 
     case "filter": {
       // Evaluate the collection first (may be grep, fuzzy_search, etc.)
-      const collection = evaluate(term.collection, tools, bindings, log) as Array<{ line: string; lineNum: number }>;
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1) as Array<{ line: string; lineNum: number }>;
       if (!Array.isArray(collection)) {
         throw new Error(`filter: expected array, got ${typeof collection}`);
       }
@@ -193,7 +251,7 @@ function evaluate(
           ? (item as { line: string }).line
           : String(item ?? "");
 
-        const matches = evaluatePredicate(predBody, predLambda.param, itemValue, tools, bindings, log);
+        const matches = evaluatePredicate(predBody, predLambda.param, itemValue, tools, bindings, log, depth + 1);
         if (matches) {
           results.push(item);
         }
@@ -204,7 +262,7 @@ function evaluate(
     }
 
     case "map": {
-      const collection = evaluate(term.collection, tools, bindings, log) as Array<{ line: string; lineNum: number }>;
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1) as Array<{ line: string; lineNum: number }>;
       if (!Array.isArray(collection)) {
         throw new Error(`map: expected array, got ${typeof collection}`);
       }
@@ -229,7 +287,8 @@ function evaluate(
           itemValue,
           tools,
           bindings,
-          log
+          log,
+          depth + 1
         );
         results.push(value);
       }
@@ -239,18 +298,26 @@ function evaluate(
 
     case "sum": {
       // Sum numeric values in array - works with any numeric array
-      const collection = evaluate(term.collection, tools, bindings, log);
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`sum: expected array, got ${typeof collection}`);
       }
       log(`[Solver] Summing ${collection.length} values`);
+      let skippedCount = 0;
       const total = collection.reduce((acc: number, val: unknown) => {
-        if (typeof val === "number") return acc + val;
+        if (typeof val === "number") {
+          if (!Number.isFinite(val)) { skippedCount++; return acc; }
+          return acc + val;
+        }
         if (typeof val === "string") {
           // Try to parse numeric string (handles "$1,000" format)
           const cleaned = val.replace(/[$,]/g, "");
           const num = parseFloat(cleaned);
-          return isNaN(num) ? acc : acc + num;
+          if (!Number.isFinite(num)) {
+            skippedCount++;
+            return acc;
+          }
+          return acc + num;
         }
         // Handle grep result objects - extract number from line
         if (typeof val === "object" && val !== null && "line" in val) {
@@ -260,18 +327,30 @@ function evaluate(
           if (numMatch) {
             const cleaned = numMatch[1].replace(/,/g, "");
             const num = parseFloat(cleaned);
-            return isNaN(num) ? acc : acc + num;
+            if (!Number.isFinite(num)) {
+              skippedCount++;
+              return acc;
+            }
+            return acc + num;
           }
         }
+        skippedCount++;
         return acc;
       }, 0);
+      if (skippedCount > 0) {
+        log(`[Solver] Warning: skipped ${skippedCount} non-numeric/unparseable values`);
+      }
+      if (!Number.isFinite(total)) {
+        log(`[Solver] Sum overflow: result is not finite`);
+        return null;
+      }
       log(`[Solver] Sum = ${total}`);
       return total;
     }
 
     case "count": {
       // Count items in array
-      const collection = evaluate(term.collection, tools, bindings, log);
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`count: expected array, got ${typeof collection}`);
       }
@@ -281,11 +360,11 @@ function evaluate(
 
     case "reduce": {
       // Generic reduce - (reduce collection init (lambda (acc x) ...))
-      const collection = evaluate(term.collection, tools, bindings, log);
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`reduce: expected array, got ${typeof collection}`);
       }
-      const init = evaluate(term.init, tools, bindings, log);
+      const init = evaluate(term.init, tools, bindings, log, depth + 1);
       if (term.fn.tag !== "lambda") {
         throw new Error(`reduce: fn must be a lambda`);
       }
@@ -293,7 +372,7 @@ function evaluate(
       let acc = init;
       for (const item of collection) {
         // Evaluate lambda with acc and item bound
-        acc = evaluateReduceFn(term.fn, acc, item, tools, bindings, log);
+        acc = evaluateReduceFn(term.fn, acc, item, tools, bindings, log, depth + 1);
       }
       return acc;
     }
@@ -303,8 +382,9 @@ function evaluate(
       // Use miniKanren to find a pattern that matches the examples
       log(`[Solver] Building classifier from ${term.examples.length} examples`);
 
-      const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input);
-      const falseExamples = term.examples.filter(e => e.output === false).map(e => e.input);
+      // Filter empty strings — they match everything and corrupt pattern finding
+      const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input).filter(s => s.length > 0);
+      const falseExamples = term.examples.filter(e => e.output === false).map(e => e.input).filter(s => s.length > 0);
 
       log(`[Solver] True examples: ${trueExamples.length}, False examples: ${falseExamples.length}`);
 
@@ -319,10 +399,10 @@ function evaluate(
       log(`[Solver] Found pattern: ${pattern}`);
 
       // Return a classifier function with case-insensitive matching
-      return (line: string) => {
-        const regex = new RegExp(pattern, "i");
-        return regex.test(line);
-      };
+      const classifyValidation = validateRegex(pattern);
+      if (!classifyValidation.valid) return null;
+      const regex = new RegExp(pattern, "i");
+      return (line: string) => regex.test(line);
     }
 
     // ==========================
@@ -330,44 +410,73 @@ function evaluate(
     // ==========================
 
     case "match": {
-      const str = evaluate(term.str, tools, bindings, log) as string;
+      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
       }
-      const regex = new RegExp(term.pattern, "i"); // Case-insensitive like grep
+      if (!Number.isInteger(term.group) || term.group < 0 || term.group > 99) return null;
+      const matchValidation = validateRegex(term.pattern);
+      if (!matchValidation.valid) {
+        throw new Error(`match: ${matchValidation.error}`);
+      }
+      const regex = new RegExp(term.pattern);
       const result = str.match(regex);
-      return result ? (result[term.group] ?? null) : null;
+      if (!result) return null;
+      if (term.group >= result.length) {
+        log(`[Solver] match: group ${term.group} out of bounds (result has ${result.length} groups)`);
+        return null;
+      }
+      return result[term.group] ?? null;
     }
 
     case "replace": {
-      const str = evaluate(term.str, tools, bindings, log) as string;
+      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`replace: expected string, got ${typeof str}`);
       }
-      return str.replace(new RegExp(term.from, "g"), term.to);
+      const replaceValidation = validateRegex(term.from);
+      if (!replaceValidation.valid) {
+        throw new Error(`replace: ${replaceValidation.error}`);
+      }
+      // Escape $ in replacement to prevent backreference injection ($1, $&, etc.)
+      const safeReplacement = term.to.replace(/\$/g, "$$$$");
+      const MAX_RESULT_LENGTH = 1_000_000;
+      const result = str.replace(new RegExp(term.from, "g"), safeReplacement);
+      if (result.length > MAX_RESULT_LENGTH) return null;
+      return result;
     }
 
     case "split": {
-      const str = evaluate(term.str, tools, bindings, log) as string;
+      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`split: expected string, got ${typeof str}`);
       }
+      if (!Number.isInteger(term.index) || term.index < 0) return null;
+      if (!term.delim || term.delim.length === 0 || term.delim.length > 1000) return null;
+      const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(term.delim);
+      if (parts.length > MAX_SPLIT_PARTS) return null;
       return parts[term.index] ?? null;
     }
 
     case "parseInt": {
-      const str = evaluate(term.str, tools, bindings, log);
-      return parseInt(String(str), 10);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const strForInt = String(str);
+      if (strForInt.length > 200) return null;
+      const intResult = parseInt(strForInt, 10);
+      return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
-      const str = evaluate(term.str, tools, bindings, log);
-      return parseFloat(String(str));
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const strForFloat = String(str);
+      if (strForFloat.length > 200) return null;
+      const floatResult = parseFloat(strForFloat);
+      return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
     case "parseDate": {
-      const str = evaluate(term.str, tools, bindings, log);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
       log(`[Lattice] Parsing date from: "${str}"`);
 
       // If examples are provided, prefer synthesis for consistency
@@ -392,7 +501,7 @@ function evaluate(
     }
 
     case "parseCurrency": {
-      const str = evaluate(term.str, tools, bindings, log);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
       log(`[Lattice] Parsing currency from: "${str}"`);
 
       // If examples are provided, prefer synthesis for consistency
@@ -417,7 +526,7 @@ function evaluate(
     }
 
     case "parseNumber": {
-      const str = evaluate(term.str, tools, bindings, log);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
       log(`[Lattice] Parsing number from: "${str}"`);
 
       // If examples are provided, prefer synthesis for consistency
@@ -442,7 +551,7 @@ function evaluate(
     }
 
     case "coerce": {
-      const value = evaluate(term.term, tools, bindings, log);
+      const value = evaluate(term.term, tools, bindings, log, depth + 1);
       log(`[Lattice] Coercing "${value}" to ${term.targetType}`);
       const coerced = coerceValue(value, term.targetType);
       log(`[Lattice] Coerced result: ${coerced}`);
@@ -450,13 +559,25 @@ function evaluate(
     }
 
     case "extract": {
-      const str = evaluate(term.str, tools, bindings, log) as string;
+      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`extract: expected string, got ${typeof str}`);
       }
+      if (!Number.isInteger(term.group) || term.group < 0 || term.group > 99) return null;
+      const extractValidation = validateRegex(term.pattern);
+      if (!extractValidation.valid) {
+        throw new Error(`extract: ${extractValidation.error}`);
+      }
       const regex = new RegExp(term.pattern, "i");
       const result = str.match(regex);
-      let extracted = result ? (result[term.group] ?? null) : null;
+      let extracted: string | null = null;
+      if (result) {
+        if (term.group >= result.length) {
+          log(`[Solver] extract: group ${term.group} out of bounds (result has ${result.length} groups)`);
+        } else {
+          extracted = (result[term.group] as string) ?? null;
+        }
+      }
 
       // If extraction failed and examples are provided, use synthesis
       if (extracted === null && term.examples && term.examples.length > 0) {
@@ -542,17 +663,24 @@ function evaluate(
     }
 
     case "add": {
-      const left = evaluate(term.left, tools, bindings, log) as number;
-      const right = evaluate(term.right, tools, bindings, log) as number;
-      return left + right;
+      const left = evaluate(term.left, tools, bindings, log, depth + 1);
+      const right = evaluate(term.right, tools, bindings, log, depth + 1);
+      if (typeof left !== "number" || typeof right !== "number") {
+        throw new Error(`add: expected numbers, got ${typeof left} and ${typeof right}`);
+      }
+      if (!Number.isFinite(left) || !Number.isFinite(right)) {
+        return null;
+      }
+      const addResult = left + right;
+      return Number.isFinite(addResult) ? addResult : null;
     }
 
     case "if": {
-      const cond = evaluate(term.cond, tools, bindings, log);
+      const cond = evaluate(term.cond, tools, bindings, log, depth + 1);
       if (cond) {
-        return evaluate(term.then, tools, bindings, log);
+        return evaluate(term.then, tools, bindings, log, depth + 1);
       } else {
-        return evaluate(term.else, tools, bindings, log);
+        return evaluate(term.else, tools, bindings, log, depth + 1);
       }
     }
 
@@ -561,21 +689,23 @@ function evaluate(
       return { _type: "closure", param: term.param, body: term.body };
 
     case "app": {
-      const fn = evaluate(term.fn, tools, bindings, log) as { _type: "closure"; param: string; body: LCTerm };
-      if (!fn || fn._type !== "closure") {
+      const fn = evaluate(term.fn, tools, bindings, log, depth + 1);
+      if (!fn || typeof fn !== "object" || (fn as { _type?: string })._type !== "closure") {
         throw new Error(`app: expected closure, got ${typeof fn}`);
       }
-      const arg = evaluate(term.arg, tools, bindings, log);
+      const closure = fn as { _type: "closure"; param: string; body: LCTerm };
+      const arg = evaluate(term.arg, tools, bindings, log, depth + 1);
       // Substitute arg for param in body and evaluate
       // For simplicity, we evaluate directly here
-      return evaluateWithBinding(fn.body, fn.param, arg, tools, bindings, log);
+      return evaluateWithBinding(closure.body, closure.param, arg, tools, bindings, log, depth + 1);
     }
 
     case "constrained":
-      return evaluate(term.term, tools, bindings, log);
+      return evaluate(term.term, tools, bindings, log, depth + 1);
 
     case "define-fn": {
       // Synthesize a function from examples and return it for storage
+      if (!term.examples || term.examples.length === 0) return null;
       log(`[Lattice] Defining function "${term.name}" from ${term.examples.length} examples`);
       const result = synthesisIntegrator.synthesizeOnFailure({
         operation: "define-fn",
@@ -599,18 +729,22 @@ function evaluate(
     case "apply-fn": {
       // Look up stored function and apply it
       const fnKey = `_fn_${term.name}`;
-      const storedFn = bindings.get(fnKey) as { _type: string; fn: (input: string) => unknown } | undefined;
-      if (!storedFn || storedFn._type !== "synthesized-fn") {
+      const storedRaw = bindings.get(fnKey);
+      if (!storedRaw || typeof storedRaw !== "object" || storedRaw === null) {
         throw new Error(`apply-fn: function "${term.name}" not found in bindings`);
       }
-      const arg = evaluate(term.arg, tools, bindings, log);
+      const storedFn = storedRaw as Record<string, unknown>;
+      if (storedFn._type !== "synthesized-fn" || typeof storedFn.fn !== "function") {
+        throw new Error(`apply-fn: function "${term.name}" not found or invalid in bindings`);
+      }
+      const arg = evaluate(term.arg, tools, bindings, log, depth + 1);
       log(`[Lattice] Applying function "${term.name}" to "${arg}"`);
-      return storedFn.fn(String(arg));
+      return (storedFn.fn as (input: string) => unknown)(String(arg));
     }
 
     case "predicate": {
       // Synthesize a predicate from examples
-      const str = evaluate(term.str, tools, bindings, log);
+      const str = evaluate(term.str, tools, bindings, log, depth + 1);
       if (term.examples && term.examples.length > 0) {
         log(`[Lattice] Synthesizing predicate from ${term.examples.length} examples`);
         const result = synthesisIntegrator.synthesizeOnFailure({
@@ -660,7 +794,7 @@ function evaluate(
         throw new Error("get_symbol_body: No symbol database available. Load a code file first.");
       }
 
-      const symbolRef = evaluate(term.symbol, tools, bindings, log);
+      const symbolRef = evaluate(term.symbol, tools, bindings, log, depth + 1);
       let symbol: import("../treesitter/types.js").Symbol | null = null;
 
       // Handle different input types
@@ -689,8 +823,21 @@ function evaluate(
       // Find all occurrences of the identifier in the document
       log(`[Solver] Finding references to: ${term.name}`);
 
+      // Limit name length to prevent performance issues
+      if (term.name.length > 500) {
+        log(`[Solver] Name too long for find_references: ${term.name.length} chars`);
+        return [];
+      }
+
       // Use word boundary matching to find whole-word references
-      const pattern = `\\b${term.name}\\b`;
+      const escaped = term.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      if (escaped.length > 1000) return [];
+      const pattern = `\\b${escaped}\\b`;
+      const patternValidation = validateRegex(pattern);
+      if (!patternValidation.valid) {
+        log(`[Solver] Invalid find_references pattern: ${patternValidation.error}`);
+        return [];
+      }
       const results = tools.grep(pattern);
 
       log(`[Solver] Found ${results.length} references to "${term.name}"`);
@@ -712,14 +859,18 @@ function evaluatePredicate(
   value: string,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): boolean {
   // Simple pattern: (match var "pattern" 0)
   if (body.tag === "match") {
-    const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log));
-    const regex = new RegExp(body.pattern, "i"); // Case-insensitive like grep
+    if (!Number.isInteger(body.group) || body.group < 0) return false;
+    const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, depth + 1));
+    const patternValidation = validateRegex(body.pattern);
+    if (!patternValidation.valid) return false;
+    const regex = new RegExp(body.pattern);
     const result = str.match(regex);
-    return result !== null && result[body.group] !== undefined;
+    return result !== null && body.group < result.length && result[body.group] !== undefined;
   }
 
   // Variable reference - check if value is truthy
@@ -733,7 +884,7 @@ function evaluatePredicate(
   }
 
   // For complex predicates, evaluate and check truthiness
-  const result = evaluateWithBinding(body, param, value, tools, bindings, log);
+  const result = evaluateWithBinding(body, param, value, tools, bindings, log, depth + 1);
   return Boolean(result);
 }
 
@@ -746,9 +897,10 @@ function evaluateTransform(
   value: string,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): unknown {
-  return evaluateWithBinding(body, param, value, tools, bindings, log);
+  return evaluateWithBinding(body, param, value, tools, bindings, log, depth + 1);
 }
 
 /**
@@ -760,7 +912,8 @@ function evaluateReduceFn(
   item: unknown,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): unknown {
   // For now, assume a simple two-parameter lambda pattern
   // The lambda body references the accumulator and current item
@@ -775,14 +928,17 @@ function evaluateReduceFn(
     const newBindings = new Map(bindings);
     newBindings.set(param, acc);
     newBindings.set(itemParam, item);
-    return evaluate(innerBody, tools, newBindings, log);
+    return evaluate(innerBody, tools, newBindings, log, depth + 1);
   }
 
   // Single param - bind it to the item, use existing bindings for acc
   const newBindings = new Map(bindings);
   newBindings.set(param, item);
-  newBindings.set("acc", acc); // Convention: acc is available
-  return evaluate(body, tools, newBindings, log);
+  // Only set "acc" if it won't collide with the lambda parameter name
+  if (param !== "acc") {
+    newBindings.set("acc", acc);
+  }
+  return evaluate(body, tools, newBindings, log, depth + 1);
 }
 
 /**
@@ -794,13 +950,17 @@ function evaluateWithBinding(
   value: unknown,
   tools: SolverTools,
   bindings: Bindings,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): unknown {
+  if (depth > MAX_EVAL_DEPTH) {
+    throw new Error("evaluateWithBinding: maximum recursion depth exceeded");
+  }
   // Substitute variables and evaluate
   switch (body.tag) {
     case "var":
       if (body.name === param) return value;
-      return evaluate(body, tools, bindings, log);
+      return evaluate(body, tools, bindings, log, depth + 1);
 
     case "lit":
       return body.value;
@@ -808,8 +968,13 @@ function evaluateWithBinding(
     case "match": {
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
-        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log));
-      const regex = new RegExp(body.pattern, "i"); // Case-insensitive like grep
+        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
+      const matchVal = validateRegex(body.pattern);
+      if (!matchVal.valid) {
+        throw new Error(`match: ${matchVal.error}`);
+      }
+      if (!Number.isInteger(body.group) || body.group < 0) return null;
+      const regex = new RegExp(body.pattern);
       const result = str.match(regex);
       return result ? (result[body.group] ?? null) : null;
     }
@@ -817,36 +982,58 @@ function evaluateWithBinding(
     case "replace": {
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
-        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log));
-      return str.replace(new RegExp(body.from, "g"), body.to);
+        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
+      const replaceVal = validateRegex(body.from);
+      if (!replaceVal.valid) {
+        throw new Error(`replace: ${replaceVal.error}`);
+      }
+      const safeReplacement = body.to.replace(/\$/g, "$$$$");
+      return str.replace(new RegExp(body.from, "g"), safeReplacement);
     }
 
     case "split": {
+      if (!Number.isInteger(body.index) || body.index < 0) return null;
+      if (!body.delim || body.delim.length === 0 || body.delim.length > 1000) return null;
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
-        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log));
+        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
+      const MAX_EVAL_SPLIT_PARTS = 10_000;
       const parts = str.split(body.delim);
+      if (parts.length > MAX_EVAL_SPLIT_PARTS) return null;
       return parts[body.index] ?? null;
     }
 
     case "parseInt": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
-      return parseInt(String(str), 10);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
+      const strForInt = String(str);
+      if (strForInt.length > 200) return null;
+      const intResult = parseInt(strForInt, 10);
+      return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
-      return parseFloat(String(str));
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
+      const strForFloat = String(str);
+      if (strForFloat.length > 200) return null;
+      const floatResult = parseFloat(strForFloat);
+      return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
     case "add": {
-      const left = evaluateWithBinding(body.left, param, value, tools, bindings, log) as number;
-      const right = evaluateWithBinding(body.right, param, value, tools, bindings, log) as number;
-      return left + right;
+      const left = evaluateWithBinding(body.left, param, value, tools, bindings, log, depth + 1);
+      const right = evaluateWithBinding(body.right, param, value, tools, bindings, log, depth + 1);
+      if (typeof left !== "number" || typeof right !== "number") {
+        throw new Error(`add: expected numbers, got ${typeof left} and ${typeof right}`);
+      }
+      if (!Number.isFinite(left) || !Number.isFinite(right)) {
+        return null;
+      }
+      const addResult = left + right;
+      return Number.isFinite(addResult) ? addResult : null;
     }
 
     case "parseDate": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strValue = String(str);
 
       // If examples are provided, prefer synthesis for consistency
@@ -866,7 +1053,7 @@ function evaluateWithBinding(
     }
 
     case "parseCurrency": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strValue = String(str);
 
       // If examples are provided, prefer synthesis for consistency
@@ -886,7 +1073,7 @@ function evaluateWithBinding(
     }
 
     case "parseNumber": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strValue = String(str);
 
       // If examples are provided, prefer synthesis for consistency
@@ -906,13 +1093,16 @@ function evaluateWithBinding(
     }
 
     case "coerce": {
-      const termValue = evaluateWithBinding(body.term, param, value, tools, bindings, log);
+      const termValue = evaluateWithBinding(body.term, param, value, tools, bindings, log, depth + 1);
       return coerceValue(termValue, body.targetType);
     }
 
     case "extract": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log) as string;
+      if (!Number.isInteger(body.group) || body.group < 0) return null;
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") return null;
+      const extractPatternValidation = validateRegex(body.pattern);
+      if (!extractPatternValidation.valid) return null;
       const regex = new RegExp(body.pattern, "i");
       const result = str.match(regex);
       let extracted = result ? (result[body.group] ?? null) : null;
@@ -949,7 +1139,7 @@ function evaluateWithBinding(
     }
 
     case "predicate": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log);
+      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       // Handle grep result objects - extract the line property
       const strValue =
         typeof str === "object" && str !== null && "line" in str
@@ -973,7 +1163,7 @@ function evaluateWithBinding(
       // For unhandled cases, create a temporary binding and evaluate
       const newBindings = new Map(bindings);
       newBindings.set(param, value);
-      return evaluate(body, tools, newBindings, log);
+      return evaluate(body, tools, newBindings, log, depth + 1);
   }
 }
 
@@ -1004,6 +1194,8 @@ function findDistinguishingPattern(
   // Find pattern that matches all true and no false
   for (const pattern of candidatePatterns) {
     try {
+      const patternValidation = validateRegex(pattern);
+      if (!patternValidation.valid) continue;
       const regex = new RegExp(pattern, "i");
       const matchesAllTrue = trueExamples.every(ex => regex.test(ex));
       const matchesNoFalse = falseExamples.every(ex => !regex.test(ex));
@@ -1017,12 +1209,13 @@ function findDistinguishingPattern(
   }
 
   // Fallback: use the most common word in true examples not in false
-  const trueWords = new Set(trueExamples.flatMap(ex => ex.toLowerCase().split(/\W+/)));
-  const falseWords = new Set(falseExamples.flatMap(ex => ex.toLowerCase().split(/\W+/)));
+  const trueWords = new Set(trueExamples.flatMap(ex => ex.toLowerCase().split(/\W+/).filter(w => w.length > 0)));
+  const falseWords = new Set(falseExamples.flatMap(ex => ex.toLowerCase().split(/\W+/).filter(w => w.length > 0)));
 
   for (const word of trueWords) {
     if (word.length > 3 && !falseWords.has(word)) {
-      return word;
+      // Escape regex metacharacters so the word is safe for new RegExp()
+      return word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     }
   }
 
@@ -1057,30 +1250,46 @@ function extractCommonSubstrings(examples: string[]): string[] {
 // ============================================================================
 
 /**
+ * Returns the number of days in a given month (1-indexed), accounting for leap years.
+ */
+function daysInMonth(month: number, year: number): number {
+  const days = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month === 2 && (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0))) {
+    return 29;
+  }
+  return days[month] ?? 0;
+}
+
+/**
  * Parse a date string into ISO format (YYYY-MM-DD)
  * Handles various formats: ISO, US (MM/DD/YYYY), EU (DD/MM/YYYY), natural language
  */
 function parseDate(str: string, formatHint?: string): string | null {
   if (!str || typeof str !== "string") return null;
+  if (str.length > MAX_PARSE_INPUT_LENGTH) return null;
 
   const cleaned = str.trim();
 
   // ISO format: 2024-01-15, 2024/01/15
-  const isoMatch = cleaned.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  const isoMatch = cleaned.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
   if (isoMatch) {
     const [, year, month, day] = isoMatch;
-    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    const m = parseInt(month, 10);
+    const d = parseInt(day, 10);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(year, 10))) {
+      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+    }
   }
 
   // US format: MM/DD/YYYY, MM-DD-YYYY
   if (formatHint === "US" || (!formatHint && cleaned.includes("/"))) {
-    const usMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+    const usMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
     if (usMatch) {
       const [, month, day, year] = usMatch;
       const m = parseInt(month, 10);
       const d = parseInt(day, 10);
-      // Validate US format (month <= 12)
-      if (m <= 12 && d <= 31) {
+      // Validate US format (month 1-12, day within month's max)
+      if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(year, 10))) {
         return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
       }
     }
@@ -1088,10 +1297,14 @@ function parseDate(str: string, formatHint?: string): string | null {
 
   // EU format: DD/MM/YYYY, DD-MM-YYYY
   if (formatHint === "EU") {
-    const euMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
+    const euMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
     if (euMatch) {
       const [, day, month, year] = euMatch;
-      return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      const m = parseInt(month, 10);
+      const d = parseInt(day, 10);
+      if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(year, 10))) {
+        return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+      }
     }
   }
 
@@ -1105,7 +1318,7 @@ function parseDate(str: string, formatHint?: string): string | null {
     jun: "06", june: "06",
     jul: "07", july: "07",
     aug: "08", august: "08",
-    sep: "09", september: "09",
+    sep: "09", sept: "09", september: "09",
     oct: "10", october: "10",
     nov: "11", november: "11",
     dec: "12", december: "12",
@@ -1116,7 +1329,12 @@ function parseDate(str: string, formatHint?: string): string | null {
   if (mdy) {
     const monthNum = months[mdy[1].toLowerCase()];
     if (monthNum) {
-      return `${mdy[3]}-${monthNum}-${mdy[2].padStart(2, "0")}`;
+      const m = parseInt(monthNum, 10);
+      const d = parseInt(mdy[2], 10);
+      if (d >= 1 && d <= daysInMonth(m, parseInt(mdy[3], 10))) {
+        return `${mdy[3]}-${monthNum}-${mdy[2].padStart(2, "0")}`;
+      }
+      return null; // Recognized month but invalid day — don't fall through to JS Date
     }
   }
 
@@ -1125,17 +1343,27 @@ function parseDate(str: string, formatHint?: string): string | null {
   if (dmy) {
     const monthNum = months[dmy[2].toLowerCase()];
     if (monthNum) {
-      return `${dmy[3]}-${monthNum}-${dmy[1].padStart(2, "0")}`;
+      const m = parseInt(monthNum, 10);
+      const d = parseInt(dmy[1], 10);
+      if (d >= 1 && d <= daysInMonth(m, parseInt(dmy[3], 10))) {
+        return `${dmy[3]}-${monthNum}-${dmy[1].padStart(2, "0")}`;
+      }
+      return null; // Recognized month but invalid day — don't fall through to JS Date
     }
   }
 
-  // Try JavaScript Date parsing as fallback
-  const jsDate = new Date(cleaned);
-  if (!isNaN(jsDate.getTime())) {
-    const year = jsDate.getFullYear();
-    const month = String(jsDate.getMonth() + 1).padStart(2, "0");
-    const day = String(jsDate.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+  // Try JavaScript Date parsing as fallback, but only for non-numeric formats
+  // to avoid JS Date silently normalizing invalid dates (e.g., Feb 31 → Mar 3)
+  const looksNumeric = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(cleaned)
+    || /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(cleaned);
+  if (!looksNumeric) {
+    const jsDate = new Date(cleaned);
+    if (!isNaN(jsDate.getTime())) {
+      const year = jsDate.getUTCFullYear();
+      const month = String(jsDate.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(jsDate.getUTCDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    }
   }
 
   return null;
@@ -1145,15 +1373,20 @@ function parseDate(str: string, formatHint?: string): string | null {
  * Parse a currency string into a number
  * Handles: $1,234.56, €1.234,56, £1,234, ¥1234, etc.
  */
+const MAX_PARSE_INPUT_LENGTH = 100;
+
 function parseCurrency(str: string): number | null {
   if (!str || typeof str !== "string") return null;
+  if (str.length > MAX_PARSE_INPUT_LENGTH) return null;
 
   let cleaned = str.trim();
 
-  // Handle negative: (1,234) or -1,234 or -$1,234
-  const isNegative = cleaned.startsWith("(") && cleaned.endsWith(")") ||
+  // Handle negative: (1,234) or -1,234 or -$1,234 or $-1,234
+  const isNegative = (cleaned.startsWith("(") && cleaned.endsWith(")")) ||
                      cleaned.startsWith("-") ||
-                     /^-[\$€£¥₹₽₿]/.test(cleaned);
+                     cleaned.endsWith("-") ||
+                     /^-[\$€£¥₹₽₿]/.test(cleaned) ||
+                     /^[\$€£¥₹₽₿]-/.test(cleaned);
 
   // Remove currency symbols, parentheses, minus signs, and whitespace
   cleaned = cleaned.replace(/[\$€£¥₹₽₿\s\(\)\-]/g, "");
@@ -1208,7 +1441,7 @@ function parseCurrency(str: string): number | null {
   }
 
   const value = parseFloat(normalized);
-  if (isNaN(value)) return null;
+  if (isNaN(value) || !isFinite(value)) return null;
 
   return isNegative ? -value : value;
 }
@@ -1219,18 +1452,33 @@ function parseCurrency(str: string): number | null {
  */
 function parseNumber(str: string): number | null {
   if (!str || typeof str !== "string") return null;
+  if (str.length > MAX_PARSE_INPUT_LENGTH) return null;
 
   const cleaned = str.trim();
 
-  // Handle percentage
+  // Handle percentage — strip iteratively to avoid recursive stack overflow
   if (cleaned.endsWith("%")) {
-    const num = parseNumber(cleaned.slice(0, -1));
-    return num !== null ? num / 100 : null;
+    let pct = cleaned;
+    let percentCount = 0;
+    const MAX_PERCENT_DEPTH = 10;
+    while (pct.endsWith("%") && percentCount < MAX_PERCENT_DEPTH) {
+      pct = pct.slice(0, -1);
+      percentCount++;
+    }
+    if (pct.endsWith("%")) return null; // too many nested %
+    const num = parseNumber(pct);
+    if (num === null) return null;
+    let result = num;
+    for (let i = 0; i < percentCount; i++) {
+      result = result / 100;
+    }
+    return Number.isFinite(result) ? result : null;
   }
 
   // Handle scientific notation
   if (/^-?\d+\.?\d*e[+-]?\d+$/i.test(cleaned)) {
-    return parseFloat(cleaned);
+    const sci = parseFloat(cleaned);
+    return isFinite(sci) ? sci : null;
   }
 
   // Use currency parser logic for formatted numbers
@@ -1269,7 +1517,7 @@ function coerceValue(value: unknown, targetType: CoercionType): unknown {
       const lower = str.toLowerCase().trim();
       if (["true", "yes", "1", "on"].includes(lower)) return true;
       if (["false", "no", "0", "off", ""].includes(lower)) return false;
-      return Boolean(str);
+      return null;
     }
 
     case "string":

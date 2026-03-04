@@ -5,6 +5,14 @@
 
 import { RegexNode } from "./regex/synthesis.js";
 
+/** Lightweight regex validation to avoid circular dependency with lc-solver */
+function validateRegex(pattern: string): { valid: boolean } {
+  if (pattern.length > 500) return { valid: false };
+  // Reject nested quantifiers (ReDoS patterns)
+  if (/(\((?:[^()]*[+*{])[^()]*\))[+*{]/.test(pattern)) return { valid: false };
+  try { new RegExp(pattern); return { valid: true }; } catch { return { valid: false }; }
+}
+
 /**
  * A synthesized component that can be reused
  */
@@ -44,7 +52,30 @@ export class KnowledgeBase {
   /**
    * Add a synthesized component to the knowledge base
    */
+  private static readonly MAX_COMPONENTS = 500;
+
   add(component: SynthesizedComponent): void {
+    // Evict lowest-usage component if at capacity
+    if (this.components.size >= KnowledgeBase.MAX_COMPONENTS && !this.components.has(component.id)) {
+      this.evictLowestUsage();
+    }
+
+    // Clean old index entries if re-adding an existing component
+    const existing = this.components.get(component.id);
+    if (existing) {
+      const oldTypeSet = this.typeIndex.get(existing.type);
+      if (oldTypeSet) {
+        oldTypeSet.delete(component.id);
+        if (oldTypeSet.size === 0) this.typeIndex.delete(existing.type);
+      }
+      const oldSignature = this.computeSignature(existing);
+      const oldPatternSet = this.patternIndex.get(oldSignature);
+      if (oldPatternSet) {
+        oldPatternSet.delete(component.id);
+        if (oldPatternSet.size === 0) this.patternIndex.delete(oldSignature);
+      }
+    }
+
     this.components.set(component.id, component);
 
     // Index by type
@@ -110,7 +141,9 @@ export class KnowledgeBase {
           b.component.successCount / Math.max(1, b.component.usageCount);
         const aWeight = a.score * aSuccessRate;
         const bWeight = b.score * bSuccessRate;
-        return bWeight - aWeight;
+        if (bWeight > aWeight) return 1;
+        if (bWeight < aWeight) return -1;
+        return 0;
       })
       .map((c) => c.component);
   }
@@ -125,6 +158,8 @@ export class KnowledgeBase {
 
     for (const [, component] of this.components) {
       if (component.pattern) {
+        const validation = validateRegex(component.pattern);
+        if (!validation.valid) continue;
         try {
           const regex = new RegExp(component.pattern);
           const matchCount = targetExamples.filter((e) => regex.test(e)).length;
@@ -177,9 +212,10 @@ export class KnowledgeBase {
     };
 
     // Mark parents as composable with the derived component
+    const MAX_COMPOSABLE_WITH = 100;
     for (const parent of parents) {
       const stored = this.components.get(parent.id);
-      if (stored) {
+      if (stored && stored.composableWith.length < MAX_COMPOSABLE_WITH) {
         stored.composableWith.push(derived.id);
       }
     }
@@ -202,6 +238,48 @@ export class KnowledgeBase {
     for (const component of components) {
       this.add(component);
     }
+  }
+
+  /**
+   * Remove a component by id
+   */
+  remove(id: string): void {
+    const component = this.components.get(id);
+    if (!component) return;
+
+    // Remove from type index
+    const typeSet = this.typeIndex.get(component.type);
+    if (typeSet) {
+      typeSet.delete(id);
+      if (typeSet.size === 0) this.typeIndex.delete(component.type);
+    }
+
+    // Remove from pattern index
+    const signature = this.computeSignature(component);
+    const patternSet = this.patternIndex.get(signature);
+    if (patternSet) {
+      patternSet.delete(id);
+      if (patternSet.size === 0) this.patternIndex.delete(signature);
+    }
+
+    this.components.delete(id);
+  }
+
+  /**
+   * Evict the lowest-usage component to make room
+   */
+  private evictLowestUsage(): void {
+    let lowestId: string | null = null;
+    let lowestScore = Infinity;
+    for (const [id, comp] of this.components) {
+      const successRate = comp.usageCount > 0 ? comp.successCount / comp.usageCount : 0;
+      const score = comp.usageCount + successRate;
+      if (score < lowestScore) {
+        lowestScore = score;
+        lowestId = id;
+      }
+    }
+    if (lowestId) this.remove(lowestId);
   }
 
   /**
@@ -252,9 +330,11 @@ export class KnowledgeBase {
     }
 
     // Jaccard-like similarity based on character patterns
-    const exampleChars = new Set(examples.join("").split(""));
+    const MAX_CHAR_INPUT = 10_000;
+    const MAX_EXAMPLES_JOIN = 100;
+    const exampleChars = new Set(examples.slice(0, MAX_EXAMPLES_JOIN).join("").slice(0, MAX_CHAR_INPUT).split(""));
     const componentChars = new Set(
-      component.positiveExamples.join("").split("")
+      component.positiveExamples.slice(0, MAX_EXAMPLES_JOIN).join("").slice(0, MAX_CHAR_INPUT).split("")
     );
 
     const intersection = new Set(
@@ -262,7 +342,7 @@ export class KnowledgeBase {
     );
     const union = new Set([...exampleChars, ...componentChars]);
 
-    return intersection.size / union.size;
+    return union.size === 0 ? 0 : intersection.size / union.size;
   }
 
   /**
@@ -272,6 +352,7 @@ export class KnowledgeBase {
     components: SynthesizedComponent[],
     examples: string[]
   ): SynthesizedComponent[][] {
+    const MAX_COMPOSITIONS = 100;
     const compositions: SynthesizedComponent[][] = [];
 
     // Try pairs
@@ -280,6 +361,7 @@ export class KnowledgeBase {
         const combined = [components[i], components[j]];
         if (this.coversAll(combined, examples)) {
           compositions.push(combined);
+          if (compositions.length >= MAX_COMPOSITIONS) return compositions;
         }
       }
     }
@@ -297,6 +379,8 @@ export class KnowledgeBase {
     for (const example of examples) {
       const covered = components.some((c) => {
         if (c.pattern) {
+          const validation = validateRegex(c.pattern);
+          if (!validation.valid) return false;
           try {
             return new RegExp(c.pattern).test(example);
           } catch {

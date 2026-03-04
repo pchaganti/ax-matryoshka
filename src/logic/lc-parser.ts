@@ -58,10 +58,11 @@ type Token =
  * Lexer: convert input string to tokens
  */
 function tokenize(input: string): Token[] {
+  const MAX_TOKENS = 100_000;
   const tokens: Token[] = [];
   let i = 0;
 
-  while (i < input.length) {
+  while (i < input.length && tokens.length < MAX_TOKENS) {
     const ch = input[i];
 
     // Skip whitespace
@@ -109,12 +110,16 @@ function tokenize(input: string): Token[] {
     // Keyword (starts with :)
     if (ch === ":") {
       i++;
+      const MAX_KW_LENGTH = 200;
       let kw = "";
-      while (i < input.length && /[a-zA-Z_0-9]/.test(input[i])) {
+      while (i < input.length && /[a-zA-Z_0-9]/.test(input[i]) && kw.length < MAX_KW_LENGTH) {
         kw += input[i];
         i++;
       }
-      tokens.push({ type: "keyword", value: kw });
+      if (kw.length > 0) {
+        tokens.push({ type: "keyword", value: kw });
+      }
+      // Skip lone ':' — no token produced
       continue;
     }
 
@@ -128,8 +133,9 @@ function tokenize(input: string): Token[] {
     // String literal
     if (ch === '"') {
       i++;
+      const MAX_STRING_LENGTH = 100_000;
       let str = "";
-      while (i < input.length && input[i] !== '"') {
+      while (i < input.length && input[i] !== '"' && str.length < MAX_STRING_LENGTH) {
         if (input[i] === "\\") {
           i++;
           if (i < input.length) {
@@ -161,6 +167,10 @@ function tokenize(input: string): Token[] {
           i++;
         }
       }
+      if (i >= input.length) {
+        // Unterminated string - throw to produce a clear error message
+        throw new Error("Unterminated string literal");
+      }
       i++; // skip closing quote
       tokens.push({ type: "string", value: str });
       continue;
@@ -173,18 +183,30 @@ function tokenize(input: string): Token[] {
         num = "-";
         i++;
       }
-      while (i < input.length && /[\d.]/.test(input[i])) {
+      let hasDecimal = false;
+      const MAX_NUM_LENGTH = 50;
+      while (i < input.length && /[\d.]/.test(input[i]) && num.length < MAX_NUM_LENGTH) {
+        if (input[i] === ".") {
+          if (hasDecimal) break; // Stop at second decimal point
+          hasDecimal = true;
+        }
         num += input[i];
         i++;
       }
-      tokens.push({ type: "number", value: parseFloat(num) });
+      const parsed = parseFloat(num);
+      if (isNaN(parsed) || !isFinite(parsed)) {
+        // Malformed number (e.g. bare "-") or Infinity, skip
+        continue;
+      }
+      tokens.push({ type: "number", value: parsed });
       continue;
     }
 
     // Symbol (including special characters for constraints and hyphen for compound names)
     if (/[a-zA-Z_Σμε⚡φ∞\/]/.test(ch)) {
       let sym = "";
-      while (i < input.length && /[a-zA-Z_0-9Σμε⚡φ∞\/\-]/.test(input[i])) {
+      const MAX_SYM_LENGTH = 200;
+      while (i < input.length && /[a-zA-Z_0-9Σμε⚡φ∞\/\-]/.test(input[i]) && sym.length < MAX_SYM_LENGTH) {
         sym += input[i];
         i++;
       }
@@ -240,9 +262,10 @@ function parseExamples(state: ParserState): Array<{ input: string; output: unkno
   const isParenList = start.type === "lparen";
   consume(state); // [ or (
 
+  const MAX_EXAMPLES = 1000;
   const examples: Array<{ input: string; output: unknown }> = [];
 
-  while (peek(state)) {
+  while (peek(state) && examples.length < MAX_EXAMPLES) {
     const next = peek(state);
 
     // End of list
@@ -286,7 +309,8 @@ function parseConstraintObject(state: ParserState): Record<string, unknown> | nu
 
   consume(state); // {
 
-  const constraints: Record<string, unknown> = {};
+  const constraints: Record<string, unknown> = Object.create(null);
+  const MAX_CONSTRAINT_ENTRIES = 100;
 
   while (peek(state)) {
     const next = peek(state);
@@ -297,10 +321,14 @@ function parseConstraintObject(state: ParserState): Record<string, unknown> | nu
       break;
     }
 
+    if (Object.keys(constraints).length >= MAX_CONSTRAINT_ENTRIES) break;
+
     // Expect :key value pairs
+    const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__"]);
     if (next?.type === "keyword") {
       consume(state);
       const key = next.value;
+      if (DANGEROUS_KEYS.has(key)) continue;
       const value = parseTerm(state);
       if (value && value.tag === "lit") {
         constraints[key] = value.value;
@@ -329,7 +357,10 @@ function parseExamplesKeyword(state: ParserState): Array<{ input: string; output
 /**
  * Parse a single term
  */
-function parseTerm(state: ParserState): LCTerm | null {
+const MAX_PARSE_DEPTH = 200;
+
+function parseTerm(state: ParserState, depth: number = 0): LCTerm | null {
+  if (depth > MAX_PARSE_DEPTH) return null;
   const token = peek(state);
   if (!token) return null;
 
@@ -506,6 +537,7 @@ function parseList(state: ParserState): LCTerm | null {
       const group = parseTerm(state);
       if (!group || group.tag !== "lit" || typeof group.value !== "number")
         return null;
+      if (!Number.isSafeInteger(group.value) || group.value < 0 || group.value > 99) return null;
       return { tag: "match", str, pattern: pattern.value, group: group.value };
     }
 
@@ -527,7 +559,7 @@ function parseList(state: ParserState): LCTerm | null {
       if (!delim || delim.tag !== "lit" || typeof delim.value !== "string")
         return null;
       const index = parseTerm(state);
-      if (!index || index.tag !== "lit" || typeof index.value !== "number")
+      if (!index || index.tag !== "lit" || typeof index.value !== "number" || !Number.isSafeInteger(index.value))
         return null;
       return { tag: "split", str, delim: delim.value, index: index.value };
     }
@@ -620,8 +652,9 @@ function parseList(state: ParserState): LCTerm | null {
     case "synthesize": {
       // Parse list of [input output] pairs
       // Supports: (synthesize ("in" out) ...) or (synthesize (example "in" out) ...)
+      const MAX_SYNTH_EXAMPLES = 1000;
       const examples: Array<{ input: string; output: string | number | boolean | null }> = [];
-      while (peek(state) && peek(state)?.type !== "rparen") {
+      while (peek(state) && peek(state)?.type !== "rparen" && examples.length < MAX_SYNTH_EXAMPLES) {
         // Expect (input output) pair or [input output] or (example input output)
         const pairStart = peek(state);
         if (pairStart?.type === "lparen" || pairStart?.type === "lbracket") {
@@ -675,12 +708,13 @@ function parseList(state: ParserState): LCTerm | null {
         }
       } else {
         // Fallback to inline pairs
-        while (peek(state) && peek(state)?.type !== "rparen") {
+        const MAX_CLASSIFY_EXAMPLES = 1000;
+        while (peek(state) && peek(state)?.type !== "rparen" && examples.length < MAX_CLASSIFY_EXAMPLES) {
           const input = parseTerm(state);
           if (!input || input.tag !== "lit" || typeof input.value !== "string")
             break;
           const output = parseTerm(state);
-          if (!output || output.tag !== "lit") break;
+          if (!output || output.tag !== "lit" || output.value === null) break;
           examples.push({ input: input.value, output: output.value });
         }
       }
@@ -773,6 +807,32 @@ export function parse(input: string): ParseResult {
       return { success: false, error: "Empty input" };
     }
 
+    // Check for unbalanced parentheses/brackets before parsing
+    let parenDepth = 0;
+    let bracketDepth = 0;
+    for (const tok of tokens) {
+      if (tok.type === "lparen") parenDepth++;
+      else if (tok.type === "rparen") {
+        parenDepth--;
+        if (parenDepth < 0) {
+          return { success: false, error: "Unbalanced parentheses: unexpected ')'" };
+        }
+      }
+      else if (tok.type === "lbracket") bracketDepth++;
+      else if (tok.type === "rbracket") {
+        bracketDepth--;
+        if (bracketDepth < 0) {
+          return { success: false, error: "Unbalanced brackets: unexpected ']'" };
+        }
+      }
+    }
+    if (parenDepth > 0) {
+      return { success: false, error: "Unbalanced parentheses: unclosed '('" };
+    }
+    if (bracketDepth > 0) {
+      return { success: false, error: "Unbalanced brackets: unclosed '['" };
+    }
+
     const state: ParserState = { tokens, pos: 0 };
     const term = parseTerm(state);
 
@@ -798,10 +858,52 @@ export function parse(input: string): ParseResult {
  */
 export function parseAll(input: string): ParseResult[] {
   const results: ParseResult[] = [];
-  const lines = input.split("\n").filter((l) => l.trim());
+  // Join lines and parse complete S-expressions instead of splitting on newlines
+  const trimmed = input.trim();
+  if (!trimmed) return results;
 
-  for (const line of lines) {
-    results.push(parse(line.trim()));
+  // Find top-level S-expressions by tracking parenthesis depth
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+
+    if (inString) continue;
+
+    if (ch === "(") {
+      if (depth === 0) start = i;
+      depth++;
+    } else if (ch === ")") {
+      depth--;
+      if (depth === 0 && start >= 0) {
+        const expr = trimmed.slice(start, i + 1);
+        results.push(parse(expr));
+        start = -1;
+      }
+    }
+  }
+
+  // If no parenthesized expressions found, try parsing as a single term
+  if (results.length === 0) {
+    results.push(parse(trimmed));
   }
 
   return results;
@@ -810,20 +912,25 @@ export function parseAll(input: string): ParseResult[] {
 /**
  * Pretty-print an LC term back to S-expression syntax
  */
+/** Escape a string for embedding in double-quoted S-expression output */
+function escapeForPrint(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n").replace(/\r/g, "\\r").replace(/\t/g, "\\t");
+}
+
 export function prettyPrint(term: LCTerm): string {
   switch (term.tag) {
     case "input":
       return "(input)";
     case "lit":
       return typeof term.value === "string"
-        ? `"${term.value}"`
+        ? `"${escapeForPrint(term.value)}"`
         : String(term.value);
     case "grep":
-      return `(grep "${term.pattern}")`;
+      return `(grep "${escapeForPrint(term.pattern)}")`;
     case "fuzzy_search":
       return term.limit
-        ? `(fuzzy_search "${term.query}" ${term.limit})`
-        : `(fuzzy_search "${term.query}")`;
+        ? `(fuzzy_search "${escapeForPrint(term.query)}" ${term.limit})`
+        : `(fuzzy_search "${escapeForPrint(term.query)}")`;
     case "text_stats":
       return "(text_stats)";
     case "lines":
@@ -835,11 +942,11 @@ export function prettyPrint(term: LCTerm): string {
     case "add":
       return `(add ${prettyPrint(term.left)} ${prettyPrint(term.right)})`;
     case "match":
-      return `(match ${prettyPrint(term.str)} "${term.pattern}" ${term.group})`;
+      return `(match ${prettyPrint(term.str)} "${escapeForPrint(term.pattern)}" ${term.group})`;
     case "replace":
-      return `(replace ${prettyPrint(term.str)} "${term.from}" "${term.to}")`;
+      return `(replace ${prettyPrint(term.str)} "${escapeForPrint(term.from)}" "${escapeForPrint(term.to)}")`;
     case "split":
-      return `(split ${prettyPrint(term.str)} "${term.delim}" ${term.index})`;
+      return `(split ${prettyPrint(term.str)} "${escapeForPrint(term.delim)}" ${term.index})`;
     case "parseInt":
       return `(parseInt ${prettyPrint(term.str)})`;
     case "parseFloat":
@@ -848,7 +955,7 @@ export function prettyPrint(term: LCTerm): string {
       return `(if ${prettyPrint(term.cond)} ${prettyPrint(term.then)} ${prettyPrint(term.else)})`;
     case "classify": {
       const examples = term.examples
-        .map((e) => `"${e.input}" ${e.output}`)
+        .map((e) => `"${escapeForPrint(e.input)}" ${e.output}`)
         .join(" ");
       return `(classify ${examples})`;
     }

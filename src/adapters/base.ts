@@ -15,6 +15,7 @@ function buildSystemPrompt(
   toolInterfaces: string,
   hints?: RAGHints
 ): string {
+  if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const formattedLength = contextLength.toLocaleString();
 
   return `You are a headless JavaScript runtime. You have NO EYES. You cannot read the document directly.
@@ -78,14 +79,17 @@ Reminder: You are blind. Write code to see.`;
  */
 function extractCode(response: string): string | null {
   // Match typescript, ts, javascript, or js code blocks
-  const codeBlockRegex = /```(?:typescript|ts|javascript|js)\n([\s\S]*?)```/;
-  const match = response.match(codeBlockRegex);
+  // Use indexOf-based approach to avoid ReDoS with [\s\S]*? on unclosed fences
+  const openPattern = /```(?:typescript|ts|javascript|js)\n/;
+  const openMatch = response.match(openPattern);
+  if (!openMatch || openMatch.index === undefined) return null;
 
-  if (match && match[1]) {
-    return match[1].trim();
-  }
+  const codeStart = openMatch.index + openMatch[0].length;
+  const closeIdx = response.indexOf("```", codeStart);
+  if (closeIdx === -1) return null;
 
-  return null;
+  const code = response.slice(codeStart, closeIdx).trim();
+  return code || null;
 }
 
 /**
@@ -99,8 +103,9 @@ function extractFinalAnswer(
   }
 
   // Check for FINAL_VAR(variableName)
+  const DANGEROUS_VAR_NAMES = /^(__proto__|constructor|prototype|eval|Function|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|hasOwnProperty|toString|valueOf|toLocaleString|isPrototypeOf|propertyIsEnumerable)$/i;
   const varMatch = response.match(/FINAL_VAR\((\w+)\)/);
-  if (varMatch) {
+  if (varMatch && !DANGEROUS_VAR_NAMES.test(varMatch[1])) {
     return { type: "var", name: varMatch[1] };
   }
 
@@ -115,22 +120,22 @@ function extractFinalAnswer(
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[1]);
-      // Check for common answer field names
-      if (parsed.summary) return parsed.summary;
-      if (parsed.response) return parsed.response;
-      if (parsed.answer) return parsed.answer;
+      // Check for common answer field names (must be strings)
+      if (typeof parsed.summary === "string") return parsed.summary;
+      if (typeof parsed.response === "string") return parsed.response;
+      if (typeof parsed.answer === "string") return parsed.answer;
       // Check for any field that looks like a final value (case-insensitive)
       const valueFields = ['total', 'result', 'value', 'totalsales', 'total_sales', 'count', 'sum', 'answer', 'totals'];
-      const keys = Object.keys(parsed);
+      const MAX_KEYS = 100;
+      const keys = Object.keys(parsed).slice(0, MAX_KEYS);
       const foundKey = keys.find(k => valueFields.includes(k.toLowerCase().replace(/_/g, '')));
-      const foundValue = foundKey;
 
-      if (foundValue !== undefined) {
-        const value = parsed[foundValue];
-        if (parsed.notes) {
+      if (foundKey !== undefined) {
+        const value = parsed[foundKey];
+        if (typeof parsed.notes === "string") {
           return `${parsed.notes}\n\nResult: ${typeof value === 'number' ? value.toLocaleString() : value}`;
         }
-        return JSON.stringify(parsed, null, 2);
+        return JSON.stringify(parsed, null, 2).slice(0, 50_000);
       }
     } catch {
       // Not valid JSON, ignore
@@ -154,15 +159,26 @@ console.log(JSON.stringify(hits, null, 2));
 /**
  * Get feedback message when code execution fails
  */
-function getErrorFeedback(error: string): string {
-  return `The previous code had an error: ${error}\nFix the code and try again.`;
+function getErrorFeedback(error: string, code?: string): string {
+  const safeError = error.slice(0, 500);
+  let feedback = `The previous code had an error: ${safeError}\nFix the code and try again.`;
+  if (code) {
+    feedback += `\nCode that failed: ${code.slice(0, 200)}`;
+  }
+  return feedback;
 }
 
 /**
  * Get feedback message after successful code execution
  * Generic reminder about continuing exploration or providing final answer
  */
-function getSuccessFeedback(): string {
+function getSuccessFeedback(resultCount?: number, previousCount?: number, query?: string): string {
+  if (resultCount === 0) {
+    return `No results found. Try different search terms or approach.`;
+  }
+  if (resultCount !== undefined && resultCount > 0) {
+    return `Found ${resultCount} results. Continue exploring, OR output final answer using <<<FINAL>>> and <<<END>>> tags.`;
+  }
   return `Variables persist between turns. Continue exploring, OR output final answer using <<<FINAL>>> and <<<END>>> tags.`;
 }
 
@@ -170,8 +186,8 @@ function getSuccessFeedback(): string {
  * Get feedback message when model repeats the same code
  * Encourages a different approach
  */
-function getRepeatedCodeFeedback(): string {
-  return `ERROR: You are repeating the same code. This will give the same output.
+function getRepeatedCodeFeedback(resultCount?: number): string {
+  return `ERROR: You are repeating the same code. This will give the same output.${resultCount !== undefined ? ` (${resultCount} results already available)` : ""}
 
 Try a DIFFERENT approach:
 - Use different search terms with grep()

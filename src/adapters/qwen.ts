@@ -24,6 +24,7 @@ function buildSystemPrompt(
   toolInterfaces: string,
   hints?: RAGHints
 ): string {
+  if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const formattedLength = contextLength.toLocaleString();
 
   return `You are a JavaScript code executor. You ONLY output code. NO CHAT.
@@ -91,12 +92,17 @@ function extractCode(response: string): string | null {
   if (standard) return standard;
 
   // Qwen sometimes omits language specifier or uses 'js' shorthand
-  const looseMatch = response.match(/```(?:js|javascript|typescript|ts)?\s*\n([\s\S]*?)```/);
-  if (looseMatch && looseMatch[1]) {
-    const code = looseMatch[1].trim();
-    // Validate it looks like code (has semicolons, parens, or common keywords)
-    if (/[;(){}]|const |let |var |function |=>|console\.log/.test(code)) {
-      return code;
+  // Use indexOf-based approach to avoid ReDoS with [\s\S]*? on unclosed fences
+  const looseOpen = response.match(/```(?:js|javascript|typescript|ts)?\s*\n/);
+  if (looseOpen && looseOpen.index !== undefined) {
+    const codeStart = looseOpen.index + looseOpen[0].length;
+    const closeIdx = response.indexOf("```", codeStart);
+    if (closeIdx !== -1) {
+      const code = response.slice(codeStart, closeIdx).trim();
+      // Validate it looks like code (has semicolons, parens, or common keywords)
+      if (code && /[;(){}]|const |let |var |function |=>|console\.log/.test(code)) {
+        return code;
+      }
     }
   }
 
@@ -123,11 +129,13 @@ function extractFinalAnswer(
     try {
       const parsed = JSON.parse(response.trim());
       const answerFields = ['answer', 'result', 'total', 'totalSales', 'total_sales', 'sum', 'count', 'value', 'response', 'summary'];
+      const MAX_KEYS = 100;
+      const keys = Object.keys(parsed).slice(0, MAX_KEYS);
       const hasAnswerField = answerFields.some(f =>
-        Object.keys(parsed).some(k => k.toLowerCase() === f.toLowerCase())
+        keys.some(k => k.toLowerCase() === f.toLowerCase())
       );
       if (hasAnswerField) {
-        return JSON.stringify(parsed, null, 2);
+        return JSON.stringify(parsed, null, 2).slice(0, 50_000);
       }
     } catch {
       // Not valid JSON
@@ -163,9 +171,10 @@ NOT Python. NOT JSON. Only JavaScript.`;
  * Error feedback for Qwen
  */
 function getErrorFeedback(error: string): string {
+  const safeError = error.slice(0, 500);
   // Detect common issues and provide specific guidance
-  if (error.includes("is not a function") && (error.includes("split") || error.includes("match") || error.includes("replace"))) {
-    return `Code error: ${error}
+  if (safeError.includes("is not a function") && (safeError.includes("split") || safeError.includes("match") || safeError.includes("replace"))) {
+    return `Code error: ${safeError}
 
 IMPORTANT: grep() returns objects, not strings!
 Each item has: { match, line, lineNum }
@@ -183,7 +192,7 @@ for (const item of hits) {
 \`\`\``;
   }
 
-  return `Code error: ${error}
+  return `Code error: ${safeError}
 
 Fix the bug and output ONLY a JavaScript code block:
 \`\`\`javascript

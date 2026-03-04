@@ -10,6 +10,7 @@
 
 import type { LCTerm } from "./types.js";
 import { resolveConstraints } from "./constraint-resolver.js";
+import { validateRegex } from "./lc-solver.js";
 
 // Type for sandbox tools interface
 export interface SandboxTools {
@@ -28,7 +29,8 @@ export type LCValue =
   | string
   | LCValue[]
   | { [key: string]: LCValue }
-  | LCClosure;
+  | LCClosure
+  | ((input: unknown) => LCValue | boolean);
 
 // A closure captures a lambda's environment
 export interface LCClosure {
@@ -60,12 +62,18 @@ export function interpret(
   env: Environment = new Map()
 ): InterpretResult {
   const logs: string[] = [];
-  const log = (msg: string) => logs.push(msg);
+  const MAX_LOG_ENTRIES = 10000;
+  const MAX_LOG_MSG_LENGTH = 2000;
+  const log = (msg: string) => {
+    if (logs.length < MAX_LOG_ENTRIES) {
+      logs.push(msg.length > MAX_LOG_MSG_LENGTH ? msg.slice(0, MAX_LOG_MSG_LENGTH) + "..." : msg);
+    }
+  };
 
   try {
     // Resolve constraints first
     const resolved = resolveConstraints(term);
-    const value = evaluate(resolved.term, tools, env, log);
+    const value = evaluate(resolved.term, tools, env, log, 0);
     return { success: true, value, logs };
   } catch (err) {
     return {
@@ -77,15 +85,21 @@ export function interpret(
   }
 }
 
+const MAX_EVAL_DEPTH = 1000;
+
 /**
  * Core evaluation function
  */
-function evaluate(
+export function evaluate(
   term: LCTerm,
   tools: SandboxTools,
   env: Environment,
-  log: (msg: string) => void
+  log: (msg: string) => void,
+  depth: number = 0
 ): LCValue {
+  if (depth > MAX_EVAL_DEPTH) {
+    throw new Error(`Maximum evaluation depth (${MAX_EVAL_DEPTH}) exceeded`);
+  }
   switch (term.tag) {
     case "lit":
       return term.value as LCValue;
@@ -107,6 +121,11 @@ function evaluate(
 
     case "grep": {
       log(`Searching for pattern: "${term.pattern}"`);
+      const grepValidation = validateRegex(term.pattern);
+      if (!grepValidation.valid) {
+        log(`Invalid grep pattern: ${grepValidation.error}`);
+        return [] as LCValue;
+      }
       const results = tools.grep(term.pattern);
       log(`Found ${results.length} matches`);
       if (results.length > 0) {
@@ -120,7 +139,7 @@ function evaluate(
 
     case "fuzzy_search": {
       log(`Fuzzy searching for: "${term.query}"`);
-      const limit = term.limit ?? 10;
+      const limit = Math.min(Math.max(1, term.limit ?? 10), 1000);
       const results = tools.fuzzy_search(term.query, limit);
       log(`Found ${results.length} fuzzy matches`);
       return results as LCValue;
@@ -135,27 +154,38 @@ function evaluate(
 
     case "filter": {
       // Evaluate the collection
-      const collection = evaluate(term.collection, tools, env, log);
+      const collection = evaluate(term.collection, tools, env, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`filter: expected array, got ${typeof collection}`);
       }
 
-      // Evaluate the predicate (should be a closure or lambda)
-      const predicate = evaluate(term.predicate, tools, env, log);
-      if (!isClosure(predicate)) {
-        throw new Error(`filter: predicate must be a function`);
-      }
+      // Evaluate the predicate (should be a closure, lambda, or native function)
+      const predicate = evaluate(term.predicate, tools, env, log, depth + 1);
 
       log(`Filtering ${collection.length} items`);
 
       // Apply predicate to each element
+      const MAX_FILTER_RESULTS = 100_000;
       const results: LCValue[] = [];
       for (const item of collection) {
-        const newEnv = new Map(predicate.env);
-        newEnv.set(predicate.param, item);
-        const result = evaluate(predicate.body, tools, newEnv, log);
-        if (result === true) {
+        let result: LCValue;
+        if (typeof predicate === "function") {
+          // Native function (e.g., from classify)
+          try {
+            result = (predicate as (arg: unknown) => unknown)(item) as LCValue;
+          } catch (err) {
+            throw new Error(`filter: native predicate threw: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        } else if (isClosure(predicate)) {
+          const newEnv = new Map(predicate.env);
+          newEnv.set(predicate.param, item);
+          result = evaluate(predicate.body, tools, newEnv, log, depth + 1);
+        } else {
+          throw new Error(`filter: predicate must be a function`);
+        }
+        if (result) {
           results.push(item);
+          if (results.length >= MAX_FILTER_RESULTS) break;
         }
       }
 
@@ -165,25 +195,37 @@ function evaluate(
 
     case "map": {
       // Evaluate the collection
-      const collection = evaluate(term.collection, tools, env, log);
+      const collection = evaluate(term.collection, tools, env, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`map: expected array, got ${typeof collection}`);
       }
 
-      // Evaluate the transform function
-      const transform = evaluate(term.transform, tools, env, log);
-      if (!isClosure(transform)) {
-        throw new Error(`map: transform must be a function`);
-      }
+      // Evaluate the transform function (closure or native function)
+      const transform = evaluate(term.transform, tools, env, log, depth + 1);
 
       log(`Mapping over ${collection.length} items`);
 
       // Apply transform to each element
+      const MAX_MAP_RESULTS = 100_000;
+      const limit = Math.min(collection.length, MAX_MAP_RESULTS);
       const results: LCValue[] = [];
-      for (const item of collection) {
-        const newEnv = new Map(transform.env);
-        newEnv.set(transform.param, item);
-        const result = evaluate(transform.body, tools, newEnv, log);
+      for (let i = 0; i < limit; i++) {
+        const item = collection[i];
+        let result: LCValue;
+        if (typeof transform === "function") {
+          // Native function (e.g., from classify)
+          try {
+            result = (transform as (arg: unknown) => unknown)(item) as LCValue;
+          } catch (err) {
+            throw new Error(`map: native transform threw: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        } else if (isClosure(transform)) {
+          const newEnv = new Map(transform.env);
+          newEnv.set(transform.param, item);
+          result = evaluate(transform.body, tools, newEnv, log, depth + 1);
+        } else {
+          throw new Error(`map: transform must be a function`);
+        }
         results.push(result);
       }
 
@@ -191,63 +233,93 @@ function evaluate(
     }
 
     case "match": {
-      const str = evaluate(term.str, tools, env, log);
+      if (!Number.isInteger(term.group) || term.group < 0 || term.group > 99) return null;
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
       }
+      const matchValidation = validateRegex(term.pattern);
+      if (!matchValidation.valid) return null;
       const regex = new RegExp(term.pattern);
       const result = str.match(regex);
-      return result ? (result[term.group] ?? null) : null;
+      if (!result) return null;
+      if (term.group >= result.length) {
+        log(`match: group ${term.group} out of bounds (result has ${result.length} groups)`);
+        return null;
+      }
+      return result[term.group] ?? null;
     }
 
     case "replace": {
-      const str = evaluate(term.str, tools, env, log);
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") {
         throw new Error(`replace: expected string, got ${typeof str}`);
       }
-      return str.replace(new RegExp(term.from, "g"), term.to);
+      const replaceValidation = validateRegex(term.from);
+      if (!replaceValidation.valid) return str;
+      // Escape $ in replacement to prevent backreference injection ($1, $&, etc.)
+      const safeReplacement = term.to.replace(/\$/g, "$$$$");
+      const MAX_RESULT_LENGTH = 1_000_000;
+      const result = str.replace(new RegExp(term.from, "g"), safeReplacement);
+      if (result.length > MAX_RESULT_LENGTH) return null;
+      return result;
     }
 
     case "split": {
-      const str = evaluate(term.str, tools, env, log);
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") {
         throw new Error(`split: expected string, got ${typeof str}`);
       }
+      if (!Number.isInteger(term.index) || term.index < 0) return null;
+      if (typeof term.delim !== "string" || term.delim.length === 0 || term.delim.length > 1000) return null;
+      const MAX_SPLIT_PARTS = 10_000;
       const parts = str.split(term.delim);
+      if (parts.length > MAX_SPLIT_PARTS) return null;
+      if (term.index >= parts.length) return null;
       return parts[term.index] ?? null;
     }
 
     case "parseInt": {
-      const str = evaluate(term.str, tools, env, log);
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string" && typeof str !== "number") {
         throw new Error(`parseInt: expected string or number, got ${typeof str}`);
       }
-      return parseInt(String(str), 10);
+      const strForInt = String(str);
+      if (strForInt.length > 200) return null;
+      const intResult = parseInt(strForInt, 10);
+      return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
-      const str = evaluate(term.str, tools, env, log);
+      const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string" && typeof str !== "number") {
         throw new Error(`parseFloat: expected string or number, got ${typeof str}`);
       }
-      return parseFloat(String(str));
+      const strForFloat = String(str);
+      if (strForFloat.length > 200) return null;
+      const floatResult = parseFloat(strForFloat);
+      return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
     case "add": {
-      const left = evaluate(term.left, tools, env, log);
-      const right = evaluate(term.right, tools, env, log);
+      const left = evaluate(term.left, tools, env, log, depth + 1);
+      const right = evaluate(term.right, tools, env, log, depth + 1);
       if (typeof left !== "number" || typeof right !== "number") {
         throw new Error(`add: expected numbers`);
       }
-      return left + right;
+      if (!Number.isFinite(left) || !Number.isFinite(right)) {
+        return null;
+      }
+      const addResult = left + right;
+      return Number.isFinite(addResult) ? addResult : null;
     }
 
     case "if": {
-      const cond = evaluate(term.cond, tools, env, log);
+      const cond = evaluate(term.cond, tools, env, log, depth + 1);
       if (cond) {
-        return evaluate(term.then, tools, env, log);
+        return evaluate(term.then, tools, env, log, depth + 1);
       } else {
-        return evaluate(term.else, tools, env, log);
+        return evaluate(term.else, tools, env, log, depth + 1);
       }
     }
 
@@ -262,57 +334,340 @@ function evaluate(
 
     case "app": {
       // Evaluate the function
-      const fn = evaluate(term.fn, tools, env, log);
+      const fn = evaluate(term.fn, tools, env, log, depth + 1);
+
+      // Evaluate the argument
+      const arg = evaluate(term.arg, tools, env, log, depth + 1);
+
+      // Accept native functions (e.g., from classify)
+      if (typeof fn === "function") {
+        try {
+          return (fn as (arg: unknown) => unknown)(arg) as LCValue;
+        } catch (err) {
+          throw new Error(`app: native function threw: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
       if (!isClosure(fn)) {
         throw new Error(`app: expected function, got ${typeof fn}`);
       }
-
-      // Evaluate the argument
-      const arg = evaluate(term.arg, tools, env, log);
 
       // Apply: extend the closure's environment with the argument
       const newEnv = new Map(fn.env);
       newEnv.set(fn.param, arg);
 
       // Evaluate the body in the extended environment
-      return evaluate(fn.body, tools, newEnv, log);
+      return evaluate(fn.body, tools, newEnv, log, depth + 1);
     }
 
     case "classify": {
       // Classify builds a predicate function from examples
-      log(`Building classifier from ${term.examples.length} examples`);
+      const MAX_CLASSIFY_EXAMPLES = 1000;
+      const classifyExamples = term.examples.slice(0, MAX_CLASSIFY_EXAMPLES);
+      log(`Building classifier from ${classifyExamples.length} examples`);
 
-      // For now, return a simple classifier function
-      // In the future, this could use the miniKanren synthesizer
-      const trueExamples = term.examples.filter(e => e.output === true).map(e => e.input);
-      const falseExamples = term.examples.filter(e => e.output === false).map(e => e.input);
+      // Filter out empty strings — "".includes("") is always true, making classifier match everything
+      const MAX_EXAMPLE_INPUT = 10_000;
+      const trueExamples = classifyExamples.filter(e => e.output === true).map(e => e.input.length > MAX_EXAMPLE_INPUT ? e.input.slice(0, MAX_EXAMPLE_INPUT) : e.input).filter(s => s.length > 0);
+      const falseExamples = classifyExamples.filter(e => e.output === false).map(e => e.input.length > MAX_EXAMPLE_INPUT ? e.input.slice(0, MAX_EXAMPLE_INPUT) : e.input).filter(s => s.length > 0);
 
-      log(`  True examples: ${trueExamples.length}`);
-      log(`  False examples: ${falseExamples.length}`);
+      log(`  True examples: ${trueExamples.length}, False examples: ${falseExamples.length}`);
 
-      // Create a simple matching classifier
-      // This is where the solver would synthesize a more sophisticated function
-      return {
-        tag: "closure",
-        param: "line",
-        body: {
-          tag: "var",
-          name: "__classify_check__",
-        } as LCTerm,
-        env: new Map([
-          ["__true_patterns__", trueExamples],
-          ["__false_patterns__", falseExamples],
-        ] as [string, LCValue][]),
+      // Return a function that checks if input matches true examples but not false ones
+      return (input: unknown) => {
+        // Extract string from grep result objects that have .line property
+        const str = typeof input === "object" && input !== null && "line" in input
+          ? String((input as { line: unknown }).line)
+          : String(input);
+        // Must match at least one true example
+        const matchesTrue = trueExamples.some(ex => str.includes(ex));
+        // Must not match any false example
+        const matchesFalse = falseExamples.some(ex => str.includes(ex));
+        return matchesTrue && !matchesFalse;
       };
     }
 
+    case "sum": {
+      const collection = evaluate(term.collection, tools, env, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`sum: expected array, got ${typeof collection}`);
+      }
+      log(`Summing ${collection.length} items`);
+      let total = 0;
+      for (const item of collection) {
+        if (typeof item === "number" && isFinite(item)) {
+          total += item;
+        } else if (typeof item === "object" && item !== null) {
+          // Try to extract numeric values from objects (cap property enumeration)
+          const MAX_PROPS = 1000;
+          const keys = Object.keys(item as Record<string, unknown>);
+          const limit = Math.min(keys.length, MAX_PROPS);
+          for (let j = 0; j < limit; j++) {
+            const v = (item as Record<string, unknown>)[keys[j]];
+            if (typeof v === "number" && isFinite(v)) {
+              total += v;
+              break;
+            }
+          }
+        }
+        if (!isFinite(total)) return null;
+      }
+      return total;
+    }
+
+    case "count": {
+      const collection = evaluate(term.collection, tools, env, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`count: expected array, got ${typeof collection}`);
+      }
+      log(`Counting: ${collection.length} items`);
+      return collection.length;
+    }
+
+    case "lines": {
+      if (!Number.isFinite(term.start) || !Number.isFinite(term.end)) return "";
+      const lines = tools.context.split("\n");
+      const start = Math.max(1, Math.floor(term.start));
+      let end = Math.min(lines.length, Math.floor(term.end));
+      if (end < start) return "";
+      const MAX_LINES_RETURNED = 10_000;
+      if (end - start > MAX_LINES_RETURNED) end = start + MAX_LINES_RETURNED;
+      log(`Getting lines ${start}-${end}`);
+      return lines.slice(start - 1, end).join("\n");
+    }
+
+    case "reduce": {
+      const MAX_REDUCE_ITEMS = 100_000;
+      let collection = evaluate(term.collection, tools, env, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`reduce: expected array, got ${typeof collection}`);
+      }
+      if (collection.length > MAX_REDUCE_ITEMS) {
+        collection = collection.slice(0, MAX_REDUCE_ITEMS);
+      }
+      const init = evaluate(term.init, tools, env, log, depth + 1);
+      const fn = evaluate(term.fn, tools, env, log, depth + 1);
+      log(`Reducing ${collection.length} items`);
+      let acc = init;
+      for (const item of collection) {
+        if (isClosure(fn)) {
+          const newEnv = new Map(fn.env);
+          newEnv.set(fn.param, acc);
+          // For two-arg lambda, we need a closure that captures acc
+          const innerResult = evaluate(fn.body, tools, newEnv, log, depth + 1);
+          if (isClosure(innerResult)) {
+            const innerEnv = new Map(innerResult.env);
+            innerEnv.set(innerResult.param, item);
+            acc = evaluate(innerResult.body, tools, innerEnv, log, depth + 1);
+          } else {
+            acc = innerResult;
+          }
+        } else if (typeof fn === "function") {
+          acc = (fn as (arg: unknown) => unknown)(acc) as LCValue;
+          if (typeof acc === "function") {
+            acc = (acc as (arg: unknown) => unknown)(item) as LCValue;
+          }
+        } else {
+          throw new Error(`reduce: fn must be a function`);
+        }
+      }
+      return acc;
+    }
+
+    case "parseCurrency": {
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      if (typeof str !== "string") return null;
+      if (str.length > 200) return null;
+      log(`Parsing currency: "${str}"`);
+      // Remove currency symbols and whitespace
+      let cleaned = str.replace(/[^0-9.,\-()]/g, "");
+      const isNegative = cleaned.startsWith("(") || cleaned.startsWith("-") || cleaned.endsWith("-");
+      cleaned = cleaned.replace(/[()]/g, "").replace(/^-|-$/g, "");
+      // Detect EU format: comma is decimal separator when it's the last separator
+      // EU: "1.234,56" -> comma after last period means comma is decimal
+      // US: "1,234.56" -> period after last comma means period is decimal
+      const lastCommaPos = cleaned.lastIndexOf(",");
+      const lastDotPos = cleaned.lastIndexOf(".");
+      if (lastCommaPos > lastDotPos && lastCommaPos >= 0) {
+        if (lastDotPos >= 0) {
+          // EU format with dots and commas: "1.234,56" — comma is decimal
+          cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+        } else {
+          // Comma-only: check if digits after last comma are exactly 3 (US thousands)
+          const afterLastComma = cleaned.slice(lastCommaPos + 1);
+          if (afterLastComma.length === 3) {
+            // US thousands format: "1,234" or "1,234,567"
+            cleaned = cleaned.replace(/,/g, "");
+          } else {
+            // EU decimal: "1234,56"
+            cleaned = cleaned.replace(",", ".");
+          }
+        }
+      } else {
+        // US format: commas are thousands separators
+        cleaned = cleaned.replace(/,/g, "");
+      }
+      const num = parseFloat(cleaned);
+      if (isNaN(num) || !isFinite(num)) return null;
+      return isNegative ? -num : num;
+    }
+
+    case "parseDate": {
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      if (typeof str !== "string") return null;
+      if (str.length > 100) return null;
+      log(`Parsing date: "${str}"`);
+      const cleaned = str.trim();
+
+      // ISO format: 2024-01-15, 2024/01/15
+      const isoMatch = cleaned.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+      if (isoMatch) {
+        const [, yr, mo, dy] = isoMatch;
+        const m = parseInt(mo, 10);
+        const d = parseInt(dy, 10);
+        if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(yr, 10))) {
+          return `${yr}-${mo.padStart(2, "0")}-${dy.padStart(2, "0")}`;
+        }
+        return null;
+      }
+
+      // US format: MM/DD/YYYY, MM-DD-YYYY
+      const usMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+      if (usMatch) {
+        const [, mo, dy, yr] = usMatch;
+        const m = parseInt(mo, 10);
+        const d = parseInt(dy, 10);
+        if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(yr, 10))) {
+          return `${yr}-${mo.padStart(2, "0")}-${dy.padStart(2, "0")}`;
+        }
+        return null;
+      }
+
+      // Try Date.parse fallback, but only for non-numeric formats
+      // to avoid JS Date silently normalizing invalid dates
+      const looksNumeric = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(cleaned)
+        || /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(cleaned);
+      if (!looksNumeric) {
+        const jsDate = new Date(cleaned);
+        if (!isNaN(jsDate.getTime())) {
+          const y = jsDate.getUTCFullYear();
+          const mo = String(jsDate.getUTCMonth() + 1).padStart(2, "0");
+          const dy = String(jsDate.getUTCDate()).padStart(2, "0");
+          return `${y}-${mo}-${dy}`;
+        }
+      }
+      return null;
+    }
+
+    case "parseNumber": {
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      if (typeof str !== "string") return null;
+      if (str.length > 200) return null;
+      log(`Parsing number: "${str}"`);
+      let cleaned = str.replace(/[^0-9.,\-]/g, "");
+      cleaned = cleaned.replace(/,/g, "");
+      const num = parseFloat(cleaned);
+      return isNaN(num) || !isFinite(num) ? null : num;
+    }
+
+    case "coerce": {
+      const val = evaluate(term.term, tools, env, log, depth + 1);
+      log(`Coercing to ${term.targetType}`);
+      switch (term.targetType) {
+        case "number": {
+          if (typeof val === "number") return isFinite(val) ? val : null;
+          if (typeof val === "string") {
+            if (val.length > 200) return null;
+            const n = parseFloat(val);
+            return isNaN(n) || !isFinite(n) ? null : n;
+          }
+          return null;
+        }
+        case "string":
+          return val == null ? null : String(val);
+        case "boolean":
+          return Boolean(val);
+        default:
+          return val;
+      }
+    }
+
+    case "extract": {
+      if (!Number.isInteger(term.group) || term.group < 0 || term.group > 99) return null;
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      if (typeof str !== "string") return null;
+      log(`Extracting pattern from string`);
+      const extractValidation = validateRegex(term.pattern);
+      if (!extractValidation.valid) return null;
+      const regex = new RegExp(term.pattern);
+      const m = str.match(regex);
+      if (!m || term.group >= m.length) return null;
+      return m[term.group] ?? null;
+    }
+
+    case "synthesize":
+      log(`Synthesize: ${term.examples.length} examples`);
+      return null;
+
+    case "predicate": {
+      const str = evaluate(term.str, tools, env, log, depth + 1);
+      log(`Evaluating predicate`);
+      return str != null;
+    }
+
+    case "define-fn":
+      log(`Defining function: ${term.name}`);
+      return null;
+
+    case "apply-fn": {
+      const arg = evaluate(term.arg, tools, env, log, depth + 1);
+      log(`Applying function: ${term.name}`);
+      if (env.has(term.name)) {
+        const fn = env.get(term.name)!;
+        if (typeof fn === "function") {
+          return (fn as (a: unknown) => unknown)(arg) as LCValue;
+        }
+        if (isClosure(fn)) {
+          const newEnv = new Map(fn.env);
+          newEnv.set(fn.param, arg);
+          return evaluate(fn.body, tools, newEnv, log, depth + 1);
+        }
+      }
+      return null;
+    }
+
+    case "list_symbols":
+      log(`Listing symbols${term.kind ? ` of kind ${term.kind}` : ""}`);
+      return [] as LCValue;
+
+    case "get_symbol_body": {
+      const sym = evaluate(term.symbol, tools, env, log, depth + 1);
+      log(`Getting symbol body: ${sym}`);
+      return null;
+    }
+
+    case "find_references":
+      log(`Finding references for: ${term.name}`);
+      return tools.grep(term.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) as LCValue;
+
     case "constrained":
       // Constraints should be resolved before evaluation
-      return evaluate(term.term, tools, env, log);
+      return evaluate(term.term, tools, env, log, depth + 1);
 
     default:
       throw new Error(`Unknown term tag: ${(term as LCTerm).tag}`);
   }
+}
+
+/**
+ * Days in a given month, accounting for leap years
+ */
+function daysInMonth(month: number, year: number): number {
+  const days = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month === 2 && (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0))) {
+    return 29;
+  }
+  return days[month] ?? 0;
 }
 
 /**
@@ -331,12 +686,18 @@ function isClosure(value: LCValue): value is LCClosure {
  * Pretty-print an LC value for display
  */
 export function formatValue(value: LCValue, indent: number = 0): string {
-  const pad = "  ".repeat(indent);
+  const MAX_FORMAT_DEPTH = 20;
+  if (indent > MAX_FORMAT_DEPTH) return "...";
+  const pad = "  ".repeat(Math.min(indent, MAX_FORMAT_DEPTH));
 
+  const MAX_FORMAT_STRING = 10_000;
   if (value === null) return "null";
   if (typeof value === "boolean") return String(value);
   if (typeof value === "number") return String(value);
-  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "string") {
+    const capped = value.length > MAX_FORMAT_STRING ? value.slice(0, MAX_FORMAT_STRING) + "..." : value;
+    return JSON.stringify(capped);
+  }
 
   if (Array.isArray(value)) {
     if (value.length === 0) return "[]";
@@ -352,10 +713,21 @@ export function formatValue(value: LCValue, indent: number = 0): string {
     return `<function (${value.param}) => ...>`;
   }
 
-  if (typeof value === "object") {
-    const entries = Object.entries(value);
-    if (entries.length === 0) return "{}";
-    const items = entries.slice(0, 5).map(([k, v]) => `${pad}  ${k}: ${formatValue(v, indent + 1)}`).join(",\n");
+  if (typeof value === "function") {
+    return `<function>`;
+  }
+
+  if (typeof value === "object" && value !== null) {
+    const MAX_FORMAT_KEYS = 1000;
+    const MAX_KEY_LENGTH = 200;
+    const keys = Object.keys(value);
+    if (keys.length > MAX_FORMAT_KEYS) return `{ ... (${keys.length} properties) }`;
+    if (keys.length === 0) return "{}";
+    const entries = keys.slice(0, 5).map(k => {
+      const safeKey = k.length > MAX_KEY_LENGTH ? k.slice(0, MAX_KEY_LENGTH) + "..." : k;
+      return [safeKey, (value as Record<string, unknown>)[k]];
+    });
+    const items = entries.map(([k, v]) => `${pad}  ${k}: ${formatValue(v as Parameters<typeof formatValue>[0], indent + 1)}`).join(",\n");
     return `{\n${items}\n${pad}}`;
   }
 

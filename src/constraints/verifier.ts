@@ -10,6 +10,7 @@ import type {
   SynthesisConstraint,
   VerificationResult,
 } from "./types.js";
+import { validateRegex } from "../logic/lc-solver.js";
 
 /**
  * Verify that a result satisfies all constraints.
@@ -53,12 +54,19 @@ export function verifyResult(
 /**
  * Verify an output constraint recursively.
  */
+const MAX_CONSTRAINT_DEPTH = 50;
+
 function verifyOutputConstraint(
   value: unknown,
   constraint: OutputConstraint,
   errors: string[],
-  path: string
+  path: string,
+  depth: number = 0
 ): void {
+  if (depth > MAX_CONSTRAINT_DEPTH) {
+    errors.push(`${path}: constraint verification exceeded maximum depth (${MAX_CONSTRAINT_DEPTH})`);
+    return;
+  }
   // Type checking
   const actualType = getValueType(value);
 
@@ -76,14 +84,15 @@ function verifyOutputConstraint(
       verifyStringConstraint(value as string, constraint, errors, path);
       break;
     case "array":
-      verifyArrayConstraint(value as unknown[], constraint, errors, path);
+      verifyArrayConstraint(value as unknown[], constraint, errors, path, depth);
       break;
     case "object":
       verifyObjectConstraint(
         value as Record<string, unknown>,
         constraint,
         errors,
-        path
+        path,
+        depth
       );
       break;
   }
@@ -94,12 +103,12 @@ function verifyOutputConstraint(
  */
 function getValueType(
   value: unknown
-): "number" | "string" | "boolean" | "array" | "object" | "null" | "undefined" {
+): "number" | "string" | "boolean" | "array" | "object" | "null" | "undefined" | "function" | "bigint" | "symbol" {
   if (value === null) return "null";
   if (value === undefined) return "undefined";
   if (Array.isArray(value)) return "array";
   const t = typeof value;
-  if (t === "number" || t === "string" || t === "boolean") return t;
+  if (t === "number" || t === "string" || t === "boolean" || t === "function" || t === "bigint" || t === "symbol") return t;
   if (t === "object") return "object";
   return "undefined";
 }
@@ -122,6 +131,22 @@ function verifyNumberConstraint(
   // Check for Infinity
   if (!Number.isFinite(value)) {
     errors.push(`${path} is not finite (got ${value})`);
+    return;
+  }
+
+  // Validate constraint bounds are finite
+  if (constraint.min !== undefined && !Number.isFinite(constraint.min)) {
+    errors.push(`${path} has invalid constraint: min is not finite`);
+    return;
+  }
+  if (constraint.max !== undefined && !Number.isFinite(constraint.max)) {
+    errors.push(`${path} has invalid constraint: max is not finite`);
+    return;
+  }
+
+  // Validate min <= max
+  if (constraint.min !== undefined && constraint.max !== undefined && constraint.min > constraint.max) {
+    errors.push(`${path} has invalid constraint: min (${constraint.min}) > max (${constraint.max})`);
     return;
   }
 
@@ -156,16 +181,37 @@ function verifyStringConstraint(
 ): void {
   // Pattern constraint
   if (constraint.pattern !== undefined) {
-    try {
-      const regex = new RegExp(constraint.pattern);
-      if (!regex.test(value)) {
-        errors.push(
-          `${path} does not match pattern /${constraint.pattern}/`
-        );
-      }
-    } catch {
+    const validation = validateRegex(constraint.pattern);
+    if (!validation.valid) {
       errors.push(`Invalid pattern: ${constraint.pattern}`);
+    } else {
+      try {
+        const regex = new RegExp(constraint.pattern);
+        if (!regex.test(value)) {
+          errors.push(
+            `${path} does not match pattern /${constraint.pattern}/`
+          );
+        }
+      } catch {
+        errors.push(`Invalid pattern: ${constraint.pattern}`);
+      }
     }
+  }
+
+  // Validate minLength/maxLength are non-negative integers
+  if (constraint.minLength !== undefined && (!Number.isInteger(constraint.minLength) || constraint.minLength < 0)) {
+    errors.push(`${path} has invalid constraint: minLength must be a non-negative integer`);
+    return;
+  }
+  if (constraint.maxLength !== undefined && (!Number.isInteger(constraint.maxLength) || constraint.maxLength < 0)) {
+    errors.push(`${path} has invalid constraint: maxLength must be a non-negative integer`);
+    return;
+  }
+
+  // Validate minLength <= maxLength
+  if (constraint.minLength !== undefined && constraint.maxLength !== undefined && constraint.minLength > constraint.maxLength) {
+    errors.push(`${path} has invalid constraint: minLength (${constraint.minLength}) > maxLength (${constraint.maxLength})`);
+    return;
   }
 
   // MinLength constraint
@@ -190,8 +236,25 @@ function verifyArrayConstraint(
   value: unknown[],
   constraint: OutputConstraint,
   errors: string[],
-  path: string
+  path: string,
+  depth: number = 0
 ): void {
+  // Validate minItems/maxItems are non-negative integers
+  if (constraint.minItems !== undefined && (!Number.isInteger(constraint.minItems) || constraint.minItems < 0)) {
+    errors.push(`${path} has invalid constraint: minItems must be a non-negative integer`);
+    return;
+  }
+  if (constraint.maxItems !== undefined && (!Number.isInteger(constraint.maxItems) || constraint.maxItems < 0)) {
+    errors.push(`${path} has invalid constraint: maxItems must be a non-negative integer`);
+    return;
+  }
+
+  // Validate minItems <= maxItems
+  if (constraint.minItems !== undefined && constraint.maxItems !== undefined && constraint.minItems > constraint.maxItems) {
+    errors.push(`${path} has invalid constraint: minItems (${constraint.minItems}) > maxItems (${constraint.maxItems})`);
+    return;
+  }
+
   // MinItems constraint
   if (constraint.minItems !== undefined && value.length < constraint.minItems) {
     errors.push(
@@ -206,16 +269,21 @@ function verifyArrayConstraint(
     );
   }
 
-  // Items constraint
+  // Items constraint — recursively verify each item (capped to prevent OOM)
   if (constraint.items) {
-    for (let i = 0; i < value.length; i++) {
-      const item = value[i];
-      const itemType = getValueType(item);
-      if (itemType !== constraint.items.type) {
-        errors.push(
-          `${path}[${i}] item has wrong type: expected ${constraint.items.type}, got ${itemType}`
-        );
-      }
+    const MAX_ITEMS_TO_VERIFY = 1000;
+    const limit = Math.min(value.length, MAX_ITEMS_TO_VERIFY);
+    for (let i = 0; i < limit; i++) {
+      verifyOutputConstraint(
+        value[i],
+        constraint.items,
+        errors,
+        `${path}[${i}]`,
+        depth + 1
+      );
+    }
+    if (value.length > MAX_ITEMS_TO_VERIFY) {
+      errors.push(`${path} has ${value.length} items, only first ${MAX_ITEMS_TO_VERIFY} verified`);
     }
   }
 }
@@ -223,16 +291,23 @@ function verifyArrayConstraint(
 /**
  * Verify object constraints.
  */
+const MAX_PROPERTIES = 1000;
+
 function verifyObjectConstraint(
   value: Record<string, unknown>,
   constraint: OutputConstraint,
   errors: string[],
-  path: string
+  path: string,
+  depth: number = 0
 ): void {
   // Required properties
   if (constraint.required) {
+    if (constraint.required.length > MAX_PROPERTIES) {
+      errors.push(`${path} has too many required properties (${constraint.required.length}, max ${MAX_PROPERTIES})`);
+      return;
+    }
     for (const prop of constraint.required) {
-      if (!(prop in value)) {
+      if (!Object.prototype.hasOwnProperty.call(value, prop)) {
         errors.push(`${path} is missing required property "${prop}"`);
       }
     }
@@ -240,13 +315,19 @@ function verifyObjectConstraint(
 
   // Property type constraints
   if (constraint.properties) {
-    for (const [prop, propConstraint] of Object.entries(constraint.properties)) {
-      if (prop in value) {
+    const entries = Object.entries(constraint.properties);
+    if (entries.length > MAX_PROPERTIES) {
+      errors.push(`${path} has too many property constraints (${entries.length}, max ${MAX_PROPERTIES})`);
+      return;
+    }
+    for (const [prop, propConstraint] of entries) {
+      if (Object.prototype.hasOwnProperty.call(value, prop)) {
         verifyOutputConstraint(
           value[prop],
           propConstraint,
           errors,
-          `${path}.${prop}`
+          `${path}.${prop}`,
+          depth + 1
         );
       }
     }
@@ -261,6 +342,13 @@ function verifyObjectConstraint(
  * @returns true if invariant holds, false otherwise
  */
 export function verifyInvariant(result: unknown, invariant: string): boolean {
+  if (typeof invariant !== "string" || !invariant.trim()) {
+    return false;
+  }
+  const MAX_INVARIANT_LENGTH = 10_000;
+  if (invariant.length > MAX_INVARIANT_LENGTH) {
+    return false;
+  }
   // Safety: only allow safe expressions
   if (!isSafeInvariant(invariant)) {
     return false;
@@ -281,6 +369,9 @@ export function verifyInvariant(result: unknown, invariant: string): boolean {
  * Only allows basic comparisons and property access.
  */
 function isSafeInvariant(expr: string): boolean {
+  // Normalize Unicode to NFKC to prevent confusable bypasses (e.g. fullwidth chars)
+  expr = expr.normalize("NFKC");
+
   // Disallow dangerous patterns
   const dangerous = [
     /\bprocess\b/,
@@ -295,6 +386,22 @@ function isSafeInvariant(expr: string): boolean {
     /\b__proto__\b/,
     /\bconstructor\b/,
     /\bprototype\b/,
+    /\bglobalThis\b/,
+    /\bProxy\b/,
+    /\bReflect\b/,
+    /\bWeakRef\b/,
+    /\bFinalizationRegistry\b/,
+    /\bthis\b/,
+    /\bglobal\b/,
+    /\bwindow\b/,
+    /\bself\b/,
+    /\bvalueOf\b/,
+    /\btoString\b/,
+    /\bhasOwnProperty\b/,
+    /\bAtomics\b/,
+    /\bSharedArrayBuffer\b/,
+    /\bWebAssembly\b/,
+    /\bBuffer\b/,
   ];
 
   for (const pattern of dangerous) {
@@ -303,9 +410,45 @@ function isSafeInvariant(expr: string): boolean {
     }
   }
 
-  // Only allow: result, numbers, strings, comparisons, typeof, length, basic operators
-  const safePattern =
-    /^[\s\w.[\]()'"<>=!+\-*/%&|?:]+$/;
+  // Reject function calls — word character followed by '(' indicates invocation
+  // Allow grouping parentheses for expressions like (a > 0 && a < 10)
+  if (/\w\s*\(/.test(expr)) {
+    return false;
+  }
 
-  return safePattern.test(expr);
+  // Ensure balanced parentheses
+  let parenDepth = 0;
+  for (const ch of expr) {
+    if (ch === "(") parenDepth++;
+    else if (ch === ")") parenDepth--;
+    if (parenDepth < 0) return false;
+  }
+  if (parenDepth !== 0) return false;
+
+  // Reject all bracket notation access (prevents bypassing keyword blocklist)
+  if (/\[/.test(expr)) {
+    return false;
+  }
+
+  // Reject unicode and hex escape sequences that could bypass keyword checks
+  if (/\\u[\da-fA-F]{4}|\\u\{[\da-fA-F]+\}|\\x[\da-fA-F]{2}|\\[0-7]{1,3}/.test(expr)) {
+    return false;
+  }
+
+  // Only allow: result, numbers, strings, comparisons, typeof, length, basic operators, dot property access, grouping parens
+  // Reject quotes to prevent string concatenation bypass of keyword blocklist
+  const safePattern =
+    /^[\s\w.<>=!+\-*/%&|?:()]+$/;
+
+  if (!safePattern.test(expr)) return false;
+
+  // Limit property access depth to prevent prototype chain traversal
+  const MAX_DOT_DEPTH = 5;
+  const dotCount = (expr.match(/\./g) || []).length;
+  if (dotCount > MAX_DOT_DEPTH) return false;
+
+  // Reject assignment operators (= not preceded by !, <, >, or another =)
+  if (/(?<![!=<>])=(?!=)/.test(expr)) return false;
+
+  return true;
 }

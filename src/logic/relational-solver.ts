@@ -11,6 +11,8 @@
  * 3. Synthesis on failure (when built-ins don't work)
  */
 
+import { validateRegex } from "./lc-solver.js";
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -58,10 +60,14 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
     if (typeof input !== "string") return null;
     const pattern = args.pattern as string;
     const group = (args.group as number) ?? 0;
+    if (group < 0 || group > 99) return null;
+    const validation = validateRegex(pattern);
+    if (!validation.valid) return null;
     try {
       const regex = new RegExp(pattern);
       const result = input.match(regex);
       if (!result) return null;
+      if (group >= result.length) return null;
       return result[group] ?? null;
     } catch {
       return null;
@@ -72,9 +78,12 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
     if (typeof input !== "string") return null;
     const from = args.from as string;
     const to = args.to as string;
+    const fromValidation = validateRegex(from);
+    if (!fromValidation.valid) return null;
     try {
       const regex = new RegExp(from, "g");
-      return input.replace(regex, to);
+      const safeTo = to.replace(/\$/g, "$$$$");
+      return input.replace(regex, safeTo);
     } catch {
       return null;
     }
@@ -83,21 +92,28 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
   split: (input, args) => {
     if (typeof input !== "string") return null;
     const delim = args.delim as string;
+    if (!delim || delim.length === 0) return null;
     const idx = args.index as number;
+    if (!Number.isInteger(idx) || idx < 0) return null;
+    const MAX_SPLIT_PARTS = 10_000;
     const parts = input.split(delim);
+    if (parts.length > MAX_SPLIT_PARTS) return null;
+    if (idx >= parts.length) return null;
     return parts[idx] ?? null;
   },
 
   parseInt: (input, _args) => {
-    if (input === null || input === undefined) return NaN;
+    if (input === null || input === undefined) return null;
     const str = String(input).replace(/,/g, "");
-    return parseInt(str, 10);
+    const result = parseInt(str, 10);
+    return isNaN(result) || !Number.isSafeInteger(result) ? null : result;
   },
 
   parseFloat: (input, _args) => {
-    if (input === null || input === undefined) return NaN;
+    if (input === null || input === undefined) return null;
     const str = String(input).replace(/,/g, "");
-    return parseFloat(str);
+    const result = parseFloat(str);
+    return isNaN(result) || !isFinite(result) ? null : result;
   },
 
   parseDate: (input, args) => {
@@ -134,6 +150,7 @@ const PRIMITIVES: Record<Primitive, (input: unknown, args: Record<string, unknow
   index: (input, args) => {
     if (!Array.isArray(input)) return null;
     const idx = args.index as number;
+    if (!Number.isInteger(idx) || idx < 0 || idx >= input.length) return null;
     return input[idx] ?? null;
   },
 };
@@ -157,6 +174,17 @@ const MONTHS: Record<string, string> = {
   dec: "12", december: "12",
 };
 
+const DAYS_IN_MONTH = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function daysInMonth(month: number, year: number): number {
+  if (month < 1 || month > 12) return 0;
+  if (month === 2) {
+    const leap = (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+    return leap ? 29 : 28;
+  }
+  return DAYS_IN_MONTH[month] ?? 0;
+}
+
 function parseDateImpl(str: string, formatHint?: string): string | null {
   const trimmed = str.trim();
 
@@ -169,8 +197,12 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
   // US format: MM/DD/YYYY
   if (formatHint === "US" || !formatHint) {
     const usMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    if (usMatch && formatHint === "US") {
+    if (usMatch) {
       const [, mm, dd, yyyy] = usMatch;
+      const month = parseInt(mm, 10);
+      const day = parseInt(dd, 10);
+      const year = parseInt(yyyy, 10);
+      if (month < 1 || month > 12 || day < 1 || day > daysInMonth(month, year)) return null;
       return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
     }
   }
@@ -180,6 +212,10 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
     const euMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
     if (euMatch) {
       const [, dd, mm, yyyy] = euMatch;
+      const month = parseInt(mm, 10);
+      const day = parseInt(dd, 10);
+      const year = parseInt(yyyy, 10);
+      if (month < 1 || month > 12 || day < 1 || day > daysInMonth(month, year)) return null;
       return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
     }
   }
@@ -189,9 +225,12 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
   if (naturalMatch) {
     const [, monthName, day, year] = naturalMatch;
     const month = MONTHS[monthName.toLowerCase()];
-    if (month) {
+    const dayNum = parseInt(day, 10);
+    const m = month ? parseInt(month, 10) : 0;
+    if (month && dayNum >= 1 && dayNum <= daysInMonth(m, parseInt(year, 10))) {
       return `${year}-${month}-${day.padStart(2, "0")}`;
     }
+    if (month) return null; // Recognized month but invalid day
   }
 
   // Day Month Year (15 Jan 2024)
@@ -199,9 +238,12 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
   if (dmyMatch) {
     const [, day, monthName, year] = dmyMatch;
     const month = MONTHS[monthName.toLowerCase()];
-    if (month) {
+    const dayNum = parseInt(day, 10);
+    const m = month ? parseInt(month, 10) : 0;
+    if (month && dayNum >= 1 && dayNum <= daysInMonth(m, parseInt(year, 10))) {
       return `${year}-${month}-${day.padStart(2, "0")}`;
     }
+    if (month) return null; // Recognized month but invalid day
   }
 
   // DD-Mon-YY format (15-Jan-24)
@@ -210,7 +252,10 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
     const [, day, monthName, shortYear] = shortMatch;
     const month = MONTHS[monthName.toLowerCase()];
     if (month) {
-      const year = parseInt(shortYear) < 50 ? `20${shortYear}` : `19${shortYear}`;
+      const year = parseInt(shortYear, 10) < 50 ? `20${shortYear}` : `19${shortYear}`;
+      const dayNum = parseInt(day, 10);
+      const m = parseInt(month, 10);
+      if (dayNum < 1 || dayNum > daysInMonth(m, parseInt(year, 10))) return null;
       return `${year}-${month}-${day.padStart(2, "0")}`;
     }
   }
@@ -218,20 +263,21 @@ function parseDateImpl(str: string, formatHint?: string): string | null {
   return null;
 }
 
-function parseCurrencyImpl(str: string): number | null {
+function parseCurrencyImpl(str: string, depth: number = 0): number | null {
+  if (depth > 10) return null; // Recursion depth limit
   const trimmed = str.trim();
 
   // Handle negative in parentheses: ($1,234)
   const negParenMatch = trimmed.match(/^\(([^)]+)\)$/);
   if (negParenMatch) {
-    const inner = parseCurrencyImpl(negParenMatch[1]);
+    const inner = parseCurrencyImpl(negParenMatch[1], depth + 1);
     return inner !== null ? -inner : null;
   }
 
   // Handle negative with minus: -$1,234
-  const negMinusMatch = trimmed.match(/^-(.+)$/);
+  const negMinusMatch = trimmed.match(/^-([^-].*)$/);
   if (negMinusMatch) {
-    const inner = parseCurrencyImpl(negMinusMatch[1]);
+    const inner = parseCurrencyImpl(negMinusMatch[1], depth + 1);
     return inner !== null ? -inner : null;
   }
 
@@ -268,7 +314,7 @@ function parseCurrencyImpl(str: string): number | null {
   }
 
   const result = parseFloat(cleaned);
-  return isNaN(result) ? null : result;
+  return isNaN(result) || !isFinite(result) ? null : result;
 }
 
 function parseNumberImpl(str: string): number | null {
@@ -278,19 +324,19 @@ function parseNumberImpl(str: string): number | null {
   const percentMatch = trimmed.match(/^([\d.,]+)%$/);
   if (percentMatch) {
     const num = parseFloat(percentMatch[1].replace(/,/g, ""));
-    return isNaN(num) ? null : num / 100;
+    return isNaN(num) || !isFinite(num) ? null : num / 100;
   }
 
   // Handle scientific notation
   if (/^[\d.]+e[+-]?\d+$/i.test(trimmed)) {
     const result = parseFloat(trimmed);
-    return isNaN(result) ? null : result;
+    return isNaN(result) || !isFinite(result) ? null : result;
   }
 
   // Standard number with commas
   const cleaned = trimmed.replace(/,/g, "");
   const result = parseFloat(cleaned);
-  return isNaN(result) ? null : result;
+  return isNaN(result) || !isFinite(result) ? null : result;
 }
 
 // ============================================================================
@@ -464,15 +510,26 @@ function searchComposition(examples: Example[]): Composition | null {
     generators.push(generateNumberExtractionCandidates());
   }
 
-  // Search through all candidates
+  // Search through all candidates (with iteration limit to prevent runaway search)
+  const MAX_CANDIDATES = 10_000;
+  let candidatesChecked = 0;
+
   for (const generator of generators) {
     for (const candidate of generator) {
+      if (++candidatesChecked > MAX_CANDIDATES) {
+        return null;
+      }
+
       let allMatch = true;
 
       for (const { input, output } of examples) {
         try {
           const result = evaluateComposition(candidate, input);
-          if (result !== output) {
+          // Use epsilon comparison for floats to handle IEEE 754 precision issues (e.g., 0.1+0.2 !== 0.3)
+          const matches = typeof result === "number" && typeof output === "number"
+            ? Math.abs(result - output) < 1e-9
+            : result === output;
+          if (!matches) {
             allMatch = false;
             break;
           }
@@ -500,7 +557,7 @@ function searchComposition(examples: Example[]): Composition | null {
  */
 function buildQuarterMapper(examples: Example[]): ((input: string) => string) | null {
   // Check if this looks like quarter mapping
-  const quarterRegex = /Q(\d)-(\d+)/;
+  const quarterRegex = /Q([1-4])-(\d{4})/;
 
   // Build mapping from quarter to month
   const quarterToMonth: Record<string, string> = {};
@@ -536,7 +593,8 @@ function buildQuarterMapper(examples: Example[]): ((input: string) => string) | 
     // Infer month from quarter if not in our examples
     let month = quarterToMonth[quarter];
     if (!month) {
-      const q = parseInt(quarter);
+      const q = parseInt(quarter, 10);
+      if (isNaN(q) || q < 1 || q > 4) return input;
       month = String((q - 1) * 3 + 1).padStart(2, "0");
     }
 
@@ -617,8 +675,12 @@ export function composeToMatch(
     generateStringExtractionCandidates(),
   ];
 
+  const MAX_CANDIDATES = 10000;
+  let candidateCount = 0;
+
   for (const generator of generators) {
     for (const candidate of generator) {
+      if (++candidateCount > MAX_CANDIDATES) break;
       if (!isAllowed(candidate)) continue;
 
       let allMatch = true;
@@ -639,6 +701,7 @@ export function composeToMatch(
         return candidate;
       }
     }
+    if (candidateCount > MAX_CANDIDATES) break;
   }
 
   return null;
@@ -651,10 +714,13 @@ export function composeToMatch(
 /**
  * The primitive reduce function - all other list operations can be derived from this
  */
+const MAX_REDUCE_LENGTH = 1_000_000;
+
 function reduce<T, R>(arr: T[], fn: (acc: R, item: T) => R, initial: R): R {
   let acc = initial;
-  for (const item of arr) {
-    acc = fn(acc, item);
+  const limit = Math.min(arr.length, MAX_REDUCE_LENGTH);
+  for (let i = 0; i < limit; i++) {
+    acc = fn(acc, arr[i]);
   }
   return acc;
 }
@@ -668,21 +734,21 @@ type AnyFunction = (...args: any[]) => any;
 export function deriveFunction(name: string): AnyFunction | null {
   switch (name) {
     case "filter":
-      // filter = reduce with conditional cons
+      // filter = reduce with conditional cons (push for O(n) instead of spread O(n^2))
       return <T>(arr: T[], predicate: (x: T) => boolean): T[] => {
         return reduce(
           arr,
-          (acc: T[], item: T) => (predicate(item) ? [...acc, item] : acc),
+          (acc: T[], item: T) => { if (predicate(item)) acc.push(item); return acc; },
           [] as T[]
         );
       };
 
     case "map":
-      // map = reduce with transform + cons
+      // map = reduce with transform + cons (push for O(n) instead of spread O(n^2))
       return <T, R>(arr: T[], transform: (x: T) => R): R[] => {
         return reduce(
           arr,
-          (acc: R[], item: T) => [...acc, transform(item)],
+          (acc: R[], item: T) => { acc.push(transform(item)); return acc; },
           [] as R[]
         );
       };

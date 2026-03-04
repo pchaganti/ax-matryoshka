@@ -22,6 +22,7 @@ function buildSystemPrompt(
   hints?: RAGHints
 ): string {
   // Determine document size category
+  if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const sizeCategory = contextLength < 2000 ? "SMALL" : "LARGE";
 
   return `You analyze documents to answer queries. Output ONE command per turn.
@@ -53,6 +54,38 @@ ${hints?.hintsText || ""}${hints?.selfCorrectionText || ""}`;
  * Try to convert JSON to S-expression
  * Handles common cases when model outputs JSON instead of S-expressions
  */
+/** Validate collection name is a safe S-expression identifier (RESULTS, _N, etc.) */
+const DANGEROUS_COLLECTION_NAMES = new Set([
+  "__proto__", "constructor", "prototype", "eval", "Function",
+  "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
+]);
+
+function validateCollectionName(name: unknown): string | null {
+  if (typeof name !== "string") return null;
+  // Only allow known safe identifiers: RESULTS, _1, _2, ..., or simple alphanumeric names
+  if (!/^(RESULTS|_\d+|[A-Za-z]\w*)$/.test(name)) return null;
+  // Block dangerous JS property names
+  if (DANGEROUS_COLLECTION_NAMES.has(name)) return null;
+  return name;
+}
+
+/** Escape a string for embedding in an S-expression string literal */
+const MAX_ESCAPE_INPUT_LENGTH = 100_000;
+
+function escapeForSexp(s: string): string {
+  if (s.length > MAX_ESCAPE_INPUT_LENGTH) {
+    s = s.slice(0, MAX_ESCAPE_INPUT_LENGTH);
+  }
+  return s
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\(/g, '\\(')
+    .replace(/\)/g, '\\)')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
+}
+
 function jsonToSexp(json: unknown): string | null {
   if (typeof json !== "object" || json === null) return null;
 
@@ -67,29 +100,29 @@ function jsonToSexp(json: unknown): string | null {
     case "search": {
       const pattern = obj.pattern || obj.query || obj.term;
       if (typeof pattern === "string") {
-        return `(grep "${pattern.replace(/"/g, '\\"')}")`;
+        return `(grep "${escapeForSexp(pattern)}")`;
       }
       break;
     }
 
     case "filter": {
-      const collection = obj.collection || obj.input || "RESULTS";
+      const rawCollection = obj.collection || obj.input || "RESULTS";
+      const collection = validateCollectionName(rawCollection);
       const pattern = obj.pattern || obj.predicate || obj.match;
-      if (typeof pattern === "string") {
-        const escaped = pattern.replace(/"/g, '\\"');
-        return `(filter ${collection} (lambda x (match x "${escaped}" 0)))`;
+      if (collection && typeof pattern === "string") {
+        return `(filter ${collection} (lambda x (match x "${escapeForSexp(pattern)}" 0)))`;
       }
       break;
     }
 
     case "map":
     case "extract": {
-      const collection = obj.collection || obj.input || "RESULTS";
+      const rawCollection = obj.collection || obj.input || "RESULTS";
+      const collection = validateCollectionName(rawCollection);
       const pattern = obj.pattern || obj.regex;
-      const group = typeof obj.group === "number" ? obj.group : 0;
-      if (typeof pattern === "string") {
-        const escaped = pattern.replace(/"/g, '\\"');
-        return `(map ${collection} (lambda x (match x "${escaped}" ${group})))`;
+      const group = typeof obj.group === "number" && Number.isInteger(obj.group) && obj.group >= 0 ? Math.min(obj.group, 99) : 0;
+      if (collection && typeof pattern === "string") {
+        return `(map ${collection} (lambda x (match x "${escapeForSexp(pattern)}" ${group})))`;
       }
       break;
     }
@@ -97,9 +130,10 @@ function jsonToSexp(json: unknown): string | null {
     case "fuzzy":
     case "fuzzy_search": {
       const query = obj.query || obj.term;
-      const limit = typeof obj.limit === "number" ? obj.limit : 10;
+      const rawLimit = typeof obj.limit === "number" ? obj.limit : 10;
+      const limit = Math.max(1, Math.min(Math.floor(rawLimit), 1000));
       if (typeof query === "string") {
-        return `(fuzzy_search "${query.replace(/"/g, '\\"')}" ${limit})`;
+        return `(fuzzy_search "${escapeForSexp(query)}" ${limit})`;
       }
       break;
     }
@@ -113,7 +147,12 @@ function jsonToSexp(json: unknown): string | null {
  * Looks for S-expressions starting with ( or constrained terms starting with [
  * Falls back to JSON conversion if no S-expression found
  */
+const MAX_RESPONSE_PARSE_LENGTH = 1_000_000;
+
 function extractCode(response: string): string | null {
+  if (response.length > MAX_RESPONSE_PARSE_LENGTH) {
+    response = response.slice(0, MAX_RESPONSE_PARSE_LENGTH);
+  }
   // Also check for code blocks first (multi-line S-expressions)
   const codeBlockMatch = response.match(/```(?:lisp|scheme|sexp)?\n?([\s\S]*?)```/);
   if (codeBlockMatch) {
@@ -137,11 +176,13 @@ function extractCode(response: string): string | null {
       const parenAfterTensor = response.indexOf("(", tensorIdx);
       if (parenAfterTensor > tensorIdx) {
         // Balance parens to find the end
+        const MAX_DEPTH = 100;
         let depth = 0;
         let end = -1;
         for (let i = parenAfterTensor; i < response.length; i++) {
           if (response[i] === "(") depth++;
           if (response[i] === ")") depth--;
+          if (depth > MAX_DEPTH) break;
           if (depth === 0) {
             end = i + 1;
             break;
@@ -156,19 +197,46 @@ function extractCode(response: string): string | null {
 
   // Check for plain S-expression in raw text
   // Find opening paren and balance to closing
-  if (firstParen >= 0) {
+  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references"];
+
+  const MAX_SEXP_ITERATIONS = 200;
+  let sexpIterations = 0;
+  let searchFrom = firstParen;
+  while (searchFrom >= 0 && searchFrom < response.length && sexpIterations < MAX_SEXP_ITERATIONS) {
+    sexpIterations++;
+    const parenIdx = response.indexOf("(", searchFrom);
+    if (parenIdx < 0) break;
+
     let depth = 0;
     let end = -1;
-    for (let i = firstParen; i < response.length; i++) {
+    let inString = false;
+    let escaped = false;
+    for (let i = parenIdx; i < response.length; i++) {
+      if (escaped) { escaped = false; continue; }
+      if (response[i] === "\\" && inString) { escaped = true; continue; }
+      if (response[i] === '"') { inString = !inString; continue; }
+      if (inString) continue;
       if (response[i] === "(") depth++;
       if (response[i] === ")") depth--;
+      const MAX_DEPTH = 100;
+      if (depth > MAX_DEPTH) break;
       if (depth === 0) {
         end = i + 1;
         break;
       }
     }
-    if (end > firstParen) {
-      return response.slice(firstParen, end);
+    if (end > parenIdx) {
+      const expr = response.slice(parenIdx, end);
+      // Check the expression starts with a known command
+      const exprContent = expr.slice(1).trim(); // remove leading (
+      const firstWord = exprContent.match(/^(\S+)/)?.[1];
+      if (firstWord && KNOWN_COMMANDS.includes(firstWord)) {
+        return expr;
+      }
+      // Not a valid S-expression command, skip and look for next one
+      searchFrom = end;
+    } else {
+      break;
     }
   }
 
@@ -187,11 +255,37 @@ function extractCode(response: string): string | null {
     }
   }
 
-  // Try to find inline JSON object
-  const inlineJson = response.match(/\{[^}]+\}/);
+  // Try to find inline JSON object using balanced brace extraction
+  const MAX_JSON_EXTRACTION_CHARS = 100_000;
+  const extractJson = (text: string): string | null => {
+    const start = text.indexOf("{");
+    if (start === -1) return null;
+    // Limit processing to prevent CPU exhaustion on huge LLM responses
+    const maxEnd = Math.min(text.length, start + MAX_JSON_EXTRACTION_CHARS);
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let i = start; i < maxEnd; i++) {
+      const ch = text[i];
+      if (escape) { escape = false; continue; }
+      if (ch === "\\") { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      const MAX_DEPTH = 100;
+      if (ch === "{") {
+        depth++;
+        if (depth > MAX_DEPTH) return null;
+      } else if (ch === "}") {
+        depth--;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+    }
+    return null;
+  };
+  const inlineJson = extractJson(response);
   if (inlineJson) {
     try {
-      const parsed = JSON.parse(inlineJson[0]);
+      const parsed = JSON.parse(inlineJson);
       const converted = jsonToSexp(parsed);
       if (converted) {
         return converted;
@@ -246,8 +340,9 @@ function extractFinalAnswer(
   }
 
   // Also check for FINAL_VAR pattern
+  const DANGEROUS_VAR_NAMES = /^(__proto__|constructor|prototype|eval|Function|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|hasOwnProperty|toString|valueOf|toLocaleString|isPrototypeOf|propertyIsEnumerable)$/i;
   const varMatch = response.match(/FINAL_VAR\((\w+)\)/);
-  if (varMatch) {
+  if (varMatch && !DANGEROUS_VAR_NAMES.test(varMatch[1])) {
     return { type: "var", name: varMatch[1] };
   }
 
@@ -292,6 +387,7 @@ function getErrorFeedback(error: string, code?: string): string {
  * @param query - The original query for context
  */
 function getSuccessFeedback(resultCount?: number, previousCount?: number, query?: string): string {
+  const safeQuery = (query || "the query").slice(0, 200);
   if (resultCount === 0 && previousCount && previousCount > 0) {
     return `Filter matched nothing. Try different pattern.
 
@@ -307,7 +403,7 @@ Next:`;
   if (resultCount && resultCount > 0) {
     return `Found ${resultCount} matches.
 
-Check: Do these results answer "${query || 'the query'}"?
+Check: Do these results answer "${safeQuery}"?
 - For "list/show/what": output the items directly <<<FINAL>>>item1, item2...<<<END>>>
 - For "how many/count": (count RESULTS)
 - For "total/sum": (sum RESULTS)

@@ -159,6 +159,97 @@ Line 5: Final line`;
     });
   });
 
+  describe("corrupted JSON resilience", () => {
+    it("should return empty array for corrupted handle data JSON", () => {
+      // Create a handle normally
+      const handle = db.createHandle([{ line: "Test", lineNum: 1 }]);
+
+      // Corrupt the stored JSON directly
+      (db as unknown as { db: { prepare: (sql: string) => { run: (...args: unknown[]) => void } } }).db
+        .prepare("UPDATE handle_data SET data = 'not{valid}json' WHERE handle = ?")
+        .run(handle);
+
+      // Should return null for corrupted item, not crash
+      const data = db.getHandleData(handle);
+      expect(data).toEqual([null]);
+    });
+
+    it("should return null for corrupted checkpoint JSON", () => {
+      // Save a valid checkpoint
+      db.saveCheckpoint(1, new Map([["RESULTS", "$res1"]]));
+
+      // Corrupt the stored JSON directly
+      (db as unknown as { db: { prepare: (sql: string) => { run: (...args: unknown[]) => void } } }).db
+        .prepare("UPDATE checkpoints SET bindings = 'corrupted{json' WHERE turn = ?")
+        .run(1);
+
+      // Should return null, not crash
+      const checkpoint = db.getCheckpoint(1);
+      expect(checkpoint).toBeNull();
+    });
+
+    it("should still return valid handle data normally", () => {
+      const data = [
+        { line: "Error 1", lineNum: 1 },
+        { line: "Error 2", lineNum: 5 },
+      ];
+      const handle = db.createHandle(data);
+      const retrieved = db.getHandleData(handle);
+
+      expect(retrieved).toHaveLength(2);
+      expect(retrieved[0]).toEqual({ line: "Error 1", lineNum: 1 });
+    });
+
+    it("should return null for corrupted items but keep valid ones", () => {
+      const handle = db.createHandle([{ a: 1 }, { b: 2 }, { c: 3 }]);
+
+      // Corrupt only the middle entry
+      (db as unknown as { db: { prepare: (sql: string) => { run: (...args: unknown[]) => void } } }).db
+        .prepare("UPDATE handle_data SET data = 'bad' WHERE handle = ? AND idx = 1")
+        .run(handle);
+
+      const data = db.getHandleData(handle);
+      expect(data).toHaveLength(3);
+      expect(data[0]).toEqual({ a: 1 });
+      expect(data[1]).toBeNull();
+      expect(data[2]).toEqual({ c: 3 });
+    });
+  });
+
+  describe("getHandleDataSlice", () => {
+    it("should return only the requested number of items", () => {
+      const data = [{ a: 1 }, { b: 2 }, { c: 3 }, { d: 4 }, { e: 5 }];
+      const handle = db.createHandle(data);
+      const slice = db.getHandleDataSlice(handle, 2);
+
+      expect(slice).toHaveLength(2);
+      expect(slice[0]).toEqual({ a: 1 });
+      expect(slice[1]).toEqual({ b: 2 });
+    });
+
+    it("should return empty array for unknown handle", () => {
+      const slice = db.getHandleDataSlice("$unknown", 5);
+      expect(slice).toEqual([]);
+    });
+
+    it("should return all items when limit exceeds count", () => {
+      const data = [{ a: 1 }, { b: 2 }];
+      const handle = db.createHandle(data);
+      const slice = db.getHandleDataSlice(handle, 100);
+
+      expect(slice).toHaveLength(2);
+    });
+  });
+
+  describe("FTS5 search error logging", () => {
+    it("should return empty array for invalid FTS5 queries", () => {
+      db.loadDocument("test line");
+      // Invalid FTS5 syntax should not crash
+      const results = db.search("AND OR NOT");
+      expect(results).toEqual([]);
+    });
+  });
+
   describe("cleanup", () => {
     it("should close database connection", () => {
       db.close();
@@ -174,6 +265,67 @@ Line 5: Final line`;
 
       expect(db.getLineCount()).toBe(0);
       expect(db.getCheckpointTurns()).toHaveLength(0);
+    });
+  });
+
+  describe("getLines range validation", () => {
+    it("should clamp start < 1 to 1", () => {
+      db.loadDocument("line1\nline2\nline3");
+      const lines = db.getLines(0, 2);
+      expect(lines.length).toBe(2);
+      expect(lines[0].lineNum).toBe(1);
+    });
+
+    it("should return empty array for inverted range (start > end)", () => {
+      db.loadDocument("line1\nline2\nline3");
+      const lines = db.getLines(5, 3);
+      expect(lines).toEqual([]);
+    });
+  });
+
+  describe("handle counter sequential numbering", () => {
+    it("should produce sequential handle numbers", () => {
+      db.loadDocument("test content");
+      const h1 = db.createHandle(["a", "b"]);
+      const h2 = db.createHandle(["c", "d"]);
+      const h3 = db.createHandle(["e", "f"]);
+
+      expect(h1).toBe("$res1");
+      expect(h2).toBe("$res2");
+      expect(h3).toBe("$res3");
+    });
+  });
+
+  describe("foreign key cascade", () => {
+    it("should cascade delete handle_data when handle is deleted", () => {
+      db.loadDocument("test");
+      const handle = db.createHandle([1, 2, 3]);
+      expect(db.getHandleData(handle)).toHaveLength(3);
+      db.deleteHandle(handle);
+      // After delete, data should be gone too (cascade)
+      expect(db.getHandleData(handle)).toHaveLength(0);
+    });
+  });
+
+  describe("null value preservation in handles", () => {
+    it("should preserve null values in handle data", () => {
+      db.loadDocument("test");
+      const handle = db.createHandle([1, null, 3]);
+      const data = db.getHandleData(handle);
+      expect(data).toHaveLength(3);
+      expect(data[0]).toBe(1);
+      expect(data[1]).toBeNull();
+      expect(data[2]).toBe(3);
+    });
+
+    it("should preserve null values in handle data slice", () => {
+      db.loadDocument("test");
+      const handle = db.createHandle([null, 2, null]);
+      const data = db.getHandleDataSlice(handle, 10);
+      expect(data).toHaveLength(3);
+      expect(data[0]).toBeNull();
+      expect(data[1]).toBe(2);
+      expect(data[2]).toBeNull();
     });
   });
 });

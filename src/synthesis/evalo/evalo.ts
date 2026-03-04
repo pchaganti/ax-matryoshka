@@ -13,6 +13,7 @@
 import { run, eq, conde, exist, Rel } from "../../minikanren/index.js";
 import type { Var } from "../../minikanren/common.js";
 import type { Extractor, Example, Value } from "./types.js";
+import { validateRegex } from "../../logic/lc-solver.js";
 
 // ============================================================================
 // Forward Evaluation (Standard Interpreter)
@@ -22,7 +23,10 @@ import type { Extractor, Example, Value } from "./types.js";
  * Evaluate an extractor on an input string
  * This is the forward mode - given extractor + input, compute output
  */
-export function evalExtractor(extractor: Extractor, input: string): Value {
+const MAX_EVAL_DEPTH = 100;
+
+export function evalExtractor(extractor: Extractor, input: string, depth: number = 0): Value {
+  if (depth > MAX_EVAL_DEPTH) return null;
   switch (extractor.tag) {
     case "input":
       return input;
@@ -31,13 +35,16 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
       return extractor.value;
 
     case "match": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
 
+      const matchValidation = validateRegex(extractor.pattern);
+      if (!matchValidation.valid) return null;
       try {
         const regex = new RegExp(extractor.pattern);
         const match = str.match(regex);
         if (!match) return null;
+        if (!Number.isInteger(extractor.group) || extractor.group < 0 || extractor.group > 99) return null;
         return match[extractor.group] ?? null;
       } catch {
         return null;
@@ -45,58 +52,78 @@ export function evalExtractor(extractor: Extractor, input: string): Value {
     }
 
     case "replace": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
 
+      const replaceValidation = validateRegex(extractor.from);
+      if (!replaceValidation.valid) return str;
       try {
         const regex = new RegExp(extractor.from, "g");
-        return str.replace(regex, extractor.to);
+        // Escape $ in replacement to prevent backreference injection
+        const safeReplacement = extractor.to.replace(/\$/g, "$$$$");
+        const MAX_RESULT_LENGTH = 1_000_000;
+        const result = str.replace(regex, safeReplacement);
+        if (result.length > MAX_RESULT_LENGTH) return null;
+        return result;
       } catch {
         return null;
       }
     }
 
     case "slice": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
+      if (!Number.isSafeInteger(extractor.start) || extractor.start < 0) return null;
+      if (!Number.isSafeInteger(extractor.end) || extractor.end < 0 || extractor.end < extractor.start) return null;
       return str.slice(extractor.start, extractor.end);
     }
 
     case "split": {
-      const str = evalExtractor(extractor.str, input);
+      const str = evalExtractor(extractor.str, input, depth + 1);
       if (typeof str !== "string") return null;
+      if (!extractor.delim || extractor.delim.length === 0 || extractor.delim.length > 1000) return null;
 
-      const parts = str.split(extractor.delim);
-      if (extractor.index < 0 || extractor.index >= parts.length) return null;
+      const MAX_SPLIT_PARTS = 10_000;
+      const parts = str.split(extractor.delim, MAX_SPLIT_PARTS + 1);
+      if (parts.length > MAX_SPLIT_PARTS) return null;
+      if (!Number.isInteger(extractor.index) || extractor.index < 0 || extractor.index >= parts.length) return null;
       return parts[extractor.index];
     }
 
     case "parseInt": {
-      const str = evalExtractor(extractor.str, input);
-      if (str === null) return NaN;
-      return parseInt(String(str), 10);
+      const str = evalExtractor(extractor.str, input, depth + 1);
+      if (str === null) return null;
+      const strVal = String(str);
+      if (strVal.length > 200) return null;
+      const intResult = parseInt(strVal, 10);
+      return isNaN(intResult) || !Number.isSafeInteger(intResult) ? null : intResult;
     }
 
     case "parseFloat": {
-      const str = evalExtractor(extractor.str, input);
-      if (str === null) return NaN;
-      return parseFloat(String(str));
+      const str = evalExtractor(extractor.str, input, depth + 1);
+      if (str === null) return null;
+      const strVal = String(str);
+      if (strVal.length > 200) return null;
+      const floatResult = parseFloat(strVal);
+      return isNaN(floatResult) || !isFinite(floatResult) ? null : floatResult;
     }
 
     case "add": {
-      const left = evalExtractor(extractor.left, input);
-      const right = evalExtractor(extractor.right, input);
-      if (typeof left !== "number" || typeof right !== "number") return NaN;
-      return left + right;
+      const left = evalExtractor(extractor.left, input, depth + 1);
+      const right = evalExtractor(extractor.right, input, depth + 1);
+      if (typeof left !== "number" || typeof right !== "number" || isNaN(left) || isNaN(right)) return null;
+      const result = left + right;
+      if (!isFinite(result) || !Number.isSafeInteger(result)) return null;
+      return result;
     }
 
     case "if": {
-      const cond = evalExtractor(extractor.cond, input);
-      // Falsy: null, "", 0, false
-      const isFalsy = cond === null || cond === "" || cond === 0 || cond === false;
+      const cond = evalExtractor(extractor.cond, input, depth + 1);
+      // Falsy: null, "", 0, false, NaN
+      const isFalsy = cond === null || cond === "" || cond === 0 || cond === false || (typeof cond === "number" && isNaN(cond));
       return isFalsy
-        ? evalExtractor(extractor.else, input)
-        : evalExtractor(extractor.then, input);
+        ? evalExtractor(extractor.else, input, depth + 1)
+        : evalExtractor(extractor.then, input, depth + 1);
     }
   }
 }
@@ -132,13 +159,13 @@ const COMMON_PATTERNS = [
 export function evalo(
   extractor: Extractor,
   input: string,
-  expectedOutput: Value | null
+  expectedOutput?: Value | null
 ): Value[] {
   const result = evalExtractor(extractor, input);
 
   // If expectedOutput is provided, check if it matches
-  if (expectedOutput !== null) {
-    if (result === expectedOutput) {
+  if (expectedOutput !== undefined) {
+    if (Object.is(result, expectedOutput)) {
       return [result];
     }
     return [];
@@ -270,6 +297,10 @@ export function synthesizeExtractor(
   maxResults: number = 5
 ): Extractor[] {
   // Validate inputs
+  const MAX_EXAMPLES = 1000;
+  if (examples.length > MAX_EXAMPLES) {
+    throw new Error(`Too many examples: ${examples.length} (max ${MAX_EXAMPLES})`);
+  }
   if (examples.length < 2) {
     throw new Error("Need at least 2 examples for reliable synthesis");
   }
@@ -278,7 +309,7 @@ export function synthesizeExtractor(
   const inputToOutput = new Map<string, Value>();
   for (const { input, output } of examples) {
     const existing = inputToOutput.get(input);
-    if (existing !== undefined && existing !== output) {
+    if (existing !== undefined && !Object.is(existing, output)) {
       throw new Error(
         `Conflicting examples: input "${input}" maps to both ${JSON.stringify(existing)} and ${JSON.stringify(output)}`
       );
@@ -287,15 +318,16 @@ export function synthesizeExtractor(
   }
 
   // Check for constant output (all outputs are the same)
+  // Use Object.is for NaN-safe comparison (JSON.stringify conflates NaN and null)
   const outputs = examples.map(e => e.output);
-  const allSame = outputs.every(o => o === outputs[0]);
+  const allSame = outputs.every(o => Object.is(o, outputs[0]));
   if (allSame) {
     // Return literal extractor
     return [{ tag: "lit", value: outputs[0] as string | number }];
   }
 
   // Check for identity (output === input for all)
-  const allIdentity = examples.every(e => e.output === e.input);
+  const allIdentity = examples.every(e => Object.is(e.output, e.input));
   if (allIdentity) {
     return [{ tag: "input" }];
   }
@@ -312,7 +344,8 @@ export function synthesizeExtractor(
     let allPass = true;
     for (const { input, output } of examples) {
       const result = evalExtractor(candidate, input);
-      if (result !== output) {
+      // Use Object.is for NaN-safe comparison
+      if (!Object.is(result, output)) {
         allPass = false;
         break;
       }

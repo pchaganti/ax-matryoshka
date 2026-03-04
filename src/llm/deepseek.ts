@@ -10,6 +10,7 @@ interface ChatCompletionResponse {
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
+const LLM_TIMEOUT_MS = 120_000; // 2 minutes
 
 async function fetchWithRetry(
   url: string,
@@ -17,8 +18,10 @@ async function fetchWithRetry(
   retries = MAX_RETRIES
 ): Promise<Response> {
   for (let attempt = 1; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
     try {
-      const response = await fetch(url, options);
+      const response = await fetch(url, { ...options, signal: controller.signal });
       return response;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -31,6 +34,8 @@ async function fetchWithRetry(
         `Fetch attempt ${attempt}/${retries} failed (${errMsg}), retrying in ${RETRY_DELAY_MS}ms...`
       );
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
   throw new Error("Unreachable");
@@ -70,16 +75,27 @@ export function createDeepSeekProvider(config: ProviderConfig): LLMProvider {
       );
 
       if (!response.ok) {
+        let errorBody = "";
+        try { errorBody = await response.text(); } catch { /* ignore */ }
         throw new Error(
-          `DeepSeek error: ${response.status} ${response.statusText}`
+          `DeepSeek error: ${response.status} ${response.statusText}${errorBody ? ` - ${errorBody.slice(0, 200)}` : ""}`
         );
       }
 
-      const data = (await response.json()) as ChatCompletionResponse;
+      let data: ChatCompletionResponse;
+      try {
+        data = (await response.json()) as ChatCompletionResponse;
+      } catch {
+        throw new Error("DeepSeek returned invalid JSON response");
+      }
       if (!data.choices || data.choices.length === 0) {
         throw new Error("DeepSeek returned empty response (no choices)");
       }
-      return data.choices[0].message.content;
+      const content = data.choices[0]?.message?.content;
+      if (content === undefined || content === null) {
+        throw new Error("DeepSeek response missing message content");
+      }
+      return content;
     },
   };
 }

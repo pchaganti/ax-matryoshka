@@ -81,6 +81,9 @@ export class RAGManager {
    * @returns Array of hints sorted by relevance
    */
   getHints(query: string, topK: number = 2): Hint[] {
+    const MAX_QUERY_LENGTH = 10_000;
+    if (!query || query.length > MAX_QUERY_LENGTH) return [];
+    topK = Math.max(1, Math.min(Math.floor(topK) || 2, 100));
     const hints: Hint[] = [];
 
     // Get relevant expert examples
@@ -98,10 +101,12 @@ export class RAGManager {
 
         // Add pitfalls if present
         if (example.pitfalls && example.pitfalls.length > 0) {
+          const MAX_PITFALLS = 10;
+          const pitfallContent = example.pitfalls.slice(0, MAX_PITFALLS).map(p => `- ${String(p).slice(0, 500)}`).join("\n");
           hints.push({
             type: "pitfall",
             title: `Pitfalls for: ${example.description}`,
-            content: example.pitfalls.map(p => `- ${p}`).join("\n"),
+            content: pitfallContent.slice(0, 5000),
             score: result.score * 0.8,  // Slightly lower priority
           });
         }
@@ -121,33 +126,42 @@ export class RAGManager {
 
     // Sort by score and limit
     return hints
-      .sort((a, b) => b.score - a.score)
-      .slice(0, topK + 1);  // Allow one extra for pitfall/failure
+      .sort((a, b) => {
+        if (b.score > a.score) return 1;
+        if (b.score < a.score) return -1;
+        return 0;
+      })
+      .slice(0, topK);
   }
 
   /**
    * Format an expert example as a hint for the model
    */
   private formatExampleAsHint(example: ExpertExample): string {
+    const safeCode = (example.code || "").replace(/`/g, "\\`").replace(/\$/g, "\\$").slice(0, 2000);
+    const safeRationale = (example.rationale || "").slice(0, 1000);
     return `**Suggested Pattern:**
 \`\`\`javascript
-${example.code}
+${safeCode}
 \`\`\`
 
-**Why this works:** ${example.rationale}`;
+**Why this works:** ${safeRationale}`;
   }
 
   /**
    * Format a failure example as a hint
    */
   private formatFailureAsHint(failure: FailureExample): string {
+    const safeBadCode = failure.badCode.replace(/`/g, "\\`").replace(/\$/g, "\\$");
+    const safeError = failure.error.replace(/`/g, "\\`").replace(/\$/g, "\\$");
+    const safeFix = failure.fix.replace(/`/g, "\\`").replace(/\$/g, "\\$");
     return `**Don't do this:**
 \`\`\`javascript
-${failure.badCode}
+${safeBadCode}
 \`\`\`
-Error: ${failure.error}
+Error: ${safeError}
 
-**Instead:** ${failure.fix}`;
+**Instead:** ${safeFix}`;
   }
 
   /**
@@ -159,9 +173,9 @@ Error: ${failure.error}
 
     for (const failure of FAILURE_EXAMPLES) {
       // Check if query relates to this failure's intent
-      const intentWords = failure.intent.toLowerCase().split(/\s+/);
+      const intentWords = failure.intent.toLowerCase().split(/\s+/).slice(0, 100);
       const matches = intentWords.filter(word =>
-        lowerQuery.includes(word) || word.length > 3 && lowerQuery.includes(word.slice(0, 4))
+        lowerQuery.includes(word) || (word.length > 3 && lowerQuery.includes(word.slice(0, 4)))
       );
 
       if (matches.length >= 2) {
@@ -178,6 +192,27 @@ Error: ${failure.error}
    * @param record - The failure to record
    */
   recordFailure(record: FailureRecord): void {
+    // Cap code, error, and query length to prevent memory exhaustion
+    const MAX_CODE_LENGTH = 10_000;
+    const MAX_ERROR_LENGTH = 2_000;
+    const MAX_QUERY_LENGTH = 10_000;
+    if (record.query && record.query.length > MAX_QUERY_LENGTH) {
+      record = { ...record, query: record.query.slice(0, MAX_QUERY_LENGTH) };
+    }
+    if (record.code && record.code.length > MAX_CODE_LENGTH) {
+      record = { ...record, code: record.code.slice(0, MAX_CODE_LENGTH) };
+    }
+    if (record.error && record.error.length > MAX_ERROR_LENGTH) {
+      record = { ...record, error: record.error.slice(0, MAX_ERROR_LENGTH) };
+    }
+    if (!Number.isFinite(record.timestamp) || record.timestamp < 0) {
+      record = { ...record, timestamp: Date.now() };
+    }
+
+    // Auto-prune stale failures older than 10 minutes before adding
+    const staleCutoff = Date.now() - 10 * 60 * 1000;
+    this.failureMemory = this.failureMemory.filter(f => f.timestamp > staleCutoff);
+
     this.failureMemory.push(record);
 
     // Prune old failures if over limit
@@ -196,6 +231,9 @@ Error: ${failure.error}
     sessionId?: string,
     maxAge: number = 5 * 60 * 1000
   ): FailureRecord[] {
+    if (!Number.isFinite(maxAge) || maxAge < 0) {
+      maxAge = 5 * 60 * 1000;
+    }
     const cutoff = Date.now() - maxAge;
 
     return this.failureMemory.filter(f =>
@@ -221,13 +259,15 @@ Error: ${failure.error}
     ];
 
     // Group hints by type
+    const MAX_INDIVIDUAL_HINT = 5000;
     const patterns = hints.filter(h => h.type === "pattern");
     const pitfalls = hints.filter(h => h.type === "pitfall");
     const failures = hints.filter(h => h.type === "failure");
 
     // Add patterns
     for (const hint of patterns) {
-      parts.push(`### ${hint.title}\n${hint.content}\n`);
+      const content = hint.content.slice(0, MAX_INDIVIDUAL_HINT);
+      parts.push(`### ${hint.title}\n${content}\n`);
     }
 
     // Add warnings
@@ -235,16 +275,19 @@ Error: ${failure.error}
       parts.push("\n### ⚠️ IMPORTANT WARNINGS\n");
 
       for (const hint of pitfalls) {
-        parts.push(hint.content);
+        parts.push(hint.content.slice(0, MAX_INDIVIDUAL_HINT));
         parts.push("");
       }
 
       for (const hint of failures) {
-        parts.push(`**${hint.title}**\n${hint.content}\n`);
+        const content = hint.content.slice(0, MAX_INDIVIDUAL_HINT);
+        parts.push(`**${hint.title}**\n${content}\n`);
       }
     }
 
-    return parts.join("\n");
+    const MAX_PROMPT_OUTPUT = 50_000;
+    const result = parts.join("\n");
+    return result.length > MAX_PROMPT_OUTPUT ? result.slice(0, MAX_PROMPT_OUTPUT) : result;
   }
 
   /**
@@ -266,9 +309,9 @@ Error: ${failure.error}
       parts.push(`
 **Failed Code:**
 \`\`\`javascript
-${failure.code.slice(0, 200)}${failure.code.length > 200 ? "..." : ""}
+${(failure.code || "").slice(0, 200).replace(/`/g, "\\`").replace(/\$/g, "\\$")}${(failure.code?.length ?? 0) > 200 ? "..." : ""}
 \`\`\`
-**Error:** ${failure.error}
+**Error:** ${(failure.error || "").slice(0, 500)}
 
 Do NOT repeat this approach. Try a different strategy.
 `);

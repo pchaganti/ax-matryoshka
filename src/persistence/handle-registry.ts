@@ -45,8 +45,8 @@ export class HandleRegistry {
     const meta = this.db.getHandleMetadata(handle);
     if (!meta) return `${handle}: <invalid handle>`;
 
-    // Get preview of first few items
-    const data = this.db.getHandleData(handle);
+    // Get preview of first item only (avoids loading all data)
+    const data = this.db.getHandleDataSlice(handle, 1);
     let preview = "";
 
     if (data.length > 0) {
@@ -90,6 +90,13 @@ export class HandleRegistry {
   }
 
   /**
+   * Clear the current RESULTS handle
+   */
+  clearResults(): void {
+    this.resultsHandle = null;
+  }
+
+  /**
    * Get the current RESULTS handle
    */
   getResults(): string | null {
@@ -118,22 +125,7 @@ export class HandleRegistry {
    * List all active handles
    */
   listHandles(): string[] {
-    // Get handles from database
-    // We need to query the handles table
-    const handles: string[] = [];
-    let counter = 1;
-    // Check each potential handle up to a reasonable limit
-    while (counter <= 1000) {
-      const handle = `$res${counter}`;
-      const meta = this.db.getHandleMetadata(handle);
-      if (meta) {
-        handles.push(handle);
-      }
-      counter++;
-      // Stop early if we've gone 10 handles without finding one
-      if (counter > handles.length + 10) break;
-    }
-    return handles;
+    return this.db.listHandles();
   }
 
   /**
@@ -142,5 +134,22 @@ export class HandleRegistry {
   getCount(handle: string): number {
     const meta = this.db.getHandleMetadata(handle);
     return meta?.count ?? 0;
+  }
+
+  /**
+   * Get the number of active handles
+   */
+  handleCount(): number {
+    return this.db.listHandles().length;
+  }
+
+  /**
+   * Evict the oldest handle to free space
+   */
+  evictOldest(): void {
+    const handles = this.db.listHandles();
+    if (handles.length > 0) {
+      this.delete(handles[0]);
+    }
   }
 }

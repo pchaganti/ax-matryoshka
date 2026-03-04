@@ -10,6 +10,8 @@ import { ParserRegistry } from "./parser-registry.js";
 import type { Symbol, SymbolKind, SupportedLanguage } from "./types.js";
 import { getSymbolMappings } from "./language-map.js";
 
+const MAX_CHILDREN = 10_000;
+
 /**
  * Name field mappings for different node types
  */
@@ -100,12 +102,17 @@ export class SymbolExtractor {
     // Get symbol mappings for this language
     const symbolMappings = getSymbolMappings(language);
     if (!symbolMappings) {
-      // No symbol mappings - return empty
+      // No symbol mappings - free native memory and return empty
+      tree.delete?.();
       return [];
     }
 
     // Walk the tree and extract symbols
-    this.walkTree(tree.rootNode, language, symbolMappings, symbols, null);
+    try {
+      this.walkTree(tree.rootNode, language, symbolMappings, symbols, null);
+    } finally {
+      tree.delete?.();
+    }
 
     return symbols;
   }
@@ -113,14 +120,20 @@ export class SymbolExtractor {
   /**
    * Recursively walk the syntax tree and extract symbols
    */
+  private static readonly MAX_TREE_DEPTH = 200;
+  private static readonly MAX_SYMBOLS_COUNT = 100_000;
+
   private walkTree(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     node: any,
     language: SupportedLanguage,
     symbolMappings: Record<string, SymbolKind>,
     symbols: Symbol[],
-    parentId: number | null
+    parentId: number | null,
+    depth: number = 0
   ): void {
+    if (depth > SymbolExtractor.MAX_TREE_DEPTH) return;
+    if (symbols.length >= SymbolExtractor.MAX_SYMBOLS_COUNT) return;
     let currentParentId = parentId;
 
     // Special case: Python - handle classes and methods correctly
@@ -159,11 +172,12 @@ export class SymbolExtractor {
       }
     }
 
-    // Recurse into children
-    for (let i = 0; i < node.childCount; i++) {
+    // Recurse into children (limit horizontal breadth to prevent DoS from pathologically wide trees)
+    const childLimit = Math.min(node.childCount, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
       const child = node.child(i);
       if (child) {
-        this.walkTree(child, language, symbolMappings, symbols, currentParentId);
+        this.walkTree(child, language, symbolMappings, symbols, currentParentId, depth + 1);
       }
     }
   }
@@ -181,16 +195,26 @@ export class SymbolExtractor {
     const name = this.getNodeName(node);
     if (!name) return null;
 
+    if (this.symbolIdCounter >= Number.MAX_SAFE_INTEGER - 1) return null;
     this.symbolIdCounter++;
+
+    const startRow = node.startPosition?.row;
+    const endRow = node.endPosition?.row;
+    const startColumn = node.startPosition?.column;
+    const endColumn = node.endPosition?.column;
+
+    const startLine = typeof startRow === "number" && Number.isFinite(startRow) ? Math.max(1, startRow + 1) : 1;
+    let endLine = typeof endRow === "number" && Number.isFinite(endRow) ? Math.max(1, endRow + 1) : 1;
+    if (endLine < startLine) endLine = startLine;
 
     return {
       id: this.symbolIdCounter,
       name,
       kind,
-      startLine: node.startPosition.row + 1, // Convert to 1-indexed
-      endLine: node.endPosition.row + 1,
-      startCol: node.startPosition.column,
-      endCol: node.endPosition.column,
+      startLine,
+      endLine,
+      startCol: typeof startColumn === "number" && Number.isFinite(startColumn) ? Math.max(0, startColumn) : 0,
+      endCol: typeof endColumn === "number" && Number.isFinite(endColumn) ? Math.max(0, endColumn) : 0,
       signature: this.getSignature(node, language),
       parentSymbolId: parentId,
     };
@@ -203,7 +227,8 @@ export class SymbolExtractor {
   private extractGoTypeDeclaration(node: any, parentId: number | null): Symbol | null {
     // Find the type_spec child
     let typeSpec = null;
-    for (let i = 0; i < node.childCount; i++) {
+    const childLimit = Math.min(node.childCount, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
       const child = node.child(i);
       if (child && child.type === "type_spec") {
         typeSpec = child;
@@ -219,7 +244,8 @@ export class SymbolExtractor {
 
     // Check if it's a struct or interface
     let kind: SymbolKind = "type";
-    for (let i = 0; i < typeSpec.childCount; i++) {
+    const typeSpecChildLimit = Math.min(typeSpec.childCount, MAX_CHILDREN);
+    for (let i = 0; i < typeSpecChildLimit; i++) {
       const child = typeSpec.child(i);
       if (child && child.type === "struct_type") {
         kind = "struct";
@@ -230,16 +256,22 @@ export class SymbolExtractor {
       }
     }
 
+    if (this.symbolIdCounter >= Number.MAX_SAFE_INTEGER - 1) return null;
     this.symbolIdCounter++;
+
+    const goStartRow = node.startPosition?.row;
+    const goEndRow = node.endPosition?.row;
+    const goStartCol = node.startPosition?.column;
+    const goEndCol = node.endPosition?.column;
 
     return {
       id: this.symbolIdCounter,
       name,
       kind,
-      startLine: node.startPosition.row + 1,
-      endLine: node.endPosition.row + 1,
-      startCol: node.startPosition.column,
-      endCol: node.endPosition.column,
+      startLine: typeof goStartRow === "number" && Number.isFinite(goStartRow) ? Math.max(1, goStartRow + 1) : 1,
+      endLine: typeof goEndRow === "number" && Number.isFinite(goEndRow) ? Math.max(1, goEndRow + 1) : 1,
+      startCol: typeof goStartCol === "number" && Number.isFinite(goStartCol) ? Math.max(0, goStartCol) : 0,
+      endCol: typeof goEndCol === "number" && Number.isFinite(goEndCol) ? Math.max(0, goEndCol) : 0,
       parentSymbolId: parentId,
     };
   }
@@ -248,28 +280,34 @@ export class SymbolExtractor {
    * Get the name of a node
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private static readonly MAX_NAME_LENGTH = 10_000;
+
   private getNodeName(node: any): string | null {
+    if (!node) return null;
     const fields = NAME_FIELDS[node.type];
 
     if (fields) {
       for (const field of fields) {
         const nameNode = node.childForFieldName(field);
-        if (nameNode) {
-          return nameNode.text;
+        if (nameNode && nameNode.text && nameNode.text.length <= SymbolExtractor.MAX_NAME_LENGTH) {
+          return nameNode.text ?? null;
         }
       }
     }
 
     // Fallback: look for identifier or type_identifier child
-    for (let i = 0; i < node.childCount; i++) {
+    const nameChildLimit = Math.min(node.childCount, MAX_CHILDREN);
+    for (let i = 0; i < nameChildLimit; i++) {
       const child = node.child(i);
       if (
         child &&
         (child.type === "identifier" ||
           child.type === "type_identifier" ||
-          child.type === "property_identifier")
+          child.type === "property_identifier") &&
+        child.text &&
+        child.text.length <= SymbolExtractor.MAX_NAME_LENGTH
       ) {
-        return child.text;
+        return child.text ?? null;
       }
     }
 
@@ -291,8 +329,10 @@ export class SymbolExtractor {
     ];
 
     if (functionTypes.includes(node.type)) {
-      const text = node.text as string;
-      const lines = text.split("\n");
+      if (!node.text || typeof node.text !== "string") return undefined;
+      if (node.text.length > 50_000) return undefined;
+      const text = node.text;
+      const lines = text.split("\n", 50);
       if (lines.length > 0) {
         let firstLine = lines[0];
         // Clean up the signature

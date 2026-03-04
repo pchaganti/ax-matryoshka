@@ -100,9 +100,18 @@ export class ParserRegistry {
       );
     }
 
+    if (!grammarModule || typeof grammarModule !== "object") {
+      throw new Error(`Grammar package '${config.package}' loaded but module is invalid`);
+    }
+
     // Extract the grammar (some modules export multiple languages)
     let lang: TreeSitterLanguage;
+    const DANGEROUS_EXPORT_NAMES = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "hasOwnProperty", "toString", "valueOf", "toLocaleString", "isPrototypeOf", "propertyIsEnumerable"]);
     if (config.moduleExport) {
+      // Guard against prototype pollution via moduleExport
+      if (DANGEROUS_EXPORT_NAMES.has(config.moduleExport)) {
+        throw new Error(`Unsafe module export name: '${config.moduleExport}'`);
+      }
       // Use specific export (e.g., "typescript" from tree-sitter-typescript)
       lang = grammarModule[config.moduleExport];
       if (!lang) {
@@ -127,9 +136,16 @@ export class ParserRegistry {
    * @param ext File extension (e.g., ".ts", ".py")
    * @returns Syntax tree or throws if extension not supported
    */
+  private static readonly MAX_PARSE_CONTENT_LENGTH = 10_000_000; // 10MB
+
   async parseDocument(content: string, ext: string): Promise<TreeSitterTree | null> {
     if (!this.initialized || !this.parser) {
       throw new Error("ParserRegistry not initialized. Call init() first.");
+    }
+
+    // Limit content size to prevent memory exhaustion
+    if (content.length > ParserRegistry.MAX_PARSE_CONTENT_LENGTH) {
+      throw new Error(`Content too large to parse: ${content.length} chars exceeds limit of ${ParserRegistry.MAX_PARSE_CONTENT_LENGTH}`);
     }
 
     // Get language for extension

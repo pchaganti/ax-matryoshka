@@ -46,7 +46,7 @@ describe("compile", () => {
       };
       const code = compile(e);
       expect(code).toContain("match");
-      expect(code).toContain("/\\d+/");
+      expect(code).toContain("new RegExp");
     });
 
     it("should compile match with group", () => {
@@ -69,7 +69,7 @@ describe("compile", () => {
       };
       const code = compile(e);
       expect(code).toContain("replace");
-      expect(code).toContain("/,/g");
+      expect(code).toContain("new RegExp");
     });
 
     it("should compile slice", () => {
@@ -254,6 +254,42 @@ describe("compileToFunction", () => {
       };
       const fn = compileToFunction(e);
       expect(fn("abc")).toBe(null);
+    });
+  });
+
+  describe("NaN guard parity with interpreter", () => {
+    it("should return null (not NaN) for parseInt of non-numeric string", () => {
+      const e: Extractor = {
+        tag: "parseInt",
+        str: { tag: "input" },
+      };
+      const fn = compileToFunction(e);
+      const result = fn("hello");
+      expect(result).toBeNull();
+    });
+
+    it("should return null (not NaN) for parseFloat of non-numeric string", () => {
+      const e: Extractor = {
+        tag: "parseFloat",
+        str: { tag: "input" },
+      };
+      const fn = compileToFunction(e);
+      const result = fn("hello");
+      expect(result).toBeNull();
+    });
+
+    it("should return null for add with non-numeric operands", () => {
+      const e: Extractor = {
+        tag: "add",
+        left: {
+          tag: "parseInt",
+          str: { tag: "input" },
+        },
+        right: { tag: "lit", value: 5 },
+      };
+      const fn = compileToFunction(e);
+      const result = fn("hello");
+      expect(result).toBeNull();
     });
   });
 });

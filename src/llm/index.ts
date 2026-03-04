@@ -32,17 +32,23 @@ export function getAvailableProviders(): string[] {
 function resolveEnvVar(value: string | undefined): string | undefined {
   if (!value) return value;
 
-  if (value.startsWith("${") && value.endsWith("}")) {
-    const envVar = value.slice(2, -1);
-    const resolved = process.env[envVar];
-    if (!resolved) {
+  return value.replace(/\$\{([^}]+)\}/g, (_, varName) => {
+    // Validate variable name format
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(varName)) {
+      throw new Error(`Invalid environment variable name: ${varName}`);
+    }
+    const DANGEROUS_VAR_NAMES = ["__proto__", "constructor", "prototype"];
+    if (DANGEROUS_VAR_NAMES.includes(varName)) {
+      throw new Error(`Dangerous environment variable name: ${varName}`);
+    }
+    const resolved = process.env[varName];
+    if (resolved === undefined) {
       throw new Error(
-        `Environment variable ${envVar} not set`
+        `Environment variable ${varName} not set`
       );
     }
     return resolved;
-  }
-  return value;
+  });
 }
 
 /**

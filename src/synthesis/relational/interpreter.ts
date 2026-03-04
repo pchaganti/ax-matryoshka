@@ -168,11 +168,30 @@ function compileCandidate(candidate: { structure: { kind: string; group: number 
   }
 }
 
+/** Dangerous patterns blocked from new Function() execution */
+const DANGEROUS_CODE_PATTERNS = [
+  /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+  /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+  /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+  /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
+  /\bwith\b/, /\bdelete\b/,
+  /\[['"]/, // Block bracket property access
+];
+
+function isCodeDangerous(code: string): boolean {
+  return DANGEROUS_CODE_PATTERNS.some(p => p.test(code));
+}
+
 /**
  * Execute an Expr and return the result
  */
 function executeExpr(expr: Expr, input: unknown): unknown {
   const code = exprToCode(expr);
+  // Cap code length to prevent DoS via Function construction
+  const MAX_CODE_LENGTH = 50_000;
+  if (code.length > MAX_CODE_LENGTH) return null;
+  // Validate generated code against dangerous patterns before execution
+  if (isCodeDangerous(code)) return null;
   try {
     const fn = new Function("input", `return ${code}`);
     return fn(input);
@@ -203,6 +222,8 @@ export function synthesizeProgram(
   examples: Example[],
   maxResults: number = 5
 ): Expr[] {
+  const MAX_RESULTS_LIMIT = 1000;
+  maxResults = Math.min(Math.max(1, maxResults), MAX_RESULTS_LIMIT);
   if (examples.length === 0) {
     return [];
   }
@@ -225,7 +246,8 @@ export function synthesizeProgram(
       let allPassed = true;
       for (const { input, output } of examples) {
         const result = executeExpr(expr, input);
-        if (result !== output) {
+        // Use Object.is for NaN-safe comparison (NaN !== NaN but Object.is(NaN, NaN) is true)
+        if (!Object.is(result, output)) {
           allPassed = false;
           break;
         }
@@ -245,43 +267,68 @@ export function synthesizeProgram(
 /**
  * Convert an expression AST to executable JavaScript code
  */
-export function exprToCode(expr: Expr): string {
+const MAX_CODE_DEPTH = 100;
+
+export function exprToCode(expr: Expr, depth: number = 0): string {
+  if (depth > MAX_CODE_DEPTH) return "(null)";
   switch (expr.type) {
     case "lit":
       return typeof expr.value === "string" ? JSON.stringify(expr.value) : String(expr.value);
 
     case "var":
+      // Sanitize variable names to prevent code injection
+      if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(expr.name)) {
+        return "undefined";
+      }
       return expr.name;
 
-    case "add":
-      return `(${exprToCode(expr.left)} + ${exprToCode(expr.right)})`;
+    case "add": {
+      const addResult = `(${exprToCode(expr.left, depth + 1)} + ${exprToCode(expr.right, depth + 1)})`;
+      return `((_a) => isFinite(_a) ? _a : null)(${addResult})`;
+    }
 
-    case "sub":
-      return `(${exprToCode(expr.left)} - ${exprToCode(expr.right)})`;
+    case "sub": {
+      const subResult = `(${exprToCode(expr.left, depth + 1)} - ${exprToCode(expr.right, depth + 1)})`;
+      return `((_s) => isFinite(_s) ? _s : null)(${subResult})`;
+    }
 
-    case "mul":
-      return `(${exprToCode(expr.left)} * ${exprToCode(expr.right)})`;
+    case "mul": {
+      const mulResult = `(${exprToCode(expr.left, depth + 1)} * ${exprToCode(expr.right, depth + 1)})`;
+      return `((_m) => isFinite(_m) ? _m : null)(${mulResult})`;
+    }
 
-    case "div":
-      return `(${exprToCode(expr.left)} / ${exprToCode(expr.right)})`;
+    case "div": {
+      const divRight = exprToCode(expr.right, depth + 1);
+      const divLeft = exprToCode(expr.left, depth + 1);
+      return `((_l, _r) => _r === 0 ? null : ((_d) => isFinite(_d) ? _d : null)(_l / _r))(${divLeft}, ${divRight})`;
+    }
 
-    case "concat":
-      return `(${exprToCode(expr.left)} + ${exprToCode(expr.right)})`;
+    case "concat": {
+      const MAX_CONCAT = 1_000_000;
+      return `((_l, _r) => { const _res = String(_l) + String(_r); return _res.length > ${MAX_CONCAT} ? null : _res; })(${exprToCode(expr.left, depth + 1)}, ${exprToCode(expr.right, depth + 1)})`;
+    }
 
-    case "match":
-      return `${exprToCode(expr.str)}.match(/${expr.pattern}/)?.[${expr.group}]`;
+    case "match": {
+      if (!Number.isInteger(expr.group) || expr.group < 0 || expr.group > 99) return "(null)";
+      // Use RegExp constructor with JSON.stringify to safely embed pattern
+      // This avoids regex literal delimiter issues with backslashes and forward slashes
+      return `((_s) => _s == null ? null : (_s.match(new RegExp(${JSON.stringify(expr.pattern)}))?.[${expr.group}] ?? null))(${exprToCode(expr.str, depth + 1)})`;
+    }
 
-    case "replace":
-      return `${exprToCode(expr.str)}.replace(/${expr.pattern}/g, ${JSON.stringify(expr.replacement)})`;
+    case "replace": {
+      // Escape $ in replacement to prevent backreference injection ($1, $&, etc.)
+      const safeReplacement = expr.replacement.replace(/\$/g, "$$$$");
+      return `((_s) => _s == null ? null : _s.replace(new RegExp(${JSON.stringify(expr.pattern)}, "g"), ${JSON.stringify(safeReplacement)}))(${exprToCode(expr.str, depth + 1)})`;
+    }
 
     case "parseInt":
-      return `parseInt(${exprToCode(expr.str)}, 10)`;
+      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) || !Number.isSafeInteger(_r) ? null : _r; })(${exprToCode(expr.str, depth + 1)})`;
 
     case "parseFloat":
-      return `parseFloat(${exprToCode(expr.str)})`;
+      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${exprToCode(expr.str, depth + 1)})`;
 
     case "if":
-      return `(${exprToCode(expr.cond)} ? ${exprToCode(expr.then)} : ${exprToCode(expr.else)})`;
+      return `(${exprToCode(expr.cond, depth + 1)} ? ${exprToCode(expr.then, depth + 1)} : ${exprToCode(expr.else, depth + 1)})`;
 
     default:
       return "/* unknown expr */";
@@ -292,13 +339,17 @@ export function exprToCode(expr: Expr): string {
  * Test a synthesized program against examples
  */
 export function testProgram(expr: Expr, examples: Example[]): boolean {
+  if (examples.length === 0) return false;
   try {
     const code = exprToCode(expr);
+    // Validate generated code against dangerous patterns before execution
+    if (isCodeDangerous(code)) return false;
     const fn = new Function("input", `return ${code}`);
 
     for (const { input, output } of examples) {
       const result = fn(input);
-      if (result !== output) {
+      // Use Object.is for NaN-safe comparison
+      if (!Object.is(result, output)) {
         return false;
       }
     }

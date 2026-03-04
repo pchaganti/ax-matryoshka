@@ -48,6 +48,8 @@ export class PipeAdapter {
   private interactive: boolean;
   private input: NodeJS.ReadableStream;
   private output: NodeJS.WritableStream;
+  private processing: boolean = false;
+  private queue: string[] = [];
   constructor(options: PipeAdapterOptions = {}) {
     this.tool = new LatticeTool();
     this.interactive = options.interactive ?? false;
@@ -73,37 +75,78 @@ export class PipeAdapter {
       rl.prompt();
     }
 
-    rl.on("line", async (line) => {
-      const trimmed = line.trim();
+    const processLine = async (trimmed: string) => {
+      try {
+        // Handle quit
+        if (this.interactive && (trimmed === ":quit" || trimmed === ":q" || trimmed === ":exit")) {
+          this.output.write("Goodbye!\n");
+          rl.close();
+          return;
+        }
 
+        let response: LatticeResponse;
+
+        if (this.interactive) {
+          // Interactive text mode
+          response = await this.handleInteractive(trimmed);
+          this.output.write(formatResponse(response) + "\n");
+          rl.prompt();
+        } else {
+          // JSON mode
+          response = await this.handleJSON(trimmed);
+          this.output.write(JSON.stringify(response) + "\n");
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (this.interactive) {
+          this.output.write(`Error: ${msg}\n`);
+          rl.prompt();
+        } else {
+          this.output.write(JSON.stringify({ success: false, error: msg }) + "\n");
+        }
+      }
+    };
+
+    const drainQueue = async () => {
+      if (this.processing) return;
+      this.processing = true;
+      try {
+        while (this.queue.length > 0) {
+          const line = this.queue.shift()!;
+          await processLine(line);
+        }
+      } finally {
+        this.processing = false;
+      }
+    };
+
+    const MAX_LINE_LENGTH = 1_000_000; // 1MB
+    const MAX_QUEUE_SIZE = 10_000;
+    rl.on("line", (line) => {
+      if (line.length > MAX_LINE_LENGTH) {
+        this.output.write(JSON.stringify({ error: "Line too long" }) + "\n");
+        return;
+      }
+      const trimmed = line.trim();
       if (!trimmed) {
         if (this.interactive) rl.prompt();
         return;
       }
-
-      // Handle quit
-      if (this.interactive && (trimmed === ":quit" || trimmed === ":q" || trimmed === ":exit")) {
-        this.output.write("Goodbye!\n");
-        rl.close();
+      if (this.queue.length >= MAX_QUEUE_SIZE) {
+        this.output.write(JSON.stringify({ error: "Queue full" }) + "\n");
         return;
       }
+      this.queue.push(trimmed);
+      void drainQueue();
+    });
 
-      let response: LatticeResponse;
-
-      if (this.interactive) {
-        // Interactive text mode
-        response = await this.handleInteractive(trimmed);
-        this.output.write(formatResponse(response) + "\n");
-        rl.prompt();
-      } else {
-        // JSON mode
-        response = await this.handleJSON(trimmed);
-        this.output.write(JSON.stringify(response) + "\n");
-      }
+    rl.on("error", (err) => {
+      console.error("[PipeAdapter] Readline error:", err.message);
     });
 
     rl.on("close", () => {
-      process.exit(0);
+      // Graceful shutdown: allow pending async operations to drain
+      setImmediate(() => process.exit(0));
     });
   }
 
@@ -138,7 +181,7 @@ export class PipeAdapter {
     } catch {
       return {
         success: false,
-        error: `Invalid JSON: ${input}`,
+        error: `Invalid JSON: ${input.slice(0, 200)}`,
       };
     }
 
@@ -149,8 +192,18 @@ export class PipeAdapter {
       };
     }
 
+    // Validate required fields based on command type
     if (command.type === "load") {
+      if (typeof (command as Record<string, unknown>).filePath !== "string") {
+        return { success: false, error: "load command requires 'filePath' string field" };
+      }
       return this.tool.executeAsync(command);
+    }
+
+    if (command.type === "query") {
+      if (typeof (command as Record<string, unknown>).command !== "string") {
+        return { success: false, error: "query command requires 'command' string field" };
+      }
     }
 
     return this.tool.execute(command);

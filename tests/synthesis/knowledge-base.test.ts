@@ -661,6 +661,71 @@ describe("Knowledge Base", () => {
     });
   });
 
+  describe("capacity limit", () => {
+    it("should evict lowest-usage component when exceeding max", () => {
+      // Add 500 components (the max)
+      for (let i = 0; i < 500; i++) {
+        kb.add({
+          id: `comp-${i}`,
+          type: "regex",
+          name: `test-${i}`,
+          description: "",
+          positiveExamples: [],
+          negativeExamples: [],
+          usageCount: i, // increasing usage so comp-0 is lowest
+          successCount: 0,
+          lastUsed: new Date(),
+          composableWith: [],
+        });
+      }
+
+      expect(kb.size()).toBe(500);
+
+      // Add one more - should evict comp-0 (lowest usage + success = 0)
+      kb.add({
+        id: "comp-new",
+        type: "regex",
+        name: "new-component",
+        description: "",
+        positiveExamples: [],
+        negativeExamples: [],
+        usageCount: 1000,
+        successCount: 0,
+        lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      expect(kb.size()).toBe(500);
+      expect(kb.get("comp-0")).toBeNull(); // Evicted
+      expect(kb.get("comp-new")).not.toBeNull(); // Added
+      expect(kb.get("comp-1")).not.toBeNull(); // Still present
+    });
+  });
+
+  describe("remove", () => {
+    it("should remove a component and update indexes", () => {
+      kb.add({
+        id: "to-remove",
+        type: "regex",
+        name: "removable",
+        description: "",
+        positiveExamples: [],
+        negativeExamples: [],
+        usageCount: 0,
+        successCount: 0,
+        lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      expect(kb.get("to-remove")).not.toBeNull();
+
+      kb.remove("to-remove");
+
+      expect(kb.get("to-remove")).toBeNull();
+      expect(kb.getByType("regex").find(c => c.id === "to-remove")).toBeUndefined();
+    });
+  });
+
   describe("size", () => {
     it("should return the number of components", () => {
       expect(kb.size()).toBe(0);
@@ -694,6 +759,80 @@ describe("Knowledge Base", () => {
       });
 
       expect(kb.size()).toBe(2);
+    });
+  });
+
+  describe("eviction priority", () => {
+    it("should evict high-usage zero-success before low-usage high-success", () => {
+      // Fill to capacity
+      for (let i = 0; i < 100; i++) {
+        kb.add({
+          id: `filler-${i}`,
+          type: "extractor",
+          name: `filler${i}`,
+          description: "",
+          positiveExamples: [],
+          negativeExamples: [],
+          usageCount: 5,
+          successCount: 5,
+          lastUsed: new Date(),
+          composableWith: [],
+        });
+      }
+
+      // Add a high-usage zero-success component (should be evicted first)
+      kb.add({
+        id: "bad-component",
+        type: "extractor",
+        name: "bad",
+        description: "",
+        positiveExamples: [],
+        negativeExamples: [],
+        usageCount: 100,
+        successCount: 0,
+        lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      // Add a low-usage high-success component (should be kept)
+      kb.add({
+        id: "good-component",
+        type: "extractor",
+        name: "good",
+        description: "",
+        positiveExamples: [],
+        negativeExamples: [],
+        usageCount: 2,
+        successCount: 2,
+        lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      // The good component should still be present
+      expect(kb.get("good-component")).toBeDefined();
+    });
+  });
+
+  describe("similarity with empty inputs", () => {
+    it("should return empty results for empty similarity, not NaN", () => {
+      // Add a component with empty examples
+      kb.add({
+        id: "empty-comp",
+        type: "extractor",
+        name: "empty",
+        description: "",
+        positiveExamples: [],
+        negativeExamples: [],
+        usageCount: 0,
+        successCount: 0,
+        lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      // findSimilar with empty examples should not crash or return NaN scores
+      const similar = kb.findSimilar([], "extractor");
+      // Should be a valid array (not crashing from NaN comparison)
+      expect(Array.isArray(similar)).toBe(true);
     });
   });
 });

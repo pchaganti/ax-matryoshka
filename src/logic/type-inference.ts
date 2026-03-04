@@ -75,16 +75,16 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
       return { tag: "number" };
 
     case "match":
-      // match returns string | null
-      return { tag: "string" };
+      // match returns string | null — use "any" since type system has no nullable
+      return { tag: "any" };
 
     case "replace":
       // replace returns string
       return { tag: "string" };
 
     case "split":
-      // split returns string | null
-      return { tag: "string" };
+      // split returns string[] | null — use "any" since type system has no nullable
+      return { tag: "any" };
 
     case "parseInt":
       return { tag: "number" };

@@ -64,7 +64,7 @@ export interface LCInput {
  */
 export interface LCLit {
   tag: "lit";
-  value: string | number | boolean;
+  value: string | number | boolean | null;
 }
 
 /**

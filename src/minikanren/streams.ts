@@ -39,13 +39,21 @@ export function chain<A>(f: (v: A) => Stream<A>, s: Stream<A>): Stream<A> {
 // iteratively instead in order to eliminate tail calls in recursive
 // relations. That is, `take` acts like a trampoline.
 export function take<A>(n: number | false, s: Stream<A>): A[] {
+  if (n !== false) {
+    n = Math.max(0, Math.floor(n));
+  }
   const result = [];
+  const MAX_THUNK_STEPS = 1000000;
+  let thunkSteps = 0;
   while (n !== 0 && s !== empty) {
-    if (typeof s === 'function') s = s();
-    else {
+    if (typeof s === 'function') {
+      s = s();
+      if (++thunkSteps > MAX_THUNK_STEPS) break;
+    } else {
       result.push(s.head);
       s = s.tail;
       if (n !== false) --n;
+      // Don't reset thunkSteps — track total thunks across entire take()
     }
   }
   return result;

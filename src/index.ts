@@ -92,20 +92,32 @@ function parseArgs(args: string[]): CLIOptions {
       console.log(`rlm v${getVersion()}`);
       process.exit(0);
     } else if (arg === "--max-turns") {
-      options.maxTurns = parseInt(args[++i], 10);
+      if (i + 1 >= args.length) throw new Error("--max-turns requires a value");
+      const val = parseInt(args[++i], 10);
+      if (isNaN(val) || val < 1) throw new Error("--max-turns requires a positive integer");
+      options.maxTurns = val;
     } else if (arg === "--timeout") {
-      options.timeout = parseInt(args[++i], 10);
+      if (i + 1 >= args.length) throw new Error("--timeout requires a value");
+      const val = parseInt(args[++i], 10);
+      if (isNaN(val) || val < 1) throw new Error("--timeout requires a positive integer");
+      options.timeout = val;
     } else if (arg === "--model") {
+      if (i + 1 >= args.length) throw new Error("--model requires a value");
       options.model = args[++i];
     } else if (arg === "--provider") {
+      if (i + 1 >= args.length) throw new Error("--provider requires a value");
       options.provider = args[++i];
     } else if (arg === "--adapter") {
+      if (i + 1 >= args.length) throw new Error("--adapter requires a value");
       options.adapter = args[++i];
     } else if (arg === "--output-type") {
+      if (i + 1 >= args.length) throw new Error("--output-type requires a value");
       options.outputType = args[++i];
     } else if (arg === "--constraints") {
+      if (i + 1 >= args.length) throw new Error("--constraints requires a value");
       options.constraints = args[++i];
     } else if (arg === "--config") {
+      if (i + 1 >= args.length) throw new Error("--config requires a value");
       options.config = args[++i];
     } else if (arg === "--verbose") {
       options.verbose = true;

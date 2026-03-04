@@ -41,6 +41,9 @@ export class HandleOps {
    * Sum a numeric field across all items
    */
   sum(handle: string, field: string): number {
+    if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(field) || field.length > 256) {
+      throw new Error("Invalid field name");
+    }
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
@@ -49,8 +52,10 @@ export class HandleOps {
     return data.reduce((acc: number, item) => {
       if (typeof item === "object" && item !== null && field in item) {
         const value = (item as Record<string, unknown>)[field];
-        if (typeof value === "number") {
-          return acc + value;
+        if (typeof value === "number" && Number.isFinite(value)) {
+          const result = acc + value;
+          if (!Number.isFinite(result)) return acc;
+          return result;
         }
       }
       return acc;
@@ -73,7 +78,7 @@ export class HandleOps {
         const match = line.match(/\$?([\d,]+(?:\.\d+)?)/);
         if (match) {
           const num = parseFloat(match[1].replace(/,/g, ""));
-          if (!isNaN(num)) {
+          if (!isNaN(num) && isFinite(num)) {
             return acc + num;
           }
         }
@@ -114,6 +119,9 @@ export class HandleOps {
    * Sort items by field, return new handle
    */
   sort(handle: string, field: string, direction: "asc" | "desc" = "asc"): string {
+    if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(field) || field.length > 256) {
+      throw new Error("Invalid field name");
+    }
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
@@ -126,6 +134,7 @@ export class HandleOps {
       let cmp = 0;
       if (typeof aVal === "number" && typeof bVal === "number") {
         cmp = aVal - bVal;
+        if (!Number.isFinite(cmp)) cmp = 0;
       } else {
         cmp = String(aVal).localeCompare(String(bVal));
       }
@@ -140,10 +149,15 @@ export class HandleOps {
    * Get first N items (for limited inspection)
    */
   preview(handle: string, n: number): unknown[] {
+    const MAX_PREVIEW = 10000;
+    if (!Number.isFinite(n)) n = 0;
+    n = Math.floor(n);
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
     }
+    if (n <= 0) return [];
+    n = Math.min(n, MAX_PREVIEW);
     return data.slice(0, n);
   }
 
@@ -151,23 +165,27 @@ export class HandleOps {
    * Get random N items
    */
   sample(handle: string, n: number): unknown[] {
+    const MAX_SAMPLE = 10000;
+    if (!Number.isFinite(n)) n = 0;
+    n = Math.floor(n);
     const data = this.registry.get(handle);
     if (data === null) {
       throw new Error(`Invalid handle: ${handle}`);
     }
 
+    if (n <= 0) return [];
+    n = Math.min(n, MAX_SAMPLE);
     if (data.length <= n) {
       return [...data];
     }
 
-    // Fisher-Yates shuffle for random sample
-    const shuffled = [...data];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    // Fisher-Yates partial shuffle — O(n) guaranteed, no collision risk
+    const indices = Array.from({ length: data.length }, (_, i) => i);
+    for (let i = 0; i < n; i++) {
+      const j = i + Math.floor(Math.random() * (indices.length - i));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
     }
-
-    return shuffled.slice(0, n);
+    return indices.slice(0, n).map((i) => data[i]);
   }
 
   /**
@@ -180,18 +198,21 @@ export class HandleOps {
     }
 
     // Collect field names from objects
+    const MAX_FIELDS = 10_000;
     const fields = new Set<string>();
     for (const item of data) {
       if (typeof item === "object" && item !== null) {
         for (const key of Object.keys(item)) {
           fields.add(key);
+          if (fields.size >= MAX_FIELDS) break;
         }
       }
+      if (fields.size >= MAX_FIELDS) break;
     }
 
     return {
       count: data.length,
-      fields: Array.from(fields),
+      fields: Array.from(fields).slice(0, MAX_FIELDS),
       sample: data.slice(0, 3),
     };
   }

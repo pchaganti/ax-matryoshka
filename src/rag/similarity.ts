@@ -8,12 +8,15 @@
 /**
  * Tokenize text into lowercase words
  */
+const MAX_TOKENS = 10_000;
+
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/[^\w\s$]/g, " ")  // Keep $ for currency
     .split(/\s+/)
-    .filter(word => word.length > 1);  // Skip single chars
+    .filter(word => word.length > 1 || word === "$")  // Skip single chars, but keep $
+    .slice(0, MAX_TOKENS);
 }
 
 /**
@@ -39,6 +42,8 @@ export function inverseDocumentFrequency(
   documents: string[][]
 ): Map<string, number> {
   const docCount = documents.length;
+  if (docCount === 0) return new Map();
+
   const termDocCount = new Map<string, number>();
 
   // Count how many documents contain each term
@@ -49,10 +54,11 @@ export function inverseDocumentFrequency(
     }
   }
 
-  // Calculate IDF: log(N / df)
+  // Calculate IDF with smoothing: log(1 + N / df)
+  // Using log(1 + ratio) prevents all-zero IDF when docCount equals df (e.g., single document)
   const idf = new Map<string, number>();
   for (const [term, df] of termDocCount) {
-    idf.set(term, Math.log(docCount / df));
+    idf.set(term, Math.log(1 + docCount / df));
   }
 
   return idf;
@@ -69,7 +75,8 @@ export function tfidfVector(
   const tfidf = new Map<string, number>();
 
   for (const [term, tfValue] of tf) {
-    const idfValue = idf.get(term) || Math.log(1000);  // Default high IDF for unknown terms
+    const DEFAULT_IDF = Math.log(1000);  // High IDF for terms not in corpus
+    const idfValue = idf.get(term) ?? DEFAULT_IDF;
     tfidf.set(term, tfValue * idfValue);
   }
 
@@ -98,12 +105,13 @@ export function cosineSimilarity(
     norm2 += val2 * val2;
   }
 
-  // Handle zero vectors
-  if (norm1 === 0 || norm2 === 0) {
+  // Handle zero or infinite vectors
+  if (norm1 === 0 || norm2 === 0 || !Number.isFinite(norm1) || !Number.isFinite(norm2)) {
     return 0;
   }
 
-  return dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+  const result = dotProduct / (Math.sqrt(norm1) * Math.sqrt(norm2));
+  return Number.isFinite(result) ? result : 0;
 }
 
 /**
@@ -113,6 +121,14 @@ export function keywordMatchScore(
   queryTokens: string[],
   keywords: string[]
 ): number {
+  const MAX_QUERY_TOKENS = 200;
+  const MAX_KEYWORDS = 500;
+  if (queryTokens.length > MAX_QUERY_TOKENS) {
+    queryTokens = queryTokens.slice(0, MAX_QUERY_TOKENS);
+  }
+  if (keywords.length > MAX_KEYWORDS) {
+    keywords = keywords.slice(0, MAX_KEYWORDS);
+  }
   const querySet = new Set(queryTokens);
   const keywordSet = new Set(keywords.map(k => k.toLowerCase()));
 
@@ -135,7 +151,10 @@ export function keywordMatchScore(
 
   // Score: full matches count more than partial
   const totalKeywords = keywordSet.size || 1;
-  return (matches * 2 + partialMatches) / (totalKeywords + queryTokens.length);
+  const denominator = totalKeywords + queryTokens.length;
+  if (denominator === 0) return 0;
+  const score = (matches * 2 + partialMatches) / denominator;
+  return Number.isFinite(score) ? score : 0;
 }
 
 /**
@@ -156,7 +175,8 @@ export function combinedSimilarity(
   const keywordScore = keywordMatchScore(queryTokens, keywords);
 
   // Combine: weight keywords more heavily for small knowledge bases
-  return tfidfScore * 0.4 + keywordScore * 0.6;
+  const combined = tfidfScore * 0.4 + keywordScore * 0.6;
+  return Number.isFinite(combined) ? combined : 0;
 }
 
 /**
@@ -179,9 +199,19 @@ export interface SearchIndex {
 /**
  * Create a search index from documents
  */
+const MAX_DOCS = 100_000;
+
 export function buildSearchIndex(
   docs: Array<{ id: string; text: string; keywords: string[] }>
 ): SearchIndex {
+  if (docs.length > MAX_DOCS) {
+    throw new Error(`Too many documents: ${docs.length} (max ${MAX_DOCS})`);
+  }
+  for (const d of docs) {
+    if (typeof d.id !== "string" || typeof d.text !== "string" || !Array.isArray(d.keywords)) {
+      throw new Error("Invalid document: id must be string, text must be string, keywords must be array");
+    }
+  }
   const documents = docs.map(d => tokenize(d.text));
   const idf = inverseDocumentFrequency(documents);
 
@@ -196,11 +226,14 @@ export function buildSearchIndex(
 /**
  * Search the index and return ranked results
  */
+const MAX_TOP_K = 1000;
+
 export function searchIndex(
   index: SearchIndex,
   query: string,
   topK: number = 5
 ): Array<{ id: string; score: number }> {
+  topK = Math.max(1, Math.min(Math.floor(topK) || 5, MAX_TOP_K));
   const queryTokens = tokenize(query);
 
   const scores: Array<{ id: string; score: number }> = [];
@@ -217,6 +250,10 @@ export function searchIndex(
 
   // Sort by score descending and return top K
   return scores
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => {
+      if (b.score > a.score) return 1;
+      if (b.score < a.score) return -1;
+      return 0;
+    })
     .slice(0, topK);
 }

@@ -53,7 +53,26 @@ function escapeRegex(str: string): string {
   return str.replace(REGEX_SPECIAL_CHARS, "\\$&");
 }
 
-export function nodeToRegex(node: RegexNode): string {
+/**
+ * Escape special characters for use inside a character class [...]
+ * Unlike escapeRegex, this preserves range syntax (a-z, A-Z, 0-9)
+ * and only escapes characters that are special inside character classes.
+ */
+function escapeForCharClass(str: string): string {
+  // Inside character classes, only these need escaping: ] \ ^ and standalone -
+  // We preserve X-Y range patterns (e.g., a-z, A-Z, 0-9) and escape other special chars
+  // Escape ] \ ^ unconditionally, then escape - only when not part of a range (e.g., not \w-\w)
+  let result = str.replace(/([\\^\]])/g, "\\$1");
+  // Escape dashes that are NOT part of a character range (char-char pattern)
+  result = result.replace(/(^-|-$)/g, "\\-");  // leading or trailing dash
+  result = result.replace(/([^a-zA-Z0-9])-([^a-zA-Z0-9])/g, "$1\\-$2");  // dash between non-alphanumerics
+  return result;
+}
+
+const MAX_REGEX_DEPTH = 100;
+
+export function nodeToRegex(node: RegexNode, depth: number = 0): string {
+  if (depth > MAX_REGEX_DEPTH) return "";
   switch (node.type) {
     case "literal":
       return escapeRegex(node.value);
@@ -77,22 +96,26 @@ export function nodeToRegex(node: RegexNode): string {
         case "hex":
           return "[0-9A-Fa-f]";
         case "custom":
-          return `[${escapeRegex(node.chars || "")}]`;
+          return `[${escapeForCharClass(node.chars || "")}]`;
         default:
           return ".";
       }
 
     case "repeat": {
-      const childRegex = nodeToRegex(node.child);
-      const needsGroup = node.child.type === "sequence" || node.child.type === "alt";
+      const childRegex = nodeToRegex(node.child, depth + 1);
+      const needsGroup = node.child.type === "sequence" || node.child.type === "alt" || node.child.type === "repeat";
       const wrapped = needsGroup ? `(?:${childRegex})` : childRegex;
 
+      if (!Number.isSafeInteger(node.min) || node.min < 0) return wrapped;
+      if (node.max !== Infinity && (!Number.isSafeInteger(node.max) || node.max < 0)) return wrapped;
       if (node.min === 0 && node.max === Infinity) {
         return `${wrapped}*`;
       } else if (node.min === 1 && node.max === Infinity) {
         return `${wrapped}+`;
       } else if (node.min === 0 && node.max === 1) {
         return `${wrapped}?`;
+      } else if (node.min > 1000 || (node.max !== Infinity && node.max > 1000)) {
+        return wrapped; // Cap unreasonable quantifier bounds
       } else if (node.min === node.max) {
         return `${wrapped}{${node.min}}`;
       } else if (node.max === Infinity) {
@@ -103,16 +126,16 @@ export function nodeToRegex(node: RegexNode): string {
     }
 
     case "sequence":
-      return node.children.map(nodeToRegex).join("");
+      return node.children.map(c => nodeToRegex(c, depth + 1)).join("");
 
     case "alt":
-      return node.children.map(nodeToRegex).join("|");
+      return node.children.map(c => nodeToRegex(c, depth + 1)).join("|");
 
     case "group":
       if (node.capturing) {
-        return `(${nodeToRegex(node.child)})`;
+        return `(${nodeToRegex(node.child, depth + 1)})`;
       } else {
-        return `(?:${nodeToRegex(node.child)})`;
+        return `(?:${nodeToRegex(node.child, depth + 1)})`;
       }
 
     default:
@@ -315,8 +338,11 @@ const TEMPLATES: TemplatePattern[] = [
   },
 ];
 
+const MAX_EXAMPLE_LENGTH = 10_000;
+
 export function matchTemplate(examples: string[]): RegexNode | null {
   if (examples.length === 0) return null;
+  if (examples.some((e) => e.length > MAX_EXAMPLE_LENGTH)) return null;
 
   for (const template of TEMPLATES) {
     if (template.test(examples)) {
@@ -339,7 +365,7 @@ function getCharType(char: string): "digit" | "upper" | "lower" | "other" {
 }
 
 function analyzePosition(examples: string[], pos: number): { type: "fixed" | "class"; value: string | CharClass["class"] } {
-  const chars = examples.map((e) => e[pos]);
+  const chars = examples.map((e) => e[pos]).filter((c) => c !== undefined);
   const uniqueChars = [...new Set(chars)];
 
   // All same character at this position
@@ -375,12 +401,18 @@ function analyzePosition(examples: string[], pos: number): { type: "fixed" | "cl
   return { type: "class", value: "any" };
 }
 
+const MAX_ANALYZE_EXAMPLES = 10_000;
+
 export function analyzeCharacters(examples: string[]): RegexNode | null {
   if (examples.length === 0) return null;
+  if (examples.length > MAX_ANALYZE_EXAMPLES) {
+    examples = examples.slice(0, MAX_ANALYZE_EXAMPLES);
+  }
 
+  const MAX_CHAR_ANALYSIS = 1000;
   const lengths = examples.map((e) => e.length);
-  const minLen = Math.min(...lengths);
-  const maxLen = Math.max(...lengths);
+  const minLen = Math.min(lengths.reduce((a, b) => Math.min(a, b), Infinity), MAX_CHAR_ANALYSIS);
+  const maxLen = lengths.reduce((a, b) => Math.max(a, b), 0);
 
   // Fixed length - analyze each position
   if (minLen === maxLen) {
@@ -489,20 +521,27 @@ export interface SynthesisResult {
   error?: string;
 }
 
+const MAX_EXAMPLES = 10_000;
+
 export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
-  const { positives, negatives } = input;
+  if (!input || !input.positives) {
+    return { success: false, error: "Invalid input: positives required" };
+  }
+  let positives = input.positives.slice(0, MAX_EXAMPLES).filter(s => typeof s === "string" && s.length <= MAX_EXAMPLE_LENGTH);
+  const negatives = input.negatives ? input.negatives.slice(0, MAX_EXAMPLES).filter(s => typeof s === "string" && s.length <= MAX_EXAMPLE_LENGTH) : [];
 
   // Validation
   if (positives.length === 0) {
     return { success: false, error: "No positive examples provided" };
   }
 
-  // Check for conflicts
-  const conflicts = positives.filter((p) => negatives.includes(p));
+  // Check for conflicts — use Set for O(1) lookup
+  const negativeSet = new Set(negatives);
+  const conflicts = positives.filter((p) => negativeSet.has(p));
   if (conflicts.length > 0) {
     return {
       success: false,
-      error: `Conflicting examples: ${conflicts.join(", ")}`,
+      error: `Conflicting examples: ${conflicts.slice(0, 10).join(", ")}${conflicts.length > 10 ? "..." : ""}`,
     };
   }
 
@@ -515,7 +554,7 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
   }
 
   // If still no match, try literal alternation for small sets
-  if (!ast && positives.length <= 10) {
+  if (!ast && positives.length > 0 && positives.length <= 10) {
     ast = {
       type: "alt",
       children: positives.map((p) => ({ type: "literal", value: p })),
@@ -526,7 +565,11 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
     return { success: false, error: "Could not synthesize pattern" };
   }
 
+  const MAX_PATTERN_LENGTH = 5000;
   const pattern = nodeToRegex(ast);
+  if (pattern.length > MAX_PATTERN_LENGTH) {
+    return { success: false, error: `Synthesized pattern too long (${pattern.length} chars, max ${MAX_PATTERN_LENGTH})` };
+  }
   const regex = new RegExp(`^${pattern}$`);
 
   // Verify positives match
@@ -534,7 +577,7 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
   if (failedPositives.length > 0) {
     return {
       success: false,
-      error: `Pattern fails to match positives: ${failedPositives.join(", ")}`,
+      error: `Pattern fails to match positives: ${failedPositives.slice(0, 10).join(", ")}${failedPositives.length > 10 ? "..." : ""}`,
     };
   }
 
@@ -559,7 +602,7 @@ export function synthesizeRegex(input: SynthesisInput): SynthesisResult {
 
     return {
       success: false,
-      error: `Pattern incorrectly matches negatives: ${matchedNegatives.join(", ")}`,
+      error: `Pattern incorrectly matches negatives: ${matchedNegatives.slice(0, 10).join(", ")}${matchedNegatives.length > 10 ? "..." : ""}`,
     };
   }
 

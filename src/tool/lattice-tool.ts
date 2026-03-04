@@ -8,6 +8,8 @@
  * - HTTP server
  */
 
+import * as path from "node:path";
+import * as fs from "node:fs";
 import { NucleusEngine, type ExecutionResult } from "../engine/nucleus-engine.js";
 
 /**
@@ -92,21 +94,54 @@ export class LatticeTool {
    * Load a document from file (async)
    */
   async loadAsync(filePath: string): Promise<LatticeResponse> {
+    // Reject null bytes which can bypass path checks
+    if (filePath.includes("\0")) {
+      return {
+        success: false,
+        error: "Invalid path: null bytes are not allowed",
+      };
+    }
+    // Resolve first, then dereference symlinks with realpathSync to prevent bypass
+    const resolved = path.resolve(filePath);
+    const cwd = process.cwd();
+    // Pre-check resolved path before stat/realpath (catches obvious traversal)
+    if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
+      return {
+        success: false,
+        error: `Invalid path: paths outside working directory not allowed`,
+      };
+    }
+    // Dereference symlinks to prevent symlink-based directory escape
+    let realResolved: string;
     try {
-      await this.engine.loadFile(filePath);
+      realResolved = fs.realpathSync(resolved);
+    } catch {
+      return {
+        success: false,
+        error: `Invalid path: cannot resolve file`,
+      };
+    }
+    if (!realResolved.startsWith(cwd + path.sep) && realResolved !== cwd) {
+      return {
+        success: false,
+        error: `Invalid path: paths outside working directory not allowed`,
+      };
+    }
+    try {
+      await this.engine.loadFile(realResolved);
       this.documentPath = filePath;
-      this.documentName = filePath.split("/").pop() || filePath;
+      this.documentName = path.basename(filePath);
 
       const stats = this.engine.getStats();
       return {
         success: true,
-        message: `Loaded ${this.documentName}: ${stats?.lineCount.toLocaleString()} lines, ${stats?.length.toLocaleString()} chars`,
+        message: `Loaded ${this.documentName}: ${stats?.lineCount?.toLocaleString() ?? "?"} lines, ${stats?.length?.toLocaleString() ?? "?"} chars`,
         data: stats,
       };
     } catch (err) {
       return {
         success: false,
-        error: `Failed to load ${filePath}: ${err instanceof Error ? err.message : err}`,
+        error: `Failed to load ${this.documentName || "document"}: ${err instanceof Error ? err.message : "unknown error"}`,
       };
     }
   }
@@ -134,7 +169,7 @@ export class LatticeTool {
       const stats = this.engine.getStats();
       return {
         success: true,
-        message: `Loaded ${this.documentName}: ${stats?.lineCount.toLocaleString()} lines, ${stats?.length.toLocaleString()} chars`,
+        message: `Loaded ${this.documentName}: ${stats?.lineCount?.toLocaleString() ?? "?"} lines, ${stats?.length?.toLocaleString() ?? "?"} chars`,
         data: stats,
       };
     } catch (err) {
@@ -194,7 +229,12 @@ export class LatticeTool {
       return `Result: ${value.slice(0, 100)}${value.length > 100 ? "..." : ""}`;
     }
 
-    return `Result: ${JSON.stringify(value)}`;
+    const MAX_JSON_RESULT = 10_000;
+    // Cap object keys before stringify to prevent unbounded serialization
+    const safeValue = typeof value === "object" && value !== null
+      ? Object.fromEntries(Object.keys(value as Record<string, unknown>).slice(0, 100).map(k => [k, (value as Record<string, unknown>)[k]]))
+      : value;
+    return `Result: ${JSON.stringify(safeValue, null, 2).slice(0, MAX_JSON_RESULT)}`;
   }
 
   /**
@@ -206,7 +246,7 @@ export class LatticeTool {
       success: true,
       data: bindings,
       message: Object.keys(bindings).length > 0
-        ? `Current bindings: ${Object.keys(bindings).join(", ")}`
+        ? `Current bindings: ${Object.keys(bindings).slice(0, 100).join(", ")}`
         : "No bindings",
     };
   }
@@ -239,9 +279,8 @@ export class LatticeTool {
       data: {
         ...stats,
         documentName: this.documentName,
-        documentPath: this.documentPath,
       },
-      message: `Document: ${this.documentName} (${stats?.lineCount.toLocaleString()} lines, ${stats?.length.toLocaleString()} chars)`,
+      message: `Document: ${this.documentName} (${stats?.lineCount?.toLocaleString() ?? "?"} lines, ${stats?.length?.toLocaleString() ?? "?"} chars)`,
     };
   }
 
@@ -281,13 +320,14 @@ export class LatticeTool {
  * Parse a text command into a LatticeCommand
  */
 export function parseCommand(input: string): LatticeCommand | null {
-  const trimmed = input.trim();
+  const MAX_COMMAND_LENGTH = 100_000;
+  const trimmed = input.length > MAX_COMMAND_LENGTH ? input.slice(0, MAX_COMMAND_LENGTH).trim() : input.trim();
 
   if (!trimmed) return null;
 
   // Meta commands (start with :)
   if (trimmed.startsWith(":")) {
-    const parts = trimmed.slice(1).split(/\s+/);
+    const parts = trimmed.slice(1).split(/\s+/).slice(0, 100);
     const cmd = parts[0].toLowerCase();
     const arg = parts.slice(1).join(" ");
 
@@ -346,8 +386,10 @@ export function formatResponse(response: LatticeResponse): string {
       const arr = response.data;
       const preview = arr.slice(0, 10).map((item) => {
         if (typeof item === "object" && item !== null && "line" in item) {
-          const gr = item as { line: string; lineNum: number };
-          return `  [${gr.lineNum}] ${gr.line.slice(0, 80)}${gr.line.length > 80 ? "..." : ""}`;
+          const gr = item as Record<string, unknown>;
+          if (typeof gr.line === "string" && typeof gr.lineNum === "number") {
+            return `  [${gr.lineNum}] ${gr.line.slice(0, 80)}${gr.line.length > 80 ? "..." : ""}`;
+          }
         }
         return `  ${JSON.stringify(item).slice(0, 80)}`;
       });

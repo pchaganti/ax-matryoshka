@@ -5,9 +5,55 @@
 
 import { synthesizeRegex } from "./regex/synthesis.js";
 import { synthesizeExtractor, Extractor } from "./extractor/synthesis.js";
-import { KnowledgeBase, SynthesizedComponent } from "./knowledge-base.js";
+import { KnowledgeBase } from "./knowledge-base.js";
 import { EvolutionarySynthesizer } from "./evolutionary.js";
 import { synthesizeProgram, exprToCode, testProgram, type Example } from "./relational/interpreter.js";
+
+/**
+ * Safely evaluate synthesized code by validating it contains only safe operations.
+ * Rejects code containing dangerous patterns before evaluation.
+ */
+function safeEvalSynthesized(code: string): (input: string) => unknown {
+  // Cap code length to prevent memory exhaustion during Function construction
+  const MAX_CODE_LENGTH = 50_000;
+  if (code.length > MAX_CODE_LENGTH) {
+    throw new Error(`Synthesized code too long (${code.length} chars, max ${MAX_CODE_LENGTH})`);
+  }
+  // Block dangerous patterns in synthesized code
+  const dangerous = [
+    /\bprocess\b/, /\brequire\b/, /\bimport\b/, /\beval\b/,
+    /\bglobalThis\b/, /\b__proto__\b/, /\bconstructor\b/,
+    /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
+    /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
+    /\bwindow\b/, /\bdocument\b/, /\bprototype\b/,
+  ];
+  for (const pattern of dangerous) {
+    if (pattern.test(code)) {
+      throw new Error(`Synthesized code contains blocked pattern: ${pattern}`);
+    }
+  }
+  // Block bracket notation with strings (dynamic property access bypass)
+  if (/\[\s*['"]/.test(code)) {
+    throw new Error("Synthesized code contains bracket notation with strings");
+  }
+  // Block template literals (can bypass blocklist via interpolation)
+  if (/`/.test(code)) {
+    throw new Error("Synthesized code contains template literals");
+  }
+  // Block unicode/hex escape sequences (can bypass word-boundary checks)
+  if (/\\u[0-9a-fA-F]{4}|\\u\{[0-9a-fA-F]+\}|\\x[0-9a-fA-F]{2}/.test(code)) {
+    throw new Error("Synthesized code contains unicode/hex escape sequences");
+  }
+  // Block string concatenation patterns that can bypass blocklist
+  if (/["']\s*\+\s*["']/.test(code)) {
+    throw new Error("Synthesized code contains string concatenation pattern");
+  }
+  const fn = new Function("return " + code)();
+  if (typeof fn !== "function") {
+    throw new Error("Synthesized code did not produce a function");
+  }
+  return fn as (input: string) => unknown;
+}
 
 /**
  * Example collected from sandbox execution
@@ -67,8 +113,12 @@ export class SynthesisCoordinator {
    * Collect an example from execution
    */
   collectExample(category: string, example: CollectedExample): void {
+    const MAX_EXAMPLES_PER_CATEGORY = 100;
     const existing = this.exampleStore.get(category) || [];
     existing.push(example);
+    if (existing.length > MAX_EXAMPLES_PER_CATEGORY) {
+      existing.splice(0, existing.length - MAX_EXAMPLES_PER_CATEGORY);
+    }
     this.exampleStore.set(category, existing);
   }
 
@@ -119,6 +169,10 @@ export class SynthesisCoordinator {
    */
   validateRegex(pattern: string): boolean {
     try {
+      // Check for ReDoS patterns (nested quantifiers including {n,m} syntax)
+      const redosPattern = /(\((?:[^()]*[+*{])[^()]*\))[+*{]|\(\?[^)]*[+*{][^)]*\)[+*{]/;
+      if (redosPattern.test(pattern)) return false;
+      if (pattern.length > 500) return false;
       new RegExp(pattern);
       return true;
     } catch {
@@ -130,6 +184,7 @@ export class SynthesisCoordinator {
    * Test a regex against a string (safe)
    */
   testRegex(pattern: string, str: string): boolean {
+    if (!this.validateRegex(pattern)) return false;
     try {
       return new RegExp(pattern).test(str);
     } catch {
@@ -195,12 +250,14 @@ export class SynthesisCoordinator {
       });
     } else {
       // For extractor, use context as expected output if available
-      const expectedOutputs = examples
-        .filter((e) => e.context !== undefined)
+      const withContext = examples.filter((e) => e.context !== undefined && e.context !== null);
+      const expectedOutputs = withContext
         .map((e) => {
           // Try to parse as number
-          const num = parseFloat(e.context!);
-          return isNaN(num) ? e.context! : num;
+          const ctx = e.context as string;
+          if (ctx.length > 200) return ctx;
+          const num = parseFloat(ctx);
+          return isNaN(num) || !isFinite(num) ? ctx : num;
         });
 
       if (expectedOutputs.length === 0) {
@@ -214,9 +271,7 @@ export class SynthesisCoordinator {
       return this.synthesize({
         type: "extractor",
         description: `Synthesized from ${category}`,
-        positiveExamples: examples
-          .filter((e) => e.context !== undefined)
-          .map((e) => e.raw),
+        positiveExamples: withContext.map((e) => e.raw),
         expectedOutputs,
       });
     }
@@ -258,6 +313,7 @@ export class SynthesisCoordinator {
 
     for (const component of similar.slice(0, 3)) {
       if (component.pattern) {
+        if (!this.validateRegex(component.pattern)) continue;
         try {
           const regex = new RegExp(component.pattern);
           const allMatch = request.positiveExamples.every((p) => regex.test(p));
@@ -290,8 +346,8 @@ export class SynthesisCoordinator {
       this.knowledgeBase.add({
         id: `regex_${Date.now()}_${this.synthesisCount}`,
         type: "regex",
-        name: request.description || "synthesized_regex",
-        description: request.description,
+        name: (request.description || "synthesized_regex").slice(0, 500),
+        description: (request.description || "").slice(0, 2000),
         pattern: result.pattern,
         ast: result.ast,
         positiveExamples: request.positiveExamples,
@@ -364,7 +420,7 @@ export class SynthesisCoordinator {
     if (solutions.length > 0) {
       const code = solutions[0];
       try {
-        const fn = eval(code);
+        const fn = safeEvalSynthesized(code);
         return {
           success: true,
           synthesisTimeMs: Date.now() - startTime,
@@ -422,7 +478,7 @@ export class SynthesisCoordinator {
         if (testProgram(program, relationalExamples)) {
           const code = `(input) => ${exprToCode(program)}`;
           try {
-            const fn = eval(code);
+            const fn = safeEvalSynthesized(code);
             return {
               name: "minikanren_synthesized",
               description: "Synthesized via miniKanren relational search",
@@ -562,7 +618,9 @@ export class SynthesisCoordinator {
    * Get structure pattern of a string
    */
   private getStructure(str: string): string {
-    return str
+    const MAX_STRUCTURE_INPUT = 10_000;
+    const capped = str.length > MAX_STRUCTURE_INPUT ? str.slice(0, MAX_STRUCTURE_INPUT) : str;
+    return capped
       .replace(/[a-zA-Z]+/g, "TEXT")
       .replace(/\d+/g, "NUM")
       .replace(/\s+/g, " ");

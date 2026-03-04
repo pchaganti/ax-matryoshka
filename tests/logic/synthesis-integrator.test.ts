@@ -241,6 +241,35 @@ describe("SynthesisIntegrator", () => {
     });
   });
 
+  describe("cache size cap", () => {
+    it("should keep cache size bounded after many operations", () => {
+      // Synthesize many different operations to fill cache
+      for (let i = 0; i < 250; i++) {
+        integrator.cacheFunction(`key-${i}`, (s: string) => s.length + i);
+      }
+
+      // Access internal cache via synthesizeOnFailure to verify bounded growth
+      // The cache should have evicted old entries
+      const result = integrator.synthesizeOnFailure({
+        operation: "parseCurrency",
+        input: "$100",
+        examples: [
+          { input: "$100", output: 100 },
+          { input: "$200", output: 200 },
+        ],
+      });
+      expect(result.success).toBe(true);
+
+      // Old keys should have been evicted
+      const veryOldCached = integrator.getCached("key-0");
+      expect(veryOldCached).toBeNull();
+
+      // Recent keys should still be there
+      const recentCached = integrator.getCached("key-249");
+      expect(recentCached).not.toBeNull();
+    });
+  });
+
   describe("error handling", () => {
     it("returns failure when no examples provided", () => {
       const result = integrator.synthesizeOnFailure({
@@ -443,5 +472,115 @@ describe("SynthesisOutcome interface", () => {
     expect(outcome.success).toBe(false);
     expect(outcome.error).toBe("No pattern found");
     expect(outcome.fn).toBeUndefined();
+  });
+});
+
+describe("date parser return type", () => {
+  it("should return null for non-matching date input", () => {
+    const integrator = new SynthesisIntegrator();
+    const context: SynthesisContext = {
+      operation: "date",
+      input: "not-a-date",
+      examples: [
+        { input: "15/01/2024", output: "2024-01-15" },
+        { input: "20/06/2023", output: "2023-06-20" },
+      ],
+    };
+    const result = integrator.synthesizeOnFailure(context);
+    if (result?.fn) {
+      expect(result.fn("totally not a date")).toBeNull();
+    }
+  });
+});
+
+describe("cache key isolation", () => {
+  it("should not return wrong fn for different cache key suffix", () => {
+    const integrator = new SynthesisIntegrator();
+    const eurFn = (input: string) => input;
+    integrator.cacheFunction("parseCurrency:EUR", eurFn);
+
+    // Looking up with a different suffix should NOT match — different
+    // suffixes may need different parsing logic
+    const result = integrator.getCached("parseCurrency:GBP");
+    expect(result).toBeNull();
+  });
+});
+
+describe("SynthesisIntegrator - date parser null consistency", () => {
+  it("should return null (not empty string) for invalid date input", () => {
+    const integrator = new SynthesisIntegrator();
+    const result = integrator.synthesizeOnFailure({
+      operation: "parseDate",
+      input: "not-a-date-at-all",
+      examples: [
+        { input: "2024-01-15", output: "2024-01-15" },
+      ],
+    });
+    // If synthesis returns a fn, it should return null for bad input, not ""
+    if (result.success && result.fn) {
+      const output = result.fn("not-a-date-at-all");
+      expect(output).not.toBe("");
+    }
+  });
+});
+
+describe("SynthesisIntegrator - currency parser NaN guard", () => {
+  it("should not produce NaN from currency parser on non-matching input", () => {
+    const integrator = new SynthesisIntegrator();
+    const result = integrator.synthesizeOnFailure({
+      operation: "parseCurrency",
+      input: "not-a-currency",
+      examples: [
+        { input: "$1,000", output: 1000 },
+        { input: "$2,500", output: 2500 },
+      ],
+    });
+    if (result.success && result.fn) {
+      const output = result.fn("no currency here");
+      // Should be null, not NaN
+      expect(output === null || (typeof output === "number" && !Number.isNaN(output))).toBe(true);
+    }
+  });
+
+  it("should produce null (not NaN) from Swiss format parser on non-matching input", () => {
+    const integrator = new SynthesisIntegrator();
+    const result = integrator.synthesizeOnFailure({
+      operation: "parseCurrency",
+      input: "1'234.50",
+      examples: [
+        { input: "1'234.50", output: 1234.50 },
+        { input: "5'678.00", output: 5678.00 },
+      ],
+    });
+    if (result.success && result.fn) {
+      const output = result.fn("no numbers");
+      if (typeof output === "number") {
+        expect(Number.isNaN(output)).toBe(false);
+      }
+    }
+  });
+});
+
+describe("SynthesisIntegrator - number parser NaN consistency", () => {
+  let integrator: SynthesisIntegrator;
+
+  beforeEach(() => {
+    integrator = new SynthesisIntegrator();
+  });
+
+  it("should return null (not NaN) from number parser when no match", () => {
+    const result = integrator.synthesizeOnFailure({
+      operation: "parseNumber",
+      input: "no-numbers-here",
+      examples: [
+        { input: "$1,000", output: 1000 },
+        { input: "$2,500", output: 2500 },
+      ],
+    });
+    if (result.success && result.fn) {
+      const output = result.fn("no-numbers-here");
+      // Should be null, not NaN
+      expect(output).not.toBeNaN();
+    }
   });
 });

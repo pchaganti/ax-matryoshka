@@ -237,6 +237,95 @@ describe("NucleusEngine", () => {
     });
   });
 
+  describe("turn bindings eviction", () => {
+    it("should evict old turn bindings after exceeding cap while preserving RESULTS and _fn_*", () => {
+      // Execute more than 100 queries to trigger eviction
+      for (let i = 0; i < 110; i++) {
+        engine.execute('(grep "FATAL")');
+      }
+
+      const bindings = engine.getBindings();
+
+      // RESULTS should still be present
+      expect(bindings.RESULTS).toBeDefined();
+
+      // Old turn bindings (_1, _2, ...) should be evicted
+      expect(bindings._1).toBeUndefined();
+      expect(bindings._2).toBeUndefined();
+
+      // Recent turn bindings should still exist
+      expect(bindings._110).toBeDefined();
+    });
+
+    it("should evict numerically oldest keys, not lexicographically first", () => {
+      // Execute 105 queries - should keep _6 through _105 (100 keys)
+      for (let i = 0; i < 105; i++) {
+        engine.execute('(grep "FATAL")');
+      }
+
+      const bindings = engine.getBindings();
+
+      // _1 through _5 should be evicted (numerically oldest)
+      expect(bindings._1).toBeUndefined();
+      expect(bindings._5).toBeUndefined();
+
+      // _6 through _105 should be kept
+      expect(bindings._6).toBeDefined();
+      expect(bindings._100).toBeDefined();
+      expect(bindings._105).toBeDefined();
+    });
+  });
+
+  describe("grep match limit", () => {
+    it("should cap results at MAX_GREP_MATCHES for broad patterns", () => {
+      // Create a very large document that would produce many matches
+      const bigLines: string[] = [];
+      for (let i = 0; i < 15000; i++) {
+        bigLines.push(`line ${i}: data`);
+      }
+      const bigEngine = new NucleusEngine();
+      bigEngine.loadContent(bigLines.join("\n"));
+
+      // Pattern that matches every "line" - will produce 15000 matches
+      const result = bigEngine.execute('(grep "line")');
+      expect(result.success).toBe(true);
+      const matches = result.value as unknown[];
+      // Should be capped at 10000 (MAX_GREP_MATCHES)
+      expect(matches.length).toBeLessThanOrEqual(10000);
+    });
+
+    it("should return all matches when below limit", () => {
+      const result = engine.execute('(grep "FATAL")');
+      expect(result.success).toBe(true);
+      expect((result.value as unknown[]).length).toBe(3);
+    });
+  });
+
+  describe("regex validation (ReDoS protection)", () => {
+    it("should reject catastrophic backtracking patterns", () => {
+      const result = engine.execute('(grep "(a+)+$")');
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/regex|pattern|nested/i);
+    });
+
+    it("should reject excessively long patterns", () => {
+      const longPattern = "a".repeat(501);
+      const result = engine.execute(`(grep "${longPattern}")`);
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/regex|pattern|long/i);
+    });
+
+    it("should accept normal patterns", () => {
+      const result = engine.execute('(grep "ERROR|WARN")');
+      expect(result.success).toBe(true);
+    });
+
+    it("should accept digit patterns", () => {
+      const result = engine.execute('(grep "\\\\d+")');
+      expect(result.success).toBe(true);
+    });
+  });
+
   describe("error handling", () => {
     it("should return error for invalid syntax", () => {
       const result = engine.execute('(grep "unclosed');
@@ -298,5 +387,43 @@ describe("Factory functions", () => {
     const engine = await createEngine("./test-fixtures/small.txt");
 
     expect(engine.isLoaded()).toBe(true);
+  });
+});
+
+describe("ReDoS protection in grep", () => {
+  it("should reject ReDoS pattern (a+)+", () => {
+    const engine = createEngineFromContent("aaaaaaaaaaaa test data");
+    const result = engine.execute('(grep "(a+)+")');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/regex|backtracking/i);
+  });
+});
+
+describe("loadContent empty string edge case", () => {
+  it("should treat empty string as not loaded", () => {
+    const engine = new NucleusEngine();
+    engine.loadContent("");
+    // Empty document should not be considered "loaded"
+    expect(engine.isLoaded()).toBe(false);
+  });
+
+  it("should treat whitespace-only string as not loaded", () => {
+    const engine = new NucleusEngine();
+    engine.loadContent("   \n\n  ");
+    // Whitespace-only document should not be considered "loaded"
+    expect(engine.isLoaded()).toBe(false);
+  });
+});
+
+describe("dispose", () => {
+  it("should clear content and state after dispose", () => {
+    const engine = createEngineFromContent("some content here");
+    expect(engine.isLoaded()).toBe(true);
+    expect(engine.getContent()).toBe("some content here");
+
+    engine.dispose();
+
+    expect(engine.getContent()).toBe("");
+    expect(engine.getStats()).toBeNull();
   });
 });

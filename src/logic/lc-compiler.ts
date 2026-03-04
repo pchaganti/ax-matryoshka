@@ -7,6 +7,7 @@
 
 import type { LCTerm } from "./types.js";
 import { resolveConstraints } from "./constraint-resolver.js";
+import { validateRegex } from "./lc-solver.js";
 
 /**
  * Compile an LC term to JavaScript code for sandbox execution
@@ -22,7 +23,10 @@ export function compileToJS(term: LCTerm): string {
 /**
  * Internal compilation
  */
-function compile(term: LCTerm): string {
+const MAX_COMPILE_DEPTH = 100;
+
+function compile(term: LCTerm, depth: number = 0): string {
+  if (depth > MAX_COMPILE_DEPTH) return "null";
   switch (term.tag) {
     case "input":
       return "input";
@@ -40,38 +44,49 @@ function compile(term: LCTerm): string {
 })()`;
 
     case "match": {
-      const str = compile(term.str);
+      if (!Number.isInteger(term.group) || term.group < 0 || term.group > 99) return "null";
+      const matchValidation = validateRegex(term.pattern);
+      if (!matchValidation.valid) return "null";
+      const str = compile(term.str, depth + 1);
       const pattern = escapeRegex(term.pattern);
       return `(${str}).match(/${pattern}/)?.[${term.group}] ?? null`;
     }
 
     case "replace": {
-      const str = compile(term.str);
+      const replaceValidation = validateRegex(term.from);
+      if (!replaceValidation.valid) return "null";
+      const str = compile(term.str, depth + 1);
       const from = escapeRegex(term.from);
-      const to = escapeString(term.to);
+      // Escape $ to $$ to prevent backreference injection in replacement
+      const to = escapeString(term.to.replace(/\$/g, "$$$$"));
       return `(${str}).replace(/${from}/g, "${to}")`;
     }
 
     case "split": {
-      const str = compile(term.str);
+      if (!term.delim || term.delim.length === 0 || term.delim.length > 1000) return "null";
+      const str = compile(term.str, depth + 1);
       const delim = escapeString(term.delim);
-      return `(${str}).split("${delim}")?.[${term.index}] ?? null`;
+      const index = term.index;
+      if (!Number.isInteger(index) || index < 0) {
+        return `null`;
+      }
+      return `(${str}).split("${delim}")?.[${index}] ?? null`;
     }
 
     case "parseInt": {
-      const str = compile(term.str);
-      return `parseInt(${str}, 10)`;
+      const str = compile(term.str, depth + 1);
+      return `((_v) => { const _r = parseInt(_v, 10); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${str})`;
     }
 
     case "parseFloat": {
-      const str = compile(term.str);
-      return `parseFloat(${str})`;
+      const str = compile(term.str, depth + 1);
+      return `((_v) => { const _r = parseFloat(_v); return isNaN(_r) || !isFinite(_r) ? null : _r; })(${str})`;
     }
 
     case "if": {
-      const cond = compile(term.cond);
-      const thenBranch = compile(term.then);
-      const elseBranch = compile(term.else);
+      const cond = compile(term.cond, depth + 1);
+      const thenBranch = compile(term.then, depth + 1);
+      const elseBranch = compile(term.else, depth + 1);
       return `(${cond}) ? (${thenBranch}) : (${elseBranch})`;
     }
 
@@ -114,19 +129,27 @@ function compile(term: LCTerm): string {
 
     case "constrained":
       // Constraints are resolved before compilation
-      return compile(term.term);
+      return compile(term.term, depth + 1);
 
     case "var":
+      // Validate variable name is a safe JS identifier to prevent code injection
+      if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(term.name)) {
+        return "undefined";
+      }
       return term.name;
 
     case "app": {
-      const fn = compile(term.fn);
-      const arg = compile(term.arg);
+      const fn = compile(term.fn, depth + 1);
+      const arg = compile(term.arg, depth + 1);
       return `(${fn})(${arg})`;
     }
 
     case "lambda":
-      return `((${term.param}) => ${compile(term.body)})`;
+      // Validate lambda param is a safe JS identifier to prevent code injection
+      if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(term.param)) {
+        return "((_) => null)";
+      }
+      return `((${term.param}) => ${compile(term.body, depth + 1)})`;
 
     default:
       throw new Error(`Unsupported term tag for compilation: ${(term as LCTerm).tag}`);
@@ -140,6 +163,8 @@ function escapeString(s: string): string {
   return s
     .replace(/\\/g, "\\\\")
     .replace(/"/g, '\\"')
+    .replace(/`/g, "\\`")
+    .replace(/\$/g, "\\$")
     .replace(/\n/g, "\\n")
     .replace(/\r/g, "\\r")
     .replace(/\t/g, "\\t");
@@ -150,8 +175,14 @@ function escapeString(s: string): string {
  */
 function escapeRegex(pattern: string): string {
   // Don't escape the pattern itself - it's already a regex pattern
-  // Just escape forward slashes for the literal syntax
-  return pattern.replace(/\//g, "\\/");
+  // Escape forward slashes for the literal syntax, and line terminators
+  // which are invalid inside JS regex literals
+  return pattern
+    .replace(/\//g, "\\/")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 /**
