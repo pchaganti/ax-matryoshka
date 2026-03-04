@@ -190,6 +190,72 @@ describe("LC Interpreter - ReDoS protection", () => {
     expect(() => evaluate(filterTerm as any, tools, env, log)).not.toThrow();
   });
 
+  describe("parseDate validation", () => {
+    it("should reject invalid ISO date with month 13", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "2024-13-01" },
+      };
+      const result = evaluate(term as any, tools, env, log);
+      expect(result).toBeNull();
+    });
+
+    it("should reject invalid ISO date with month 0", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "2024-00-15" },
+      };
+      const result = evaluate(term as any, tools, env, log);
+      expect(result).toBeNull();
+    });
+
+    it("should reject Feb 31 as invalid date", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "02/31/2024" },
+      };
+      const result = evaluate(term as any, tools, env, log);
+      expect(result).toBeNull();
+    });
+
+    it("should return null for excessively long date string", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "A".repeat(500) },
+      };
+      const result = evaluate(term as any, tools, env, log);
+      expect(result).toBeNull();
+    });
+
+    it("should parse valid ISO date correctly", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "2024-01-15" },
+      };
+      const result = evaluate(term as any, tools, env, log);
+      expect(result).toBe("2024-01-15");
+    });
+
+    it("should parse valid US format date correctly", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "01/15/2024" },
+      };
+      const result = evaluate(term as any, tools, env, log);
+      // Should parse as MM/DD/YYYY and return ISO format
+      expect(result).toMatch(/2024-01-15/);
+    });
+
+    it("should reject day 32 as invalid", () => {
+      const term = {
+        tag: "parseDate" as const,
+        str: { tag: "lit" as const, value: "2024-01-32" },
+      };
+      const result = evaluate(term as any, tools, env, log);
+      expect(result).toBeNull();
+    });
+  });
+
   it("should cap log array at maximum entries", async () => {
     const { interpret } = await import("../../src/logic/lc-interpreter.js");
     // Create a map term that generates many log entries

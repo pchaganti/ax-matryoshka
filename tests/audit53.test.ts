@@ -99,7 +99,7 @@ describe("Audit #53", () => {
   describe("#8 — lc-interpreter parseDate should limit input length", () => {
     it("should check string length before parsing", () => {
       const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const dateCase = source.match(/case "parseDate"[\s\S]*?new Date\(str\)/);
+      const dateCase = source.match(/case "parseDate"[\s\S]*?new Date\(cleaned\)/);
       expect(dateCase).not.toBeNull();
       expect(dateCase![0]).toMatch(/\.length|MAX_PARSE|MAX_INPUT/);
     });

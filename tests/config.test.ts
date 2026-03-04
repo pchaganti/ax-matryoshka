@@ -16,7 +16,7 @@ describe("Config", () => {
   });
 
   describe("env var resolution", () => {
-    it("should throw on missing env vars", async () => {
+    it("should leave unset env vars as empty string instead of throwing", async () => {
       const configPath = path.join(tempDir, "config.json");
       fs.writeFileSync(configPath, JSON.stringify({
         llm: { provider: "test" },
@@ -25,8 +25,30 @@ describe("Config", () => {
         }
       }));
 
-      await expect(loadConfig(configPath)).rejects.toThrow("NONEXISTENT_VAR_FOR_TEST_12345");
-      await expect(loadConfig(configPath)).rejects.toThrow("not set");
+      // Should NOT throw — unset env vars should resolve to empty string
+      const config = await loadConfig(configPath);
+      expect(config.providers.test.baseUrl).toBe("");
+    });
+
+    it("should load config with mixed set and unset env vars", async () => {
+      const envKey = "TEST_SET_VAR_" + Date.now();
+      process.env[envKey] = "http://localhost:11434";
+
+      const configPath = path.join(tempDir, "config.json");
+      fs.writeFileSync(configPath, JSON.stringify({
+        llm: { provider: "ollama" },
+        providers: {
+          ollama: { baseUrl: `\${${envKey}}` },
+          deepseek: { baseUrl: "https://api.deepseek.com", apiKey: "${UNSET_API_KEY_12345}" }
+        }
+      }));
+
+      // Should not throw even though UNSET_API_KEY_12345 doesn't exist
+      const config = await loadConfig(configPath);
+      expect(config.providers.ollama.baseUrl).toBe("http://localhost:11434");
+      expect(config.providers.deepseek.apiKey).toBe("");
+
+      delete process.env[envKey];
     });
 
     it("should resolve existing env vars", async () => {

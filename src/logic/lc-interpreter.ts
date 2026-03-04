@@ -515,18 +515,46 @@ export function evaluate(
     case "parseDate": {
       const str = evaluate(term.str, tools, env, log, depth + 1);
       if (typeof str !== "string") return null;
-      if (str.length > 200) return null;
+      if (str.length > 100) return null;
       log(`Parsing date: "${str}"`);
-      // ISO format
-      const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-      if (isoMatch) return str;
-      // Try Date.parse fallback
-      const d = new Date(str);
-      if (!isNaN(d.getTime())) {
-        const y = d.getUTCFullYear();
-        const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-        const day = String(d.getUTCDate()).padStart(2, "0");
-        return `${y}-${m}-${day}`;
+      const cleaned = str.trim();
+
+      // ISO format: 2024-01-15, 2024/01/15
+      const isoMatch = cleaned.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/);
+      if (isoMatch) {
+        const [, yr, mo, dy] = isoMatch;
+        const m = parseInt(mo, 10);
+        const d = parseInt(dy, 10);
+        if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(yr, 10))) {
+          return `${yr}-${mo.padStart(2, "0")}-${dy.padStart(2, "0")}`;
+        }
+        return null;
+      }
+
+      // US format: MM/DD/YYYY, MM-DD-YYYY
+      const usMatch = cleaned.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+      if (usMatch) {
+        const [, mo, dy, yr] = usMatch;
+        const m = parseInt(mo, 10);
+        const d = parseInt(dy, 10);
+        if (m >= 1 && m <= 12 && d >= 1 && d <= daysInMonth(m, parseInt(yr, 10))) {
+          return `${yr}-${mo.padStart(2, "0")}-${dy.padStart(2, "0")}`;
+        }
+        return null;
+      }
+
+      // Try Date.parse fallback, but only for non-numeric formats
+      // to avoid JS Date silently normalizing invalid dates
+      const looksNumeric = /^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}$/.test(cleaned)
+        || /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(cleaned);
+      if (!looksNumeric) {
+        const jsDate = new Date(cleaned);
+        if (!isNaN(jsDate.getTime())) {
+          const y = jsDate.getUTCFullYear();
+          const mo = String(jsDate.getUTCMonth() + 1).padStart(2, "0");
+          const dy = String(jsDate.getUTCDate()).padStart(2, "0");
+          return `${y}-${mo}-${dy}`;
+        }
       }
       return null;
     }
@@ -629,6 +657,17 @@ export function evaluate(
     default:
       throw new Error(`Unknown term tag: ${(term as LCTerm).tag}`);
   }
+}
+
+/**
+ * Days in a given month, accounting for leap years
+ */
+function daysInMonth(month: number, year: number): number {
+  const days = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month === 2 && (year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0))) {
+    return 29;
+  }
+  return days[month] ?? 0;
 }
 
 /**

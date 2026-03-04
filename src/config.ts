@@ -59,7 +59,7 @@ function resolveEnvVars(obj: unknown, depth: number = 0): unknown {
       }
       const resolved = process.env[varName];
       if (resolved === undefined) {
-        throw new Error(`Environment variable ${varName} not set (referenced in config)`);
+        return ""; // Unset env vars resolve to empty string (non-fatal)
       }
       return resolved;
     });
