@@ -246,7 +246,7 @@ export class LatticeTool {
       success: true,
       data: bindings,
       message: Object.keys(bindings).length > 0
-        ? `Current bindings: ${Object.keys(bindings).join(", ").slice(0, 2000)}`
+        ? `Current bindings: ${Object.keys(bindings).slice(0, 100).join(", ")}`
         : "No bindings",
     };
   }
@@ -327,7 +327,7 @@ export function parseCommand(input: string): LatticeCommand | null {
 
   // Meta commands (start with :)
   if (trimmed.startsWith(":")) {
-    const parts = trimmed.slice(1).split(/\s+/);
+    const parts = trimmed.slice(1).split(/\s+/).slice(0, 100);
     const cmd = parts[0].toLowerCase();
     const arg = parts.slice(1).join(" ");
 

@@ -30,10 +30,12 @@ export function resolveConstraints(term: LCTerm): ResolvedTerm {
   let nullChecksInjected = false;
   let simplified = false;
 
-  function resolve(t: LCTerm): LCTerm {
+  const MAX_RESOLVE_DEPTH = 500;
+  function resolve(t: LCTerm, depth: number = 0): LCTerm {
+    if (depth > MAX_RESOLVE_DEPTH) return t;
     // Handle constrained terms
     if (t.tag === "constrained") {
-      const resolved = applyConstraint(t.constraint, resolve(t.term));
+      const resolved = applyConstraint(t.constraint, resolve(t.term, depth + 1));
       transformations.push(`Applied [${t.constraint}]`);
 
       if (t.constraint === "∞/0") {
@@ -55,72 +57,72 @@ export function resolveConstraints(term: LCTerm): ResolvedTerm {
         return t;
 
       case "match":
-        return { ...t, str: resolve(t.str) };
+        return { ...t, str: resolve(t.str, depth + 1) };
 
       case "replace":
-        return { ...t, str: resolve(t.str) };
+        return { ...t, str: resolve(t.str, depth + 1) };
 
       case "split":
-        return { ...t, str: resolve(t.str) };
+        return { ...t, str: resolve(t.str, depth + 1) };
 
       case "parseInt":
-        return { ...t, str: resolve(t.str) };
+        return { ...t, str: resolve(t.str, depth + 1) };
 
       case "parseFloat":
-        return { ...t, str: resolve(t.str) };
+        return { ...t, str: resolve(t.str, depth + 1) };
 
       case "if":
         return {
           ...t,
-          cond: resolve(t.cond),
-          then: resolve(t.then),
-          else: resolve(t.else),
+          cond: resolve(t.cond, depth + 1),
+          then: resolve(t.then, depth + 1),
+          else: resolve(t.else, depth + 1),
         };
 
       case "classify":
         return t;
 
       case "add":
-        return { ...t, left: resolve(t.left), right: resolve(t.right) };
+        return { ...t, left: resolve(t.left, depth + 1), right: resolve(t.right, depth + 1) };
 
       case "extract":
-        return { ...t, str: resolve(t.str) };
+        return { ...t, str: resolve(t.str, depth + 1) };
 
       case "reduce":
-        return { ...t, collection: resolve(t.collection), init: resolve(t.init), fn: resolve(t.fn) };
+        return { ...t, collection: resolve(t.collection, depth + 1), init: resolve(t.init, depth + 1), fn: resolve(t.fn, depth + 1) };
 
       case "filter":
-        return { ...t, collection: resolve(t.collection), predicate: resolve(t.predicate) };
+        return { ...t, collection: resolve(t.collection, depth + 1), predicate: resolve(t.predicate, depth + 1) };
 
       case "map":
-        return { ...t, collection: resolve(t.collection), transform: resolve(t.transform) };
+        return { ...t, collection: resolve(t.collection, depth + 1), transform: resolve(t.transform, depth + 1) };
 
       case "app":
-        return { ...t, fn: resolve(t.fn), arg: resolve(t.arg) };
+        return { ...t, fn: resolve(t.fn, depth + 1), arg: resolve(t.arg, depth + 1) };
 
       case "lambda":
-        return { ...t, body: resolve(t.body) };
+        return { ...t, body: resolve(t.body, depth + 1) };
 
       case "sum":
-        return { ...t, collection: resolve(t.collection) };
+        return { ...t, collection: resolve(t.collection, depth + 1) };
 
       case "count":
-        return { ...t, collection: resolve(t.collection) };
+        return { ...t, collection: resolve(t.collection, depth + 1) };
 
       case "parseCurrency":
       case "parseDate":
       case "parseNumber":
       case "predicate":
-        return { ...t, str: resolve(t.str) };
+        return { ...t, str: resolve(t.str, depth + 1) };
 
       case "coerce":
-        return { ...t, term: resolve(t.term) };
+        return { ...t, term: resolve(t.term, depth + 1) };
 
       case "apply-fn":
-        return { ...t, arg: resolve(t.arg) };
+        return { ...t, arg: resolve(t.arg, depth + 1) };
 
       case "get_symbol_body":
-        return { ...t, symbol: resolve(t.symbol) };
+        return { ...t, symbol: resolve(t.symbol, depth + 1) };
 
       case "synthesize":
       case "define-fn":

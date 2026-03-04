@@ -97,11 +97,16 @@ export class FTS5Search {
     // Extract search terms (handle phrases and operators)
     const terms = this.extractSearchTerms(query);
 
+    const MAX_HIGHLIGHT_LENGTH = 100_000;
     return results.map((result) => {
-      let highlighted = result.content;
+      let highlighted = result.content.length > MAX_HIGHLIGHT_LENGTH ? result.content.slice(0, MAX_HIGHLIGHT_LENGTH) : result.content;
       for (const term of terms) {
         const regex = new RegExp(`(${this.escapeRegex(term)})`, "gi");
         highlighted = highlighted.replace(regex, `${openTag}$1${closeTag}`);
+        if (highlighted.length > MAX_HIGHLIGHT_LENGTH) {
+          highlighted = highlighted.slice(0, MAX_HIGHLIGHT_LENGTH);
+          break;
+        }
       }
       return { ...result, highlighted };
     });
@@ -114,12 +119,17 @@ export class FTS5Search {
     const results = this.db.searchRaw(query);
     const terms = this.extractSearchTerms(query);
 
+    const MAX_SNIPPET_LENGTH = 100_000;
     return results.map((result) => {
       // For single-line documents, snippet is the content with highlight
-      let snippet = result.content;
+      let snippet = result.content.length > MAX_SNIPPET_LENGTH ? result.content.slice(0, MAX_SNIPPET_LENGTH) : result.content;
       for (const term of terms) {
         const regex = new RegExp(`(${this.escapeRegex(term)})`, "gi");
         snippet = snippet.replace(regex, "<mark>$1</mark>");
+        if (snippet.length > MAX_SNIPPET_LENGTH) {
+          snippet = snippet.slice(0, MAX_SNIPPET_LENGTH);
+          break;
+        }
       }
       return { ...result, snippet };
     });

@@ -282,8 +282,10 @@ export function exprToCode(expr: Expr, depth: number = 0): string {
       }
       return expr.name;
 
-    case "add":
-      return `(${exprToCode(expr.left, depth + 1)} + ${exprToCode(expr.right, depth + 1)})`;
+    case "add": {
+      const addResult = `(${exprToCode(expr.left, depth + 1)} + ${exprToCode(expr.right, depth + 1)})`;
+      return `((_a) => isFinite(_a) ? _a : null)(${addResult})`;
+    }
 
     case "sub": {
       const subResult = `(${exprToCode(expr.left, depth + 1)} - ${exprToCode(expr.right, depth + 1)})`;

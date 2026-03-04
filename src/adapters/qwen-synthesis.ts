@@ -18,6 +18,7 @@ function buildSystemPrompt(
   toolInterfaces: string,
   hints?: RAGHints
 ): string {
+  if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const formattedLength = contextLength.toLocaleString();
 
   return `You are a JavaScript code executor. You ONLY output JavaScript code. NO CHAT. NO PYTHON.

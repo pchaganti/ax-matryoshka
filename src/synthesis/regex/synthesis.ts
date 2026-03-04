@@ -106,6 +106,8 @@ export function nodeToRegex(node: RegexNode, depth: number = 0): string {
       const needsGroup = node.child.type === "sequence" || node.child.type === "alt" || node.child.type === "repeat";
       const wrapped = needsGroup ? `(?:${childRegex})` : childRegex;
 
+      if (!Number.isSafeInteger(node.min) || node.min < 0) return wrapped;
+      if (node.max !== Infinity && (!Number.isSafeInteger(node.max) || node.max < 0)) return wrapped;
       if (node.min === 0 && node.max === Infinity) {
         return `${wrapped}*`;
       } else if (node.min === 1 && node.max === Infinity) {
