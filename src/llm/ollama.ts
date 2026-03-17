@@ -1,6 +1,5 @@
 import type { LLMProvider, LLMConfig, ProviderConfig } from "./types.js";
-
-const LLM_TIMEOUT_MS = 120_000; // 2 minutes
+import { fetchWithRetry } from "./retry.js";
 
 export function createOllamaProvider(config: ProviderConfig): LLMProvider {
   return {
@@ -22,19 +21,14 @@ export function createOllamaProvider(config: ProviderConfig): LLMProvider {
         requestBody.format = "json";
       }
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
-      let response: Response;
-      try {
-        response = await fetch(`${config.baseUrl}/api/generate`, {
+      const response = await fetchWithRetry(
+        `${config.baseUrl}/api/generate`,
+        {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(requestBody),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeoutId);
-      }
+        }
+      );
 
       if (!response.ok) {
         let errorBody = "";

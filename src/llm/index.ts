@@ -101,6 +101,7 @@ export function createLLMClient(
 
 export { createOllamaProvider } from "./ollama.js";
 export { createDeepSeekProvider } from "./deepseek.js";
+export { fetchWithRetry, type RetryOptions } from "./retry.js";
 
 /**
  * Configuration interface for tiered clients
