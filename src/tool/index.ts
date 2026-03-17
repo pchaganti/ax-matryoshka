@@ -39,3 +39,10 @@ export {
   startHttpAdapter,
   type HttpAdapterOptions,
 } from "./adapters/http.js";
+
+// AI SDK integration
+export {
+  createLatticeTools,
+  type LatticeToolSet,
+  type GenericToolDefinition,
+} from "./ai-tools.js";
