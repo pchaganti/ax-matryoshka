@@ -219,7 +219,8 @@ export class SessionDB {
     if (query.length > MAX_QUERY_LENGTH) query = query.slice(0, MAX_QUERY_LENGTH);
 
     // Sanitize FTS5 special characters to prevent query injection
-    const sanitized = query.replace(/['"*()\-|{}:^~\[\]]/g, " ").replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ").trim();
+    // Strips: quotes, wildcards, grouping, column selectors, boolean ops, prefix tokens
+    const sanitized = query.replace(/['"*()\-|{}:^~\[\]+@/\\]/g, " ").replace(/\b(AND|OR|NOT|NEAR)\b/gi, " ").trim();
     if (!sanitized) return [];
 
     return this.searchRaw(sanitized);
