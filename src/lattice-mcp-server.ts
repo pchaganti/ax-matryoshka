@@ -305,6 +305,7 @@ function formatHandleResult(result: {
   value?: unknown;
   logs: string[];
   error?: string;
+  tokenMetadata?: { estimatedFullTokens: number; stubTokens: number; savingsPercent: number };
 }): string {
   if (!result.success) {
     return `Error: ${result.error}`;
@@ -313,6 +314,9 @@ function formatHandleResult(result: {
   // If we have a handle (array result), return the stub
   if (result.handle && result.stub) {
     let text = result.stub;
+    if (result.tokenMetadata) {
+      text += `\n\nToken savings: ~${result.tokenMetadata.savingsPercent}% (${result.tokenMetadata.stubTokens} vs ~${result.tokenMetadata.estimatedFullTokens} tokens)`;
+    }
     text += "\n\nChain with (count RESULTS), (filter RESULTS ...), (map RESULTS ...), etc.";
     text += "\nUse lattice_expand to see full data when needed.";
     return text;

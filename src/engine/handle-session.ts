@@ -16,6 +16,36 @@ import { SymbolExtractor } from "../treesitter/symbol-extractor.js";
 import { isExtensionSupported } from "../treesitter/language-map.js";
 
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
+const CHARS_PER_TOKEN = 4; // Approximate token estimation heuristic
+
+/**
+ * Estimate token count from a string or data size using ~4 chars/token heuristic
+ */
+function estimateTokens(charCount: number): number {
+  return Math.ceil(charCount / CHARS_PER_TOKEN);
+}
+
+/**
+ * Token cost metadata for a result
+ */
+export interface TokenMetadata {
+  /** Estimated tokens if full data were returned */
+  estimatedFullTokens: number;
+  /** Tokens used by the stub */
+  stubTokens: number;
+  /** Percentage savings from using handle */
+  savingsPercent: number;
+}
+
+/**
+ * Token cost metadata for an expanded result
+ */
+export interface ExpandTokenMetadata {
+  /** Tokens in the returned (possibly limited) data */
+  returnedTokens: number;
+  /** Estimated tokens for the full dataset */
+  totalTokens: number;
+}
 
 /**
  * Result of a handle-based query execution
@@ -34,6 +64,8 @@ export interface HandleResult {
   error?: string;
   /** Inferred type */
   type?: string;
+  /** Token cost metadata (present for array results) */
+  tokenMetadata?: TokenMetadata;
 }
 
 /**
@@ -58,6 +90,8 @@ export interface ExpandResult {
   offset?: number;
   limit?: number;
   error?: string;
+  /** Token cost metadata for the expanded data */
+  tokenMetadata?: ExpandTokenMetadata;
 }
 
 /**
@@ -279,12 +313,26 @@ export class HandleSession {
       // Get the stub for LLM context
       const stub = this.registry.getStub(handle);
 
+      // Compute token metadata
+      const fullDataSize = JSON.stringify(result.value).length;
+      const stubSize = stub.length;
+      const estimatedFullTokens = estimateTokens(fullDataSize);
+      const stubTokens = estimateTokens(stubSize);
+      const savingsPercent = estimatedFullTokens > 0
+        ? Math.round(((estimatedFullTokens - stubTokens) / estimatedFullTokens) * 100)
+        : 0;
+
       return {
         success: true,
         handle,
         stub,
         logs: result.logs,
         type: result.type,
+        tokenMetadata: {
+          estimatedFullTokens,
+          stubTokens,
+          savingsPercent,
+        },
       };
     }
 
@@ -343,12 +391,24 @@ export class HandleSession {
       });
     }
 
+    // Compute token metadata for expanded data
+    const returnedSize = JSON.stringify(sliced).length;
+    const returnedTokens = estimateTokens(returnedSize);
+    // Estimate total tokens proportionally
+    const totalTokens = total > 0 && sliced.length > 0
+      ? Math.ceil((returnedTokens / sliced.length) * total)
+      : returnedTokens;
+
     return {
       success: true,
       data: sliced,
       total,
       offset,
       limit,
+      tokenMetadata: {
+        returnedTokens,
+        totalTokens,
+      },
     };
   }
 
