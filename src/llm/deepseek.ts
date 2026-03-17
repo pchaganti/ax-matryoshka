@@ -1,4 +1,5 @@
 import type { LLMProvider, LLMConfig, ProviderConfig } from "./types.js";
+import { fetchWithRetry } from "./retry.js";
 
 interface ChatCompletionResponse {
   choices: Array<{
@@ -6,39 +7,6 @@ interface ChatCompletionResponse {
       content: string;
     };
   }>;
-}
-
-const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 1000;
-const LLM_TIMEOUT_MS = 120_000; // 2 minutes
-
-async function fetchWithRetry(
-  url: string,
-  options: RequestInit,
-  retries = MAX_RETRIES
-): Promise<Response> {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), LLM_TIMEOUT_MS);
-    try {
-      const response = await fetch(url, { ...options, signal: controller.signal });
-      return response;
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      if (attempt === retries) {
-        console.error(`Final fetch attempt failed: ${errMsg}`);
-        console.error(`URL: ${url}`);
-        throw error;
-      }
-      console.error(
-        `Fetch attempt ${attempt}/${retries} failed (${errMsg}), retrying in ${RETRY_DELAY_MS}ms...`
-      );
-      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
-    } finally {
-      clearTimeout(timeoutId);
-    }
-  }
-  throw new Error("Unreachable");
 }
 
 export function createDeepSeekProvider(config: ProviderConfig): LLMProvider {
