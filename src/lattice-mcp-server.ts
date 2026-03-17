@@ -183,7 +183,11 @@ SYMBOL WORKFLOW:
 VARIABLE BINDING:
 - RESULTS: Always points to the last array result (use in queries)
 - _1, _2, _3, ...: Results from turn N (use in queries for older results)
-- $res1, $res2, ...: Handle stubs (use ONLY with lattice_expand, NOT in queries)`,
+- $res1, $res2, ...: Handle stubs (use ONLY with lattice_expand, NOT in queries)
+
+EFFICIENCY: Minimize the number of separate tool calls by chaining queries.
+Build a pipeline (grep → filter → count) rather than making independent calls.
+Aim to answer your question in 3-5 queries, not 10+.`,
     inputSchema: {
       type: "object" as const,
       properties: {
