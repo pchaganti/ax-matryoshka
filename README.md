@@ -41,13 +41,13 @@ The LLM outputs commands in the Nucleus DSL—an S-expression language designed 
 
 ```scheme
 ; Search for patterns
-(grep "SALES_DATA")
+(grep "ERROR")
 
 ; Filter results
-(filter RESULTS (lambda x (match x "NORTH" 0)))
+(filter RESULTS (lambda x (match x "timeout" 0)))
 
 ; Aggregate
-(sum RESULTS)    ; Auto-extracts numbers like "$2,340,000" from lines
+(sum RESULTS)    ; Auto-extracts numbers from lines
 (count RESULTS)  ; Count matching items
 
 ; Final answer
@@ -120,7 +120,7 @@ npm install -g matryoshka-rlm
 Or run without installing:
 
 ```bash
-npx matryoshka-rlm "What is the total of all sales values?" ./report.txt
+npx matryoshka-rlm "How many ERROR entries are there?" ./server.log
 ```
 
 ### Included Tools
@@ -130,6 +130,7 @@ The package provides several CLI tools:
 | Command | Description |
 |---------|-------------|
 | `rlm` | Main CLI for document analysis with LLM reasoning |
+| `rlm-mcp` | MCP server with full RLM + LLM orchestration (`analyze_document` tool) |
 | `lattice-mcp` | MCP server exposing direct Nucleus commands (no LLM required) |
 | `lattice-repl` | Interactive REPL for Nucleus commands |
 | `lattice-http` | HTTP server for Nucleus queries |
@@ -157,7 +158,7 @@ Copy `config.example.json` to `config.json` and configure your LLM provider:
   "providers": {
     "ollama": {
       "baseUrl": "http://localhost:11434",
-      "model": "qwen2.5-coder:7b",
+      "model": "qwen3-coder:30b",
       "options": { "temperature": 0.2, "num_ctx": 8192 }
     },
     "deepseek": {
@@ -176,10 +177,10 @@ Copy `config.example.json` to `config.json` and configure your LLM provider:
 
 ```bash
 # Basic usage
-rlm "What is the total of all sales values?" ./report.txt
+rlm "How many ERROR entries are there?" ./server.log
 
 # With options
-rlm "Count all ERROR entries" ./logs.txt --max-turns 15 --verbose
+rlm "Count all ERROR entries" ./server.log --max-turns 15 --verbose
 
 # See all options
 rlm --help
@@ -243,11 +244,11 @@ import { createLLMClient } from "matryoshka-rlm";
 
 const llmClient = createLLMClient("ollama", {
   baseUrl: "http://localhost:11434",
-  model: "qwen2.5-coder:7b",
+  model: "qwen3-coder:30b",
   options: { temperature: 0.2 }
 });
 
-const result = await runRLM("What is the total of all sales values?", "./report.txt", {
+const result = await runRLM("How many ERROR entries are there?", "./server.log", {
   llmClient,
   maxTurns: 10,
   turnTimeoutMs: 30000,
@@ -257,26 +258,25 @@ const result = await runRLM("What is the total of all sales values?", "./report.
 ## Example Session
 
 ```
-$ rlm "What is the total of all north sales data values?" ./report.txt --verbose
+$ rlm "How many ERROR entries are there?" ./server.log --verbose
 
 ──────────────────────────────────────────────────
 [Turn 1/10] Querying LLM...
-[Turn 1] Term: (grep "SALES.*NORTH")
-[Turn 1] Result: 1 matches
+[Turn 1] Term: (grep "ERROR")
+[Turn 1] Result: 42 matches
 
 ──────────────────────────────────────────────────
 [Turn 2/10] Querying LLM...
-[Turn 2] Term: (sum RESULTS)
+[Turn 2] Term: (count RESULTS)
 [Turn 2] Console output:
-  [Lattice] Summing 1 values
-  [Lattice] Sum = 2340000
-[Turn 2] Result: 2340000
+  [Lattice] Counting 42 items
+[Turn 2] Result: 42
 
 ──────────────────────────────────────────────────
 [Turn 3/10] Querying LLM...
 [Turn 3] Final answer received
 
-2340000
+42
 ```
 
 The model:
@@ -514,7 +514,7 @@ Results from previous turns are available:
 
 **Solutions**:
 1. Use a more capable model (7B+ recommended)
-2. Be specific in your query: "Find lines containing SALES_DATA and sum the dollar amounts"
+2. Be specific in your query: "Find lines containing ERROR and count them"
 
 ### Max Turns Reached
 
