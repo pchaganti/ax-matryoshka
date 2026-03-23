@@ -42,6 +42,7 @@ describe("Language Map", () => {
     expect(getLanguageForExtension(".java")).toBe("java");
     expect(getLanguageForExtension(".html")).toBe("html");
     expect(getLanguageForExtension(".json")).toBe("json");
+    expect(getLanguageForExtension(".ex")).toBe("elixir");
   });
 
   it("should be case-insensitive for extensions", () => {
@@ -72,6 +73,7 @@ describe("Language Map", () => {
     expect(isLanguageAvailable("python")).toBe(true);
     expect(isLanguageAvailable("go")).toBe(true);
     expect(isLanguageAvailable("javascript")).toBe(true);
+    expect(isLanguageAvailable("elixir")).toBe(true);
     // These have configs but packages aren't installed
     expect(isLanguageAvailable("rust")).toBe(false);
     expect(isLanguageAvailable("java")).toBe(false);
@@ -226,6 +228,21 @@ func (p *Person) Greet() string {
       const tree = await registry.parseDocument(code, ".go");
       expect(tree).not.toBeNull();
       expect(tree!.rootNode.type).toBe("source_file");
+    });
+  });
+
+  describe("Elixir parsing", () => {
+    it("should parse Elixir and return tree", async () => {
+      const code = `
+defmodule Greeter do
+  def hello(name) do
+    "Hello, #{name}"
+  end
+end
+`;
+      const tree = await registry.parseDocument(code, ".ex");
+      expect(tree).not.toBeNull();
+      expect(tree!.rootNode.type).toBe("source");
     });
   });
 

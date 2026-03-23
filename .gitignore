@@ -29,3 +29,6 @@ Thumbs.db
 # TypeScript cache
 *.tsbuildinfo
 blog.md
+
+# config
+config.json

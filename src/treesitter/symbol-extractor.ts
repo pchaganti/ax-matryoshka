@@ -75,6 +75,16 @@ const CONTAINER_TYPES = new Set([
   "namespace_definition",
 ]);
 
+const ELIXIR_FUNCTION_MACROS = new Set(["def", "defp", "defmacro", "defmacrop"]);
+const SIGNATURE_FUNCTION_TYPES = [
+  "function_declaration",
+  "method_definition",
+  "function_definition",
+  "method_declaration",
+  "function_item",
+];
+const MAX_SIGNATURE_TEXT_LENGTH = 50_000;
+
 /**
  * SymbolExtractor extracts symbols from source code
  */
@@ -157,6 +167,14 @@ export class SymbolExtractor {
       if (symbol) {
         symbols.push(symbol);
       }
+    } else if (language === "elixir" && node.type === "call") {
+      const elixirSymbol = this.extractElixirCallSymbol(node, parentId);
+      if (elixirSymbol) {
+        symbols.push(elixirSymbol.symbol);
+        if (elixirSymbol.isContainer) {
+          currentParentId = elixirSymbol.symbol.id!;
+        }
+      }
     } else {
       // Check if this node is a symbol definition using the mappings
       const kind = symbolMappings[node.type];
@@ -195,6 +213,21 @@ export class SymbolExtractor {
     const name = this.getNodeName(node);
     if (!name) return null;
 
+    // buildSymbol clamps line bounds so endLine is never below startLine.
+    return this.buildSymbol(name, node, kind, parentId, language);
+  }
+
+  private buildSymbol(
+    name: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    node: any,
+    kind: SymbolKind,
+    parentId: number | null,
+    language: SupportedLanguage
+  ): Symbol | null {
+    const normalizedName = typeof name === "string" ? name.trim() : "";
+    if (!normalizedName) return null;
+
     if (this.symbolIdCounter >= Number.MAX_SAFE_INTEGER - 1) return null;
     this.symbolIdCounter++;
 
@@ -209,7 +242,7 @@ export class SymbolExtractor {
 
     return {
       id: this.symbolIdCounter,
-      name,
+      name: normalizedName,
       kind,
       startLine,
       endLine,
@@ -218,6 +251,41 @@ export class SymbolExtractor {
       signature: this.getSignature(node, language),
       parentSymbolId: parentId,
     };
+  }
+
+  private extractElixirCallSymbol(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    node: any,
+    parentId: number | null
+  ): { symbol: Symbol; isContainer: boolean } | null {
+    const macroName = this.getElixirCallTargetName(node);
+    if (!macroName) return null;
+
+    if (ELIXIR_FUNCTION_MACROS.has(macroName)) {
+      const name = this.getElixirDefinitionName(node);
+      const symbol = name ? this.buildSymbol(name, node, "function", parentId, "elixir") : null;
+      return symbol ? { symbol, isContainer: false } : null;
+    }
+
+    if (macroName === "defmodule") {
+      const name = this.getElixirFirstAliasArgument(node);
+      const symbol = name ? this.buildSymbol(name, node, "module", parentId, "elixir") : null;
+      return symbol ? { symbol, isContainer: true } : null;
+    }
+
+    if (macroName === "defprotocol") {
+      const name = this.getElixirFirstAliasArgument(node);
+      const symbol = name ? this.buildSymbol(name, node, "interface", parentId, "elixir") : null;
+      return symbol ? { symbol, isContainer: true } : null;
+    }
+
+    if (macroName === "defimpl") {
+      const name = this.getElixirImplementationName(node);
+      const symbol = name ? this.buildSymbol(name, node, "module", parentId, "elixir") : null;
+      return symbol ? { symbol, isContainer: true } : null;
+    }
+
+    return null;
   }
 
   /**
@@ -314,42 +382,183 @@ export class SymbolExtractor {
     return null;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getElixirCallTargetName(node: any): string | null {
+    if (!node || node.type !== "call") return null;
+    const targetNode = node.childForFieldName?.("target");
+    return this.getElixirNameFromNode(targetNode);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getElixirArgumentsNode(node: any): any | null {
+    if (!node) return null;
+
+    const childLimit = Math.min(node.childCount ?? 0, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
+      const child = node.child(i);
+      if (child?.type === "arguments") {
+        return child;
+      }
+    }
+
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getElixirDefinitionName(node: any): string | null {
+    const argsNode = this.getElixirArgumentsNode(node);
+    if (!argsNode) return null;
+
+    const firstArg = this.getFirstNamedChild(argsNode);
+    return this.getElixirDefinedNameFromArgument(firstArg);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getElixirFirstAliasArgument(node: any): string | null {
+    const argsNode = this.getElixirArgumentsNode(node);
+    if (!argsNode) return null;
+
+    const childLimit = Math.min(argsNode.childCount ?? 0, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
+      const child = argsNode.child(i);
+      if (child?.type === "alias" && child.text) {
+        return child.text.trim();
+      }
+    }
+
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getElixirImplementationName(node: any): string | null {
+    const protocolName = this.getElixirFirstAliasArgument(node);
+    const implTarget = this.getElixirImplementationTarget(node);
+
+    if (protocolName && implTarget) return `${protocolName} for ${implTarget}`;
+    return protocolName ?? implTarget;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getElixirImplementationTarget(node: any): string | null {
+    const argsNode = this.getElixirArgumentsNode(node);
+    if (!argsNode) return null;
+
+    const childLimit = Math.min(argsNode.childCount ?? 0, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
+      const child = argsNode.child(i);
+      if (child?.type !== "keywords") continue;
+
+      const pairLimit = Math.min(child.childCount ?? 0, MAX_CHILDREN);
+      for (let j = 0; j < pairLimit; j++) {
+        const pair = child.child(j);
+        if (pair?.type !== "pair") continue;
+
+        const keyNode = pair.childForFieldName?.("key");
+        const valueNode = pair.childForFieldName?.("value");
+        const keyText = typeof keyNode?.text === "string" ? keyNode.text.trim() : "";
+        if (!keyText.startsWith("for:")) continue;
+
+        const valueText = this.getElixirNameFromNode(valueNode) ?? this.getNormalizedNodeText(valueNode);
+        if (valueText) return valueText;
+      }
+    }
+
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getElixirDefinedNameFromArgument(node: any): string | null {
+    if (!node) return null;
+
+    if (node.type === "binary_operator") {
+      const operatorNode = node.childForFieldName?.("operator");
+      if (operatorNode?.text === "when") {
+        return this.getElixirDefinedNameFromArgument(node.childForFieldName?.("left"));
+      }
+    }
+
+    if (node.type === "call") {
+      return this.getElixirNameFromNode(node.childForFieldName?.("target"));
+    }
+
+    return this.getElixirNameFromNode(node);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getElixirNameFromNode(node: any): string | null {
+    if (!node || typeof node.text !== "string") return null;
+
+    if (
+      node.type === "identifier" ||
+      node.type === "alias" ||
+      node.type === "operator_identifier" ||
+      node.type === "atom" ||
+      node.type === "quoted_atom"
+    ) {
+      return node.text.trim();
+    }
+
+    if (node.type === "dot") {
+      const right = node.childForFieldName?.("right");
+      return this.getElixirNameFromNode(right) ?? this.getNormalizedNodeText(node);
+    }
+
+    return this.getNormalizedNodeText(node);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getNormalizedNodeText(node: any): string | null {
+    if (!node || typeof node.text !== "string") return null;
+    const text = node.text.replace(/\s+/g, " ").trim();
+    return text || null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getFirstNamedChild(node: any): any | null {
+    if (!node) return null;
+
+    const childLimit = Math.min(node.childCount ?? 0, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
+      const child = node.child(i);
+      if (child?.isNamed) {
+        return child;
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Get a signature string for a symbol
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private getSignature(node: any, language: SupportedLanguage): string | undefined {
-    // For functions/methods, try to get the signature from the first line
-    const functionTypes = [
-      "function_declaration",
-      "method_definition",
-      "function_definition",
-      "method_declaration",
-      "function_item",
-    ];
+    if (!node?.text || typeof node.text !== "string") return undefined;
+    if (node.text.length > MAX_SIGNATURE_TEXT_LENGTH) return undefined;
 
-    if (functionTypes.includes(node.type)) {
-      if (!node.text || typeof node.text !== "string") return undefined;
-      if (node.text.length > 50_000) return undefined;
-      const text = node.text;
-      const lines = text.split("\n", 50);
-      if (lines.length > 0) {
-        let firstLine = lines[0];
-        // Clean up the signature
-        if (language === "python") {
-          const colonIndex = firstLine.indexOf(":");
-          if (colonIndex !== -1) {
-            firstLine = firstLine.substring(0, colonIndex + 1);
-          }
-        } else {
-          const braceIndex = firstLine.indexOf("{");
-          if (braceIndex !== -1) {
-            firstLine = firstLine.substring(0, braceIndex).trim();
-          }
+    const isElixirDefinition =
+      language === "elixir" && node.type === "call" && ELIXIR_FUNCTION_MACROS.has(this.getElixirCallTargetName(node) ?? "");
+    if (!SIGNATURE_FUNCTION_TYPES.includes(node.type) && !isElixirDefinition) return undefined;
+
+    const text = node.text;
+    const lines = text.split("\n", 50);
+    if (lines.length > 0) {
+      let firstLine = lines[0];
+      // Clean up the signature
+      if (language === "python") {
+        const colonIndex = firstLine.indexOf(":");
+        if (colonIndex !== -1) {
+          firstLine = firstLine.substring(0, colonIndex + 1);
         }
-        return firstLine.trim();
+      } else {
+        const braceIndex = firstLine.indexOf("{");
+        if (braceIndex !== -1) {
+          firstLine = firstLine.substring(0, braceIndex).trim();
+        }
       }
+      return firstLine.trim();
     }
+
     return undefined;
   }
 }
