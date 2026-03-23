@@ -153,7 +153,7 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
     input = process.stdin,
   } = options;
 
-  const session = new HandleSession();
+  const session = new HandleSession({ verbose });
 
   // Print banner
   output.write(`Lattice REPL v${VERSION}\n`);
@@ -269,7 +269,7 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
           if (!arg) {
             output.write("Usage: :get <varname>\n");
           } else {
-            const value = session.getBindings()[arg];
+            const value = session.getBinding(arg);
             if (value === undefined) {
               output.write(`Binding not found: ${arg}\n`);
             } else {

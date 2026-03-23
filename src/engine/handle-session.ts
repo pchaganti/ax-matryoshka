@@ -97,6 +97,11 @@ export interface ExpandResult {
 /**
  * HandleSession - combines NucleusEngine with handle-based storage
  */
+export interface HandleSessionOptions {
+  /** Enable verbose logging on the underlying NucleusEngine */
+  verbose?: boolean;
+}
+
 export class HandleSession {
   private engine: NucleusEngine;
   private db: SessionDB;
@@ -112,8 +117,8 @@ export class HandleSession {
   private lastAccessedAt: Date | null = null;
   private queryCount: number = 0;
 
-  constructor() {
-    this.engine = new NucleusEngine();
+  constructor(options: HandleSessionOptions = {}) {
+    this.engine = new NucleusEngine({ verbose: options.verbose });
     this.db = new SessionDB();
     this.registry = new HandleRegistry(this.db);
     this.ops = new HandleOps(this.db, this.registry);
@@ -454,6 +459,13 @@ export class HandleSession {
     }
 
     return bindings;
+  }
+
+  /**
+   * Get a specific binding value from the underlying engine
+   */
+  getBinding(name: string): unknown {
+    return this.engine.getBinding(name);
   }
 
   /**
