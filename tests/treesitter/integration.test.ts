@@ -45,6 +45,18 @@ class Greeter:
         return hello(self.name)
 `.trim();
 
+  const sampleElixir = `
+defmodule Greeter do
+  def hello(name) do
+    "Hello, #{name}"
+  end
+end
+
+defprotocol String.Chars do
+  def to_string(data)
+end
+`.trim();
+
   beforeEach(() => {
     session = new HandleSession();
   });
@@ -83,6 +95,20 @@ class Greeter:
       const names = symbols.map(s => s.name);
       expect(names).toContain("hello");
       expect(names).toContain("Greeter");
+    });
+
+    it("should auto-index symbols on Elixir file load", async () => {
+      await session.loadContentWithSymbols(sampleElixir, "test.ex");
+
+      const result = session.execute('(list_symbols)');
+      expect(result.success).toBe(true);
+
+      const expanded = session.expand(result.handle!);
+      const symbols = expanded.data as Array<{ name: string; kind: string }>;
+      const names = symbols.map(s => s.name);
+      expect(names).toContain("Greeter");
+      expect(names).toContain("hello");
+      expect(names).toContain("String.Chars");
     });
 
     it("should handle non-code files gracefully", async () => {
@@ -176,6 +202,30 @@ function baz() { return 3; }
 
       const expanded = session.expand(result.handle!);
       expect(expanded.data?.length).toBeGreaterThanOrEqual(2); // Declaration + usage
+    });
+  });
+
+  describe("Elixir symbol query operations", () => {
+    beforeEach(async () => {
+      await session.loadContentWithSymbols(sampleElixir, "test.ex");
+    });
+
+    it("should return protocol symbols with interface kind", () => {
+      const result = session.execute('(list_symbols "interface")');
+      expect(result.success).toBe(true);
+
+      const expanded = session.expand(result.handle!);
+      const symbols = expanded.data as Array<{ name: string; kind: string }>;
+      expect(symbols.some(s => s.kind === "interface" && s.name === "String.Chars")).toBe(true);
+    });
+
+    it("should support get_symbol_body for Elixir functions", () => {
+      const result = session.execute('(get_symbol_body "hello")');
+      expect(result.success).toBe(true);
+
+      const body = result.value as string;
+      expect(body).toContain("def hello(name) do");
+      expect(body).toContain('"Hello, #{name}"');
     });
   });
 

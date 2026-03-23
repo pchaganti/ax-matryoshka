@@ -261,6 +261,94 @@ func (p *Person) Greet() string {
     });
   });
 
+  describe("Elixir", () => {
+    it("should extract module, functions, and macros", async () => {
+      const code = `
+defmodule Greeter do
+  def hello(name) do
+    "Hello, #{name}"
+  end
+
+  defp secret do
+    :ok
+  end
+
+  defmacro announce(value) do
+    value
+  end
+end
+`;
+      const symbols = await extractor.extractSymbols(code, ".ex");
+
+      const moduleSymbol = symbols.find((s) => s.kind === "module" && s.name === "Greeter");
+      expect(moduleSymbol).toBeDefined();
+
+      const functionNames = symbols.filter((s) => s.kind === "function").map((s) => s.name);
+      expect(functionNames).toContain("hello");
+      expect(functionNames).toContain("secret");
+      expect(functionNames).toContain("announce");
+    });
+
+    it("should extract guarded function definitions", async () => {
+      const code = `
+defmodule Guarded do
+  def greet(name) when is_binary(name) do
+    name
+  end
+end
+`;
+      const symbols = await extractor.extractSymbols(code, ".ex");
+
+      const greet = symbols.find((s) => s.kind === "function" && s.name === "greet");
+      expect(greet).toBeDefined();
+    });
+
+    it("should extract protocols and implementations", async () => {
+      const code = `
+defprotocol String.Chars do
+  def to_string(data)
+end
+
+defimpl String.Chars, for: Integer do
+  def to_string(data) do
+    Integer.to_string(data)
+  end
+end
+`;
+      const symbols = await extractor.extractSymbols(code, ".ex");
+
+      const protocolSymbol = symbols.find((s) => s.kind === "interface" && s.name === "String.Chars");
+      expect(protocolSymbol).toBeDefined();
+
+      const implSymbol = symbols.find((s) => s.kind === "module" && s.name === "String.Chars for Integer");
+      expect(implSymbol).toBeDefined();
+
+      const toStringSymbols = symbols.filter((s) => s.kind === "function" && s.name === "to_string");
+      expect(toStringSymbols.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("should capture parent-child relationships for nested Elixir definitions", async () => {
+      const code = `
+defmodule Parent do
+  def child(value) do
+    value
+  end
+end
+`;
+      const symbols = await extractor.extractSymbols(code, ".ex");
+
+      const parentModule = symbols.find((s) => s.kind === "module" && s.name === "Parent");
+      const childFunction = symbols.find((s) => s.kind === "function" && s.name === "child");
+
+      expect(parentModule).toBeDefined();
+      expect(childFunction).toBeDefined();
+
+      if (parentModule && childFunction) {
+        expect(childFunction.parentSymbolId).toBe(parentModule.id);
+      }
+    });
+  });
+
   describe("error handling", () => {
     it("should return empty array for parse errors", async () => {
       const code = `
