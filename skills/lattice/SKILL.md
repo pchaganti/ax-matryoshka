@@ -57,9 +57,9 @@ The standard workflow is: **load → query → expand → close**
 (match str "pattern" 1)       ; Extract regex capture group from a string
 ```
 
-### Code Symbols (for .ts, .js, .py, .go, .rs, etc.)
+### Code & Document Symbols (for .ts, .js, .py, .go, .rs, .md, etc.)
 ```scheme
-(list_symbols)                ; List all functions, classes, methods, etc.
+(list_symbols)                ; List all functions, classes, methods, headings, etc.
 (list_symbols "function")     ; Filter by kind: "function", "class", "method", "interface", "type"
 (get_symbol_body "funcName")  ; Get full source code of a symbol
 (find_references "identifier"); Find all usages of an identifier
