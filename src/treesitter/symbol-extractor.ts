@@ -167,6 +167,11 @@ export class SymbolExtractor {
       if (symbol) {
         symbols.push(symbol);
       }
+    } else if (language === "markdown" && (node.type === "atx_heading" || node.type === "setext_heading")) {
+      const symbol = this.extractMarkdownHeading(node, parentId);
+      if (symbol) {
+        symbols.push(symbol);
+      }
     } else if (language === "elixir" && node.type === "call") {
       const elixirSymbol = this.extractElixirCallSymbol(node, parentId);
       if (elixirSymbol) {
@@ -342,6 +347,39 @@ export class SymbolExtractor {
       endCol: typeof goEndCol === "number" && Number.isFinite(goEndCol) ? Math.max(0, goEndCol) : 0,
       parentSymbolId: parentId,
     };
+  }
+
+  /**
+   * Extract a markdown heading as a symbol
+   * atx_heading has children: atx_h{N}_marker + inline (the heading text)
+   * setext_heading has children: inline (heading text) + setext_h{N}_underline
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractMarkdownHeading(node: any, parentId: number | null): Symbol | null {
+    // Find the inline child which contains the heading text
+    const childLimit = Math.min(node.childCount, MAX_CHILDREN);
+    let headingText: string | null = null;
+    for (let i = 0; i < childLimit; i++) {
+      const child = node.child(i);
+      if (child && child.type === "inline" && child.text) {
+        headingText = child.text.trim();
+        break;
+      }
+    }
+
+    if (!headingText) return null;
+
+    // Determine heading level from marker (e.g., atx_h2_marker → "## Heading")
+    let prefix = "";
+    for (let i = 0; i < childLimit; i++) {
+      const child = node.child(i);
+      if (child && child.type.startsWith("atx_h") && child.type.endsWith("_marker")) {
+        prefix = child.text + " ";
+        break;
+      }
+    }
+
+    return this.buildSymbol(prefix + headingText, node, "type", parentId, "markdown");
   }
 
   /**

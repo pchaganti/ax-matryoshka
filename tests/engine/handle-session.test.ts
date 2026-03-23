@@ -287,6 +287,35 @@ DEBUG: Cache hit ratio: 95%`;
       session.loadContent("plain text", "test.txt");
       await expect(session.waitForSymbols()).resolves.toBeUndefined();
     });
+
+    it("should load markdown and allow grep queries", async () => {
+      await expect(session.loadFile("test-fixtures/short-article.md")).resolves.toMatchObject({
+        lineCount: expect.any(Number),
+        size: expect.any(Number),
+      });
+
+      const grepResult = session.execute('(grep "SLEEP_TOKEN")');
+      expect(grepResult.success).toBe(true);
+      expect(grepResult.handle).toBeDefined();
+
+      const expanded = session.expand(grepResult.handle!);
+      expect(expanded.success).toBe(true);
+      expect(expanded.data).toHaveLength(1);
+    });
+
+    it("should extract markdown headings as symbols", async () => {
+      await session.loadFile("test-fixtures/short-article.md");
+      await session.waitForSymbols();
+
+      const symbolResult = session.execute("(list_symbols)");
+      expect(symbolResult.success).toBe(true);
+      expect(symbolResult.handle).toBeDefined();
+
+      const expanded = session.expand(symbolResult.handle!);
+      expect(expanded.success).toBe(true);
+      // short-article.md has 8 headings: 1 h1, 6 h2, 1 h3
+      expect(expanded.data!.length).toBe(8);
+    });
   });
 
   describe("getSessionInfo", () => {

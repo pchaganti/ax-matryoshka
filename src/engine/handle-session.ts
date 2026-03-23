@@ -13,7 +13,11 @@ import { HandleRegistry } from "../persistence/handle-registry.js";
 import { HandleOps } from "../persistence/handle-ops.js";
 import { ParserRegistry } from "../treesitter/parser-registry.js";
 import { SymbolExtractor } from "../treesitter/symbol-extractor.js";
-import { isExtensionSupported } from "../treesitter/language-map.js";
+import {
+  getLanguageForExtension,
+  getSymbolMappings,
+  isLanguageAvailable,
+} from "../treesitter/language-map.js";
 
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
 const CHARS_PER_TOKEN = 4; // Approximate token estimation heuristic
@@ -117,6 +121,13 @@ export class HandleSession {
   private lastAccessedAt: Date | null = null;
   private queryCount: number = 0;
 
+  private canExtractSymbols(ext: string): boolean {
+    const language = getLanguageForExtension(ext);
+    if (!language) return false;
+    if (!isLanguageAvailable(language)) return false;
+    return getSymbolMappings(language) !== null;
+  }
+
   constructor(options: HandleSessionOptions = {}) {
     this.engine = new NucleusEngine({ verbose: options.verbose });
     this.db = new SessionDB();
@@ -174,7 +185,7 @@ export class HandleSession {
 
     // Extract symbols for code files (async, but we fire and forget for sync API)
     const ext = extname(path);
-    if (ext && isExtensionSupported(ext)) {
+    if (ext && this.canExtractSymbols(ext)) {
       this.extractSymbolsAsync(content, ext);
     }
 
@@ -206,9 +217,13 @@ export class HandleSession {
 
     // Extract symbols for code files
     const ext = extname(path);
-    if (ext && isExtensionSupported(ext)) {
+    if (ext && this.canExtractSymbols(ext)) {
       await this.init();
-      await this.extractAndStoreSymbols(content, ext);
+      try {
+        await this.extractAndStoreSymbols(content, ext);
+      } catch (err) {
+        console.error("[HandleSession] Symbol extraction failed:", err instanceof Error ? err.message : String(err));
+      }
     }
 
     // Set SessionDB binding for solver access

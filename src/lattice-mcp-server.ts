@@ -152,8 +152,8 @@ SEARCH (returns handle to matches):
   (fuzzy_search "query" 10)     Fuzzy search - top N matches by relevance
   (lines 10 20)                 Get specific line range
 
-SYMBOL OPERATIONS (code files: .ts, .js, .py, .go):
-  (list_symbols)                List all symbols (functions, classes, methods, etc.)
+SYMBOL OPERATIONS (.ts, .js, .py, .go, .md, and more):
+  (list_symbols)                List all symbols (functions, classes, methods, headings, etc.)
   (list_symbols "function")     Filter by kind: "function", "class", "method", "interface", "type"
   (get_symbol_body "funcName")  Get source code for a symbol
   (find_references "identifier") Find all references to an identifier
@@ -179,6 +179,10 @@ SYMBOL WORKFLOW:
 1. (list_symbols "function")         → Returns: $res1: Array(15) [preview]
 2. (get_symbol_body "myFunction")    → Returns source code directly
 3. (find_references "myFunction")    → Returns: $res2: Array(8) [references]
+
+MARKDOWN WORKFLOW:
+1. (list_symbols)                       → Returns: $res1: Array(12) [# Intro, ## Setup, ...]
+2. (grep "## Installation")             → Find specific section content
 
 VARIABLE BINDING:
 - RESULTS: Always points to the last array result (use in queries)

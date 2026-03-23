@@ -61,6 +61,7 @@ Examples:
   rlm "Extract errors" ./logs.txt --constraints '{"type":"array","items":{"type":"string"}}'
   rlm "Find all mentions of 'whale'" ./moby-dick.txt --max-turns 15
   rlm "Count the words" ./file.txt --model llama3 --verbose
+  rlm "List all section headings" ./README.md
 `);
 }
 
