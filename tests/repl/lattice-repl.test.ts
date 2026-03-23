@@ -2,18 +2,21 @@ import { describe, it, expect } from "vitest";
 
 // Test the REPL by importing the engine it uses
 // Full REPL interactive testing is complex, so we test the underlying engine
-import { NucleusEngine } from "../../src/engine/nucleus-engine.js";
+import { HandleSession } from "../../src/engine/handle-session.js";
 
 describe("REPL underlying engine", () => {
   it("should process commands sequentially", () => {
-    const engine = new NucleusEngine();
+    const engine = new HandleSession();
     // Use unique pattern that won't match INFO, etc
     engine.loadContent("FATAL: test error\nINFO: test info\nFATAL: another error");
 
     // Simulate REPL session
     const r1 = engine.execute('(grep "FATAL")');
     expect(r1.success).toBe(true);
-    expect((r1.value as unknown[]).length).toBe(2);
+    expect(r1.handle).toBeDefined();
+    const expanded = engine.expand(r1.handle!);
+    expect(expanded.success).toBe(true);
+    expect(expanded.data?.length).toBe(2);
 
     const r2 = engine.execute('(count RESULTS)');
     expect(r2.success).toBe(true);
@@ -21,18 +24,18 @@ describe("REPL underlying engine", () => {
   });
 
   it("should maintain state across commands", () => {
-    const engine = new NucleusEngine();
+    const engine = new HandleSession();
     engine.loadContent("line1\nline2\nline3");
 
     engine.execute('(grep "line")');
     const bindings = engine.getBindings();
 
-    expect(bindings.RESULTS).toBe("Array[3]");
-    expect(bindings._1).toBe("Array[3]");
+    expect(bindings.RESULTS).toBe("-> $res1");
+    expect(bindings.$res1).toContain("Array(3)");
   });
 
   it("should reset state on command", () => {
-    const engine = new NucleusEngine();
+    const engine = new HandleSession();
     engine.loadContent("test");
 
     engine.execute('(grep "test")');
@@ -43,7 +46,7 @@ describe("REPL underlying engine", () => {
   });
 
   it("should provide command reference", () => {
-    const ref = NucleusEngine.getCommandReference();
+    const ref = HandleSession.getCommandReference();
 
     expect(ref).toContain("grep");
     expect(ref).toContain("filter");
@@ -51,11 +54,29 @@ describe("REPL underlying engine", () => {
     expect(ref).toContain("sum");
     expect(ref).toContain("RESULTS");
   });
+
+  it("should support symbol queries after loading Elixir code", async () => {
+    const engine = new HandleSession();
+    await engine.loadContentWithSymbols(`
+defmodule Greeter do
+  def hello(name) do
+    "Hello, #{name}"
+  end
+end
+`, "test.ex");
+
+    const result = engine.execute('(list_symbols)');
+    expect(result.success).toBe(true);
+    expect(result.handle).toBeDefined();
+    const expanded = engine.expand(result.handle!);
+    expect(expanded.success).toBe(true);
+    expect(JSON.stringify(expanded.data)).toContain("Greeter");
+  });
 });
 
 describe("REPL command patterns", () => {
   it("should handle typical grep -> count workflow", () => {
-    const engine = new NucleusEngine();
+    const engine = new HandleSession();
     engine.loadContent(`
 [2024-01-15 10:30:00] FATAL: Connection timeout
 [2024-01-15 10:30:01] INFO: Retrying...
@@ -67,7 +88,9 @@ describe("REPL command patterns", () => {
     // Step 1: Find all fatal errors
     const grep = engine.execute('(grep "FATAL")');
     expect(grep.success).toBe(true);
-    expect((grep.value as unknown[]).length).toBe(3);
+    const expanded = engine.expand(grep.handle!);
+    expect(expanded.success).toBe(true);
+    expect(expanded.data?.length).toBe(3);
 
     // Step 2: Count
     const count = engine.execute('(count RESULTS)');
@@ -76,7 +99,7 @@ describe("REPL command patterns", () => {
   });
 
   it("should handle grep -> sum workflow for numeric data", () => {
-    const engine = new NucleusEngine();
+    const engine = new HandleSession();
     // Use $ prefix so sum can identify currency values
     engine.loadContent(`
 Sales: $100,000
@@ -88,7 +111,9 @@ Sales: $175,000
     // Find sales lines
     const grep = engine.execute('(grep "Sales")');
     expect(grep.success).toBe(true);
-    expect((grep.value as unknown[]).length).toBe(4);
+    const expanded = engine.expand(grep.handle!);
+    expect(expanded.success).toBe(true);
+    expect(expanded.data?.length).toBe(4);
 
     // Sum them - sum extracts $ amounts from line content
     const sum = engine.execute('(sum RESULTS)');

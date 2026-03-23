@@ -13,7 +13,7 @@
 import * as readline from "node:readline";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { NucleusEngine } from "../engine/nucleus-engine.js";
+import { HandleSession } from "../engine/handle-session.js";
 
 const VERSION = "0.1.0";
 
@@ -138,7 +138,7 @@ EXAMPLES
  * Show command reference
  */
 function showReference(output: NodeJS.WritableStream): void {
-  output.write(NucleusEngine.getCommandReference() + "\n");
+  output.write(HandleSession.getCommandReference() + "\n");
 }
 
 /**
@@ -153,7 +153,7 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
     input = process.stdin,
   } = options;
 
-  const engine = new NucleusEngine({ verbose });
+  const session = new HandleSession();
 
   // Print banner
   output.write(`Lattice REPL v${VERSION}\n`);
@@ -166,11 +166,10 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
       output.write(`Error: File not found: ${resolved}\n`);
     } else {
       try {
-        await engine.loadFile(resolved);
-        const stats = engine.getStats();
+        const stats = await session.loadFile(resolved);
         if (stats) {
           output.write(`Loaded: ${resolved}\n`);
-          output.write(`  ${stats.length.toLocaleString()} chars, ${stats.lineCount.toLocaleString()} lines\n\n`);
+          output.write(`  ${stats.size.toLocaleString()} chars, ${stats.lineCount.toLocaleString()} lines\n\n`);
         }
       } catch (err) {
         output.write(`Error loading file: ${err instanceof Error ? err.message : err}\n`);
@@ -227,11 +226,10 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
               output.write(`Error: File not found: ${resolved}\n`);
             } else {
               try {
-                await engine.loadFile(resolved);
-                const stats = engine.getStats();
+                const stats = await session.loadFile(resolved);
                 if (stats) {
                   output.write(`Loaded: ${resolved}\n`);
-                  output.write(`  ${stats.length.toLocaleString()} chars, ${stats.lineCount.toLocaleString()} lines\n`);
+                  output.write(`  ${stats.size.toLocaleString()} chars, ${stats.lineCount.toLocaleString()} lines\n`);
                 }
               } catch (err) {
                 output.write(`Error: ${err instanceof Error ? err.message : err}\n`);
@@ -241,13 +239,13 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
           break;
 
         case "stats":
-          if (!engine.isLoaded()) {
+          if (!session.isLoaded()) {
             output.write("No document loaded. Use :load <file>\n");
           } else {
-            const stats = engine.getStats();
+            const stats = session.getStats();
             if (stats) {
               output.write(`Document statistics:\n`);
-              output.write(`  Length: ${stats.length.toLocaleString()} chars\n`);
+              output.write(`  Length: ${stats.size.toLocaleString()} chars\n`);
               output.write(`  Lines: ${stats.lineCount.toLocaleString()}\n`);
             }
           }
@@ -255,7 +253,7 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
 
         case "bindings":
         case "vars":
-          const bindings = engine.getBindings();
+          const bindings = session.getBindings();
           const keys = Object.keys(bindings);
           if (keys.length === 0) {
             output.write("No bindings\n");
@@ -271,7 +269,7 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
           if (!arg) {
             output.write("Usage: :get <varname>\n");
           } else {
-            const value = engine.getBinding(arg);
+            const value = session.getBindings()[arg];
             if (value === undefined) {
               output.write(`Binding not found: ${arg}\n`);
             } else {
@@ -281,7 +279,7 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
           break;
 
         case "reset":
-          engine.reset();
+          session.reset();
           output.write("State reset\n");
           break;
 
@@ -294,12 +292,12 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
     }
 
     // Nucleus query (S-expression)
-    if (!engine.isLoaded()) {
+    if (!session.isLoaded()) {
       output.write("No document loaded. Use :load <file>\n");
       return true;
     }
 
-    const result = engine.execute(trimmed);
+    const result = session.execute(trimmed);
 
     if (!result.success) {
       output.write(`Error: ${result.error}\n`);
@@ -312,7 +310,15 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
       }
 
       // Show result
-      output.write(`${formatValue(result.value)}\n`);
+      if (result.handle && result.stub) {
+        output.write(`${result.stub}\n`);
+        const expanded = session.expand(result.handle, { limit: 10 });
+        if (expanded.success && expanded.data) {
+          output.write(`${formatValue(expanded.data)}\n`);
+        }
+      } else {
+        output.write(`${formatValue(result.value)}\n`);
+      }
 
       // Show type if inferred
       if (result.type && verbose) {
@@ -336,6 +342,7 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
   });
 
   rl.on("close", () => {
+    session.close();
     process.exit(0);
   });
 
