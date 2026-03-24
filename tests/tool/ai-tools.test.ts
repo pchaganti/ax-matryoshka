@@ -75,6 +75,17 @@ describe("AI SDK tool definitions", () => {
       expect(result.stub).toContain("Array(50)");
     });
 
+    it("should load markdown files and query their content", async () => {
+      const markdownFile = path.join(process.cwd(), "test-fixtures/short-article.md");
+
+      const loadResult = await tools.load.execute({ filePath: markdownFile });
+      expect(loadResult.success).toBe(true);
+
+      const queryResult = await tools.query.execute({ command: '(grep "SLEEP_TOKEN")' });
+      expect(queryResult.success).toBe(true);
+      expect(queryResult.handle).toBeDefined();
+    });
+
     it("should expand a handle", async () => {
       await tools.load.execute({ filePath: testFile });
       const queryResult = await tools.query.execute({ command: '(grep "LOG")' });

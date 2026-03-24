@@ -409,8 +409,8 @@ SEARCH OPERATIONS (impure - access document):
   (text_stats)                  Get document statistics
   (lines start end)             Get lines in range (1-indexed)
 
-SYMBOL OPERATIONS (code files only - requires tree-sitter):
-  (list_symbols)                List all symbols (functions, classes, methods, etc.)
+SYMBOL OPERATIONS (requires tree-sitter - .ts, .js, .py, .go, .md, etc.):
+  (list_symbols)                List all symbols (functions, classes, methods, headings, etc.)
   (list_symbols "kind")         Filter by kind: "function", "class", "method", "interface", "type", "struct"
   (get_symbol_body "name")      Get source code body for a symbol by name
   (get_symbol_body RESULTS)     Get source code body for symbol from previous query

@@ -326,7 +326,7 @@ export const BUILTIN_GRAMMARS: Record<string, BuiltinGrammar> = {
   },
 
   markdown: {
-    package: "tree-sitter-markdown",
+    package: "@tree-sitter-grammars/tree-sitter-markdown",
     extensions: [".md", ".markdown"],
     symbols: {
       atx_heading: "type",

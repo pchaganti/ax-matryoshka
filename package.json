@@ -80,6 +80,7 @@
   "author": "yogthos",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@tree-sitter-grammars/tree-sitter-markdown": "^0.3.2",
     "@types/better-sqlite3": "^7.6.13",
     "@vscode/tree-sitter-wasm": "^0.3.0",
     "better-sqlite3": "^12.6.2",
