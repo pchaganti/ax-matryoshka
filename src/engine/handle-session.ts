@@ -122,10 +122,14 @@ export class HandleSession {
   private queryCount: number = 0;
 
   private canExtractSymbols(ext: string): boolean {
-    const language = getLanguageForExtension(ext);
-    if (!language) return false;
-    if (!isLanguageAvailable(language)) return false;
-    return getSymbolMappings(language) !== null;
+    try {
+      const language = getLanguageForExtension(ext);
+      if (!language) return false;
+      if (!isLanguageAvailable(language)) return false;
+      return getSymbolMappings(language) !== null;
+    } catch {
+      return false;
+    }
   }
 
   constructor(options: HandleSessionOptions = {}) {

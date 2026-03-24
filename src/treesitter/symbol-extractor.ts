@@ -356,29 +356,43 @@ export class SymbolExtractor {
    */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private extractMarkdownHeading(node: any, parentId: number | null): Symbol | null {
-    // Find the inline child which contains the heading text
     const childLimit = Math.min(node.childCount, MAX_CHILDREN);
     let headingText: string | null = null;
+    let prefix = "";
+
     for (let i = 0; i < childLimit; i++) {
       const child = node.child(i);
-      if (child && child.type === "inline" && child.text) {
+      if (!child) continue;
+
+      // ATX: inline child contains heading text directly
+      if (child.type === "inline" && child.text) {
         headingText = child.text.trim();
-        break;
+      }
+      // Setext: heading text is inside a paragraph > inline
+      if (child.type === "paragraph" && child.childCount > 0) {
+        const inlineLimit = Math.min(child.childCount, MAX_CHILDREN);
+        for (let j = 0; j < inlineLimit; j++) {
+          const inlineChild = child.child(j);
+          if (inlineChild && inlineChild.type === "inline" && inlineChild.text) {
+            headingText = inlineChild.text.trim();
+            break;
+          }
+        }
+      }
+      // ATX markers: atx_h1_marker = "#", atx_h2_marker = "##", etc.
+      if (child.type.startsWith("atx_h") && child.type.endsWith("_marker")) {
+        prefix = child.text + " ";
+      }
+      // Setext underlines: === for h1, --- for h2
+      if (child.type === "setext_h1_underline") {
+        prefix = "# ";
+      }
+      if (child.type === "setext_h2_underline") {
+        prefix = "## ";
       }
     }
 
     if (!headingText) return null;
-
-    // Determine heading level from marker (e.g., atx_h2_marker → "## Heading")
-    let prefix = "";
-    for (let i = 0; i < childLimit; i++) {
-      const child = node.child(i);
-      if (child && child.type.startsWith("atx_h") && child.type.endsWith("_marker")) {
-        prefix = child.text + " ";
-        break;
-      }
-    }
-
     return this.buildSymbol(prefix + headingText, node, "type", parentId, "markdown");
   }
 

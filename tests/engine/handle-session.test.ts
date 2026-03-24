@@ -316,6 +316,26 @@ DEBUG: Cache hit ratio: 95%`;
       // short-article.md has 8 headings: 1 h1, 6 h2, 1 h3
       expect(expanded.data!.length).toBe(8);
     });
+
+    it("should extract setext headings with correct prefix", async () => {
+      await session.loadFile("test-fixtures/setext-headings.md");
+      await session.waitForSymbols();
+
+      const symbolResult = session.execute("(list_symbols)");
+      expect(symbolResult.success).toBe(true);
+      expect(symbolResult.handle).toBeDefined();
+
+      const expanded = session.expand(symbolResult.handle!);
+      expect(expanded.success).toBe(true);
+      // setext-headings.md has 4 headings: 1 setext h1, 2 setext h2, 1 atx h2
+      expect(expanded.data!.length).toBe(4);
+
+      const names = (expanded.data as Array<{ name: string }>).map((s) => s.name);
+      expect(names).toContain("# Main Title");
+      expect(names).toContain("## Subsection One");
+      expect(names).toContain("## ATX Heading");
+      expect(names).toContain("## Another Subsection");
+    });
   });
 
   describe("getSessionInfo", () => {
