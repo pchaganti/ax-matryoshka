@@ -42,7 +42,13 @@ export interface MCPServerOptions {
   onRunRLM?: (opts: { maxTurns?: number }) => void;
 }
 
+// CLI flags
+const skipCwdChecking = process.argv.includes("--dangerously-skip-cwd-checking");
+
 function validateFilePath(filePath: string): string | null {
+  if (skipCwdChecking) {
+    return null;
+  }
   // Reject path traversal
   if (filePath.includes("..")) {
     return "Path traversal (..) is not allowed";

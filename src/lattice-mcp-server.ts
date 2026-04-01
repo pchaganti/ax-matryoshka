@@ -392,13 +392,15 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         }
 
         // Validate path - reject traversal and paths outside CWD
-        if (filePath.includes("..")) {
-          return { content: [{ type: "text", text: "Error: Path traversal (..) is not allowed" }] };
-        }
-        const resolvedPath = resolve(filePath);
-        const cwd = process.cwd();
-        if (!resolvedPath.startsWith(cwd + sep) && resolvedPath !== cwd) {
-          return { content: [{ type: "text", text: "Error: Path outside working directory is not allowed" }] };
+        if (!skipCwdChecking) {
+          if (filePath.includes("..")) {
+            return { content: [{ type: "text", text: "Error: Path traversal (..) is not allowed" }] };
+          }
+          const resolvedPath = resolve(filePath);
+          const cwd = process.cwd();
+          if (!resolvedPath.startsWith(cwd + sep) && resolvedPath !== cwd) {
+            return { content: [{ type: "text", text: "Error: Path outside working directory is not allowed" }] };
+          }
         }
 
         // Check file size before loading to avoid wasting memory
@@ -583,6 +585,9 @@ process.on("SIGTERM", () => {
   process.exit(0);
 });
 
+// CLI flags
+const skipCwdChecking = process.argv.includes("--dangerously-skip-cwd-checking");
+
 async function main() {
   // Handle version flag
   if (process.argv.includes("-v") || process.argv.includes("--version")) {
@@ -617,6 +622,9 @@ async function main() {
   console.error("[Lattice] MCP server started (handle-based mode)");
   console.error(`[Lattice] Session timeout: ${SESSION_TIMEOUT_MS / 1000}s`);
   console.error(`[Lattice] Max document size: ${MAX_DOCUMENT_SIZE / 1024 / 1024}MB`);
+  if (skipCwdChecking) {
+    console.error("[Lattice] WARNING: CWD path checking is DISABLED (--dangerously-skip-cwd-checking)");
+  }
   console.error("[Lattice] Query results return handle stubs for 97%+ token savings");
 }
 

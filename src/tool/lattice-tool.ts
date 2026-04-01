@@ -44,9 +44,11 @@ export class LatticeTool {
   private engine: NucleusEngine;
   private documentPath: string | null = null;
   private documentName: string | null = null;
+  private skipCwdChecking: boolean;
 
-  constructor() {
+  constructor(options?: { skipCwdChecking?: boolean }) {
     this.engine = new NucleusEngine();
+    this.skipCwdChecking = options?.skipCwdChecking ?? false;
   }
 
   /**
@@ -101,31 +103,42 @@ export class LatticeTool {
         error: "Invalid path: null bytes are not allowed",
       };
     }
-    // Resolve first, then dereference symlinks with realpathSync to prevent bypass
-    const resolved = path.resolve(filePath);
-    const cwd = process.cwd();
-    // Pre-check resolved path before stat/realpath (catches obvious traversal)
-    if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
-      return {
-        success: false,
-        error: `Invalid path: paths outside working directory not allowed`,
-      };
-    }
-    // Dereference symlinks to prevent symlink-based directory escape
     let realResolved: string;
-    try {
-      realResolved = fs.realpathSync(resolved);
-    } catch {
-      return {
-        success: false,
-        error: `Invalid path: cannot resolve file`,
-      };
-    }
-    if (!realResolved.startsWith(cwd + path.sep) && realResolved !== cwd) {
-      return {
-        success: false,
-        error: `Invalid path: paths outside working directory not allowed`,
-      };
+    if (!this.skipCwdChecking) {
+      // Resolve first, then dereference symlinks with realpathSync to prevent bypass
+      const resolved = path.resolve(filePath);
+      const cwd = process.cwd();
+      // Pre-check resolved path before stat/realpath (catches obvious traversal)
+      if (!resolved.startsWith(cwd + path.sep) && resolved !== cwd) {
+        return {
+          success: false,
+          error: `Invalid path: paths outside working directory not allowed`,
+        };
+      }
+      // Dereference symlinks to prevent symlink-based directory escape
+      try {
+        realResolved = fs.realpathSync(resolved);
+      } catch {
+        return {
+          success: false,
+          error: `Invalid path: cannot resolve file`,
+        };
+      }
+      if (!realResolved.startsWith(cwd + path.sep) && realResolved !== cwd) {
+        return {
+          success: false,
+          error: `Invalid path: paths outside working directory not allowed`,
+        };
+      }
+    } else {
+      try {
+        realResolved = fs.realpathSync(path.resolve(filePath));
+      } catch {
+        return {
+          success: false,
+          error: `Invalid path: cannot resolve file`,
+        };
+      }
     }
     try {
       await this.engine.loadFile(realResolved);
