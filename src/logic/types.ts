@@ -23,6 +23,7 @@ export type LCTerm =
   | LCBm25
   | LCFuse
   | LCDampen
+  | LCRerank
   | LCTextStats
   | LCLines
   | LCFilter
@@ -116,6 +117,15 @@ export interface LCDampen {
   tag: "dampen";
   collection: LCTerm;
   query: string;
+}
+
+/**
+ * (rerank <collection>) - rerank results using Q-value learning
+ * Blends similarity scores with learned Q-values + UCB exploration bonus
+ */
+export interface LCRerank {
+  tag: "rerank";
+  collection: LCTerm;
 }
 
 /**
