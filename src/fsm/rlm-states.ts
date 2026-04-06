@@ -5,7 +5,7 @@
  * for the RLM execution loop as an explicit finite state machine.
  */
 
-import type { ModelAdapter, FinalVarMarker } from "../adapters/types.js";
+import type { ModelAdapter } from "../adapters/types.js";
 import type { SynthesisConstraint } from "../constraints/types.js";
 import type { SandboxWithSynthesis } from "../synthesis/sandbox-tools.js";
 import type { RAGManager } from "../rag/manager.js";
@@ -44,7 +44,6 @@ export interface RLMContext {
   // Turn-specific (reset each turn)
   response: string;
   extractedCode: string | null;
-  extractedFinalAnswer: string | FinalVarMarker | null;
   parsedTerm: import("../logic/types.js").LCTerm | null;
   parseError: string | null;
   typeValid: boolean;
@@ -139,7 +138,6 @@ async function handleQueryLLM(ctx: RLMContext): Promise<RLMContext> {
 
   // Reset turn-specific state
   ctx.extractedCode = ctx.adapter.extractCode(response);
-  ctx.extractedFinalAnswer = null;
   ctx.parsedTerm = null;
   ctx.parseError = null;
   ctx.typeValid = false;
@@ -262,7 +260,7 @@ function handleValidate(ctx: RLMContext): RLMContext {
 }
 
 function handleExecute(ctx: RLMContext): RLMContext {
-  if (!ctx.parsedTerm) return ctx;
+  if (!ctx.parsedTerm || !ctx.extractedCode) return ctx;
 
   ctx.log(`[Turn ${ctx.turn}] Executing LC term with solver...`);
   ctx.log(`[Turn ${ctx.turn}] Term: ${ctx.extractedCode}`);
@@ -530,7 +528,6 @@ function handleCheckFinalAnswer(ctx: RLMContext): RLMContext {
 // ===== TRANSITION PREDICATES =====
 
 const hasResult = (ctx: RLMContext) => ctx.result !== null;
-const emptyResponse = (ctx: RLMContext) => ctx.response === "";
 const hasCode = (ctx: RLMContext) => ctx.extractedCode !== null;
 const hasParsedTerm = (ctx: RLMContext) => ctx.parsedTerm !== null;
 const maxTurnsReached = (ctx: RLMContext) => ctx.turn >= ctx.maxTurns;
@@ -629,7 +626,6 @@ export function createInitialContext(opts: {
 
     response: "",
     extractedCode: null,
-    extractedFinalAnswer: null,
     parsedTerm: null,
     parseError: null,
     typeValid: false,

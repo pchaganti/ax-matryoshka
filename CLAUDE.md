@@ -36,7 +36,9 @@ const extractor = synthesize_extractor([
 
 ## Architecture Overview
 
-- **RLM Loop** (`src/rlm.ts`): Main execution loop
+- **RLM Entry** (`src/rlm.ts`): Main entry point, document loading, config
+- **FSM Engine** (`src/fsm/engine.ts`): Generic finite state machine runner
+- **RLM States** (`src/fsm/rlm-states.ts`): Analysis pipeline states (query_llm → parse_response → validate → execute → analyze → check_final_answer → done)
 - **Adapters** (`src/adapters/`): Model-specific prompting
 - **Synthesis** (`src/synthesis/`): miniKanren-based program synthesis
 - **Sandbox** (`src/synthesis/sandbox-tools.ts`): Safe code execution
