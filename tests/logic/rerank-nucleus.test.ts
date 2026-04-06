@@ -29,6 +29,7 @@ function createMockTools(context: string): SolverTools {
       const terms = query.toLowerCase().split(/\s+/);
       return lines.map((line, idx) => ({ line, lineNum: idx + 1, score: terms.reduce((s, t) => s + (line.toLowerCase().includes(t) ? 10 : 0), 0) })).filter(r => r.score > 0).sort((a, b) => b.score - a.score).slice(0, limit);
     },
+    semantic: (_query: string, _limit = 10) => [] as Array<{ line: string; lineNum: number; score: number }>,
     text_stats: () => ({ length: context.length, lineCount: lines.length, sample: { start: "", middle: "", end: "" } }),
   };
 }

@@ -14,6 +14,8 @@ const tools: SolverTools = {
   context: "",
   grep: () => [],
   fuzzy_search: () => [],
+  bm25: () => [],
+  semantic: () => [],
   text_stats: () => ({ length: 0, lineCount: 0, sample: { start: "", middle: "", end: "" } }),
 };
 

@@ -13,6 +13,7 @@ import { parse as parseLC } from "../logic/lc-parser.js";
 import { inferType, typeToString } from "../logic/type-inference.js";
 import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } from "../logic/lc-solver.js";
 import { buildBM25Index, searchBM25, type BM25Index } from "../logic/bm25.js";
+import { buildSemanticIndex, searchSemantic, type SemanticIndex } from "../logic/semantic.js";
 
 /**
  * Result of executing a Nucleus command
@@ -158,6 +159,16 @@ function createSolverTools(context: string): SolverTools {
           index = buildBM25Index(lines);
         }
         return searchBM25(query, lines, index, undefined, limit);
+      };
+    })(),
+
+    semantic: (() => {
+      let index: SemanticIndex | null = null;
+      return (query: string, limit: number = 10) => {
+        if (!index) {
+          index = buildSemanticIndex(lines);
+        }
+        return searchSemantic(query, lines, index, limit);
       };
     })(),
 
@@ -418,6 +429,7 @@ SEARCH OPERATIONS (impure - access document):
   (grep "pattern")              Search for regex pattern, returns matches
   (fuzzy_search "query" limit)  Fuzzy search, returns top matches by relevance
   (bm25 "query" limit)          BM25 ranked keyword search, returns by relevance
+  (semantic "query" limit)      TF-IDF cosine similarity search, semantic ranking
   (text_stats)                  Get document statistics
   (lines start end)             Get lines in range (1-indexed)
 

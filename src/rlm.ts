@@ -22,6 +22,7 @@ import { isClassifyTerm, validateClassifyExamples } from "./logic/lc-compiler.js
 import { inferType, typeToString } from "./logic/type-inference.js";
 import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } from "./logic/lc-solver.js";
 import * as bm25Module from "./logic/bm25.js";
+import * as semanticModule from "./logic/semantic.js";
 
 /**
  * Create SolverTools from document content
@@ -148,6 +149,17 @@ function createSolverTools(context: string): SolverTools {
           index = bm25Module.buildBM25Index(lines);
         }
         return bm25Module.searchBM25(query, lines, index, undefined, limit);
+      };
+    })(),
+
+    semantic: (() => {
+      // Lazy-init semantic index on first use
+      let index: semanticModule.SemanticIndex | null = null;
+      return (query: string, limit: number = 10) => {
+        if (!index) {
+          index = semanticModule.buildSemanticIndex(lines);
+        }
+        return semanticModule.searchSemantic(query, lines, index, limit);
       };
     })(),
 

@@ -53,6 +53,7 @@ function createMockTools(context: string): SolverTools {
         .sort((a, b) => b.score - a.score)
         .slice(0, limit);
     },
+    semantic: (_query: string, _limit = 10) => [],
     text_stats: () => ({
       length: context.length,
       lineCount: lines.length,
