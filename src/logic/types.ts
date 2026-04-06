@@ -55,7 +55,14 @@ export type LCTerm =
   | LCPredicate
   | LCListSymbols
   | LCGetSymbolBody
-  | LCFindReferences;
+  | LCFindReferences
+  | LCCallers
+  | LCCallees
+  | LCAncestors
+  | LCDescendants
+  | LCImplementations
+  | LCDependents
+  | LCSymbolGraph;
 
 /**
  * (input) - reference to the current input string
@@ -446,6 +453,64 @@ export interface LCGetSymbolBody {
 export interface LCFindReferences {
   tag: "find_references";
   name: string;
+}
+
+/**
+ * (callers "name") - find all symbols that call this symbol
+ */
+export interface LCCallers {
+  tag: "callers";
+  name: string;
+}
+
+/**
+ * (callees "name") - find all symbols that this symbol calls
+ */
+export interface LCCallees {
+  tag: "callees";
+  name: string;
+}
+
+/**
+ * (ancestors "name") - transitive inheritance chain (extends)
+ */
+export interface LCAncestors {
+  tag: "ancestors";
+  name: string;
+}
+
+/**
+ * (descendants "name") - all types that extend this type (transitive)
+ */
+export interface LCDescendants {
+  tag: "descendants";
+  name: string;
+}
+
+/**
+ * (implementations "name") - all classes implementing this interface
+ */
+export interface LCImplementations {
+  tag: "implementations";
+  name: string;
+}
+
+/**
+ * (dependents "name" [depth]) - all transitive dependents of a symbol
+ */
+export interface LCDependents {
+  tag: "dependents";
+  name: string;
+  depth?: number;
+}
+
+/**
+ * (symbol_graph "name" [depth]) - neighborhood subgraph around a symbol
+ */
+export interface LCSymbolGraph {
+  tag: "symbol_graph";
+  name: string;
+  depth?: number;
 }
 
 /**

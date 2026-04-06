@@ -350,6 +350,33 @@ For code files, Lattice uses tree-sitter to extract structural symbols. This ena
 
 Symbols include metadata like name, kind, start/end lines, and parent relationships (e.g., methods within classes).
 
+### Knowledge Graph (Code Structure)
+
+When a code file is loaded, Lattice automatically builds an in-memory knowledge graph that tracks call relationships, inheritance, and interface implementations. This enables structural queries beyond simple text search.
+
+```scheme
+(callers "funcName")            ; Who calls this function?
+(callees "funcName")            ; What does this function call?
+(ancestors "ClassName")         ; Inheritance chain (extends)
+(descendants "ClassName")       ; All subclasses (transitive)
+(implementations "IFace")       ; Classes implementing this interface
+(dependents "name")             ; All transitive dependents
+(dependents "name" 2)           ; Dependents within depth limit
+(symbol_graph "name" 1)         ; Neighborhood subgraph around symbol
+```
+
+**Example workflow for call graph analysis:**
+
+```
+1. lattice_load("./src/service.ts")
+2. lattice_query('(callers "handleRequest")')     # Who calls it? → $res1
+3. lattice_query('(callees "handleRequest")')     # What does it call? → $res2
+4. lattice_query('(ancestors "MyService")')       # Inheritance chain → $res3
+5. lattice_query('(symbol_graph "handleRequest" 2)')  # 2-hop neighborhood
+```
+
+The graph is built using line-based heuristics (word-boundary matching for calls, syntax pattern matching for extends/implements), so it produces approximate but useful results without requiring a full language server.
+
 #### Adding Language Support
 
 Matryoshka includes built-in symbol mappings for 20+ languages. To enable a language, install its tree-sitter grammar package:

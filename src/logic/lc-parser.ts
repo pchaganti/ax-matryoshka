@@ -841,6 +841,47 @@ function parseList(state: ParserState): LCTerm | null {
       return { tag: "find_references", name: nameTerm.value };
     }
 
+    case "callers":
+    case "callees":
+    case "ancestors":
+    case "descendants":
+    case "implementations": {
+      // (callers "name"), (callees "name"), etc.
+      const graphNameTerm = parseTerm(state);
+      if (!graphNameTerm || graphNameTerm.tag !== "lit" || typeof graphNameTerm.value !== "string") {
+        return null;
+      }
+      return { tag: op as "callers" | "callees" | "ancestors" | "descendants" | "implementations", name: graphNameTerm.value };
+    }
+
+    case "dependents": {
+      // (dependents "name" [depth])
+      const depNameTerm = parseTerm(state);
+      if (!depNameTerm || depNameTerm.tag !== "lit" || typeof depNameTerm.value !== "string") {
+        return null;
+      }
+      const depthTerm = peek(state);
+      if (depthTerm && depthTerm.type === "number") {
+        consume(state);
+        return { tag: "dependents", name: depNameTerm.value, depth: depthTerm.value as number };
+      }
+      return { tag: "dependents", name: depNameTerm.value };
+    }
+
+    case "symbol_graph": {
+      // (symbol_graph "name" [depth])
+      const sgNameTerm = parseTerm(state);
+      if (!sgNameTerm || sgNameTerm.tag !== "lit" || typeof sgNameTerm.value !== "string") {
+        return null;
+      }
+      const sgDepthTerm = peek(state);
+      if (sgDepthTerm && sgDepthTerm.type === "number") {
+        consume(state);
+        return { tag: "symbol_graph", name: sgNameTerm.value, depth: sgDepthTerm.value as number };
+      }
+      return { tag: "symbol_graph", name: sgNameTerm.value };
+    }
+
     default:
       // Function application or variable
       const fn: LCTerm = { tag: "var", name: op };

@@ -18,6 +18,8 @@ import {
   getSymbolMappings,
   isLanguageAvailable,
 } from "../treesitter/language-map.js";
+import { SymbolGraph } from "../graph/symbol-graph.js";
+import { RelationshipAnalyzer } from "../graph/relationship-analyzer.js";
 
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
 const CHARS_PER_TOKEN = 4; // Approximate token estimation heuristic
@@ -113,6 +115,8 @@ export class HandleSession {
   private ops: HandleOps;
   private parserRegistry: ParserRegistry;
   private symbolExtractor: SymbolExtractor;
+  private relationshipAnalyzer: RelationshipAnalyzer;
+  private symbolGraph: SymbolGraph;
   private parserInitialized: boolean = false;
   private initPromise: Promise<void> | null = null;
   private documentPath: string = "";
@@ -139,6 +143,8 @@ export class HandleSession {
     this.ops = new HandleOps(this.db, this.registry);
     this.parserRegistry = new ParserRegistry();
     this.symbolExtractor = new SymbolExtractor(this.parserRegistry);
+    this.relationshipAnalyzer = new RelationshipAnalyzer();
+    this.symbolGraph = new SymbolGraph();
   }
 
   /**
@@ -278,6 +284,17 @@ export class HandleSession {
     for (const symbol of symbols) {
       this.db.storeSymbol(symbol);
     }
+
+    // Build knowledge graph from extracted symbols
+    this.symbolGraph.clear();
+    for (const symbol of symbols) {
+      this.symbolGraph.addSymbol(symbol);
+    }
+    const edges = this.relationshipAnalyzer.analyze(symbols, content);
+    for (const edge of edges) {
+      this.symbolGraph.addEdge(edge.source, edge.target, edge.relation);
+    }
+    this.engine.setBinding("_symbolGraph", this.symbolGraph);
   }
 
   /**

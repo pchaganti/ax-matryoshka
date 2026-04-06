@@ -35,6 +35,19 @@ COMMANDS:
 (sum RESULTS)                                       - sum numbers (for "total", "sum")
 (count RESULTS)                                     - count items (for "how many")
 
+CODE GRAPH (available when analyzing code files):
+(list_symbols)                                      - list all functions/classes/methods
+(list_symbols "function")                           - filter symbols by kind
+(get_symbol_body "name")                            - get source code of a symbol
+(find_references "name")                            - find all references to identifier
+(callers "name")                                    - who calls this function?
+(callees "name")                                    - what does this function call?
+(ancestors "ClassName")                             - inheritance chain (extends)
+(descendants "ClassName")                           - all subclasses (transitive)
+(implementations "InterfaceName")                   - classes implementing interface
+(dependents "name")                                 - all transitive dependents
+(symbol_graph "name" depth)                         - neighborhood subgraph
+
 WORKFLOW for multi-line content (JSON, code blocks, configs):
 1. (grep "keyword") to find the line number where the content starts
 2. (lines START END) to get the full block - use line numbers from grep results
@@ -197,7 +210,7 @@ function extractCode(response: string): string | null {
 
   // Check for plain S-expression in raw text
   // Find opening paren and balance to closing
-  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references"];
+  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph"];
 
   const MAX_SEXP_ITERATIONS = 200;
   let sexpIterations = 0;

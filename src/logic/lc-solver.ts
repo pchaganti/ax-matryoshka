@@ -959,6 +959,88 @@ function evaluate(
       return results;
     }
 
+    // ==========================
+    // GRAPH OPERATIONS - Knowledge graph queries
+    // ==========================
+
+    case "callers": {
+      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
+      if (!graph) {
+        throw new Error("callers: No symbol graph available. Load a code file first.");
+      }
+      log(`[Solver] Finding callers of "${term.name}"`);
+      const callerSymbols = graph.callers(term.name);
+      log(`[Solver] Found ${callerSymbols.length} callers`);
+      return callerSymbols;
+    }
+
+    case "callees": {
+      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
+      if (!graph) {
+        throw new Error("callees: No symbol graph available. Load a code file first.");
+      }
+      log(`[Solver] Finding callees of "${term.name}"`);
+      const calleeSymbols = graph.callees(term.name);
+      log(`[Solver] Found ${calleeSymbols.length} callees`);
+      return calleeSymbols;
+    }
+
+    case "ancestors": {
+      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
+      if (!graph) {
+        throw new Error("ancestors: No symbol graph available. Load a code file first.");
+      }
+      log(`[Solver] Finding ancestors of "${term.name}"`);
+      const ancestorSymbols = graph.ancestors(term.name);
+      log(`[Solver] Found ${ancestorSymbols.length} ancestors`);
+      return ancestorSymbols;
+    }
+
+    case "descendants": {
+      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
+      if (!graph) {
+        throw new Error("descendants: No symbol graph available. Load a code file first.");
+      }
+      log(`[Solver] Finding descendants of "${term.name}"`);
+      const descendantSymbols = graph.descendants(term.name);
+      log(`[Solver] Found ${descendantSymbols.length} descendants`);
+      return descendantSymbols;
+    }
+
+    case "implementations": {
+      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
+      if (!graph) {
+        throw new Error("implementations: No symbol graph available. Load a code file first.");
+      }
+      log(`[Solver] Finding implementations of "${term.name}"`);
+      const implSymbols = graph.implementations(term.name);
+      log(`[Solver] Found ${implSymbols.length} implementations`);
+      return implSymbols;
+    }
+
+    case "dependents": {
+      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
+      if (!graph) {
+        throw new Error("dependents: No symbol graph available. Load a code file first.");
+      }
+      log(`[Solver] Finding dependents of "${term.name}" (depth: ${term.depth ?? "unlimited"})`);
+      const depSymbols = graph.dependents(term.name, term.depth);
+      log(`[Solver] Found ${depSymbols.length} dependents`);
+      return depSymbols;
+    }
+
+    case "symbol_graph": {
+      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
+      if (!graph) {
+        throw new Error("symbol_graph: No symbol graph available. Load a code file first.");
+      }
+      const depth = term.depth ?? 1;
+      log(`[Solver] Getting symbol graph around "${term.name}" (depth: ${depth})`);
+      const neighborhood = graph.neighborhood(term.name, depth);
+      log(`[Solver] Graph: ${neighborhood.nodes.length} nodes, ${neighborhood.edges.length} edges`);
+      return neighborhood;
+    }
+
     default:
       throw new Error(`Unknown term tag: ${(term as LCTerm).tag}`);
   }
