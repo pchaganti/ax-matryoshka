@@ -36,6 +36,7 @@ function createMockTools(context: string): SolverTools {
       } catch { return []; }
     },
     fuzzy_search: () => [],
+    bm25: () => [],
     text_stats: () => ({ length: context.length, lineCount: lines.length, sample: { start: "", middle: "", end: "" } }),
   };
 }

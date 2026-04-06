@@ -466,6 +466,20 @@ function parseList(state: ParserState): LCTerm | null {
       return { tag: "fuzzy_search", query: query.value, limit };
     }
 
+    case "bm25": {
+      const query = parseTerm(state);
+      if (!query || query.tag !== "lit" || typeof query.value !== "string")
+        return null;
+      // Optional limit
+      const limitTerm = peek(state);
+      let limit: number | undefined;
+      if (limitTerm && limitTerm.type === "number") {
+        consume(state);
+        limit = limitTerm.value;
+      }
+      return { tag: "bm25", query: query.value, limit };
+    }
+
     case "text_stats": {
       return { tag: "text_stats" };
     }
@@ -931,6 +945,10 @@ export function prettyPrint(term: LCTerm): string {
       return term.limit
         ? `(fuzzy_search "${escapeForPrint(term.query)}" ${term.limit})`
         : `(fuzzy_search "${escapeForPrint(term.query)}")`;
+    case "bm25":
+      return term.limit
+        ? `(bm25 "${escapeForPrint(term.query)}" ${term.limit})`
+        : `(bm25 "${escapeForPrint(term.query)}")`;
     case "text_stats":
       return "(text_stats)";
     case "lines":

@@ -52,6 +52,10 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
       // fuzzy_search returns array of {line, lineNum, score}
       return { tag: "array", element: { tag: "any" } };
 
+    case "bm25":
+      // bm25 returns array of {line, lineNum, score}
+      return { tag: "array", element: { tag: "any" } };
+
     case "text_stats":
       // text_stats returns {length, lineCount, sample}
       return { tag: "any" };
