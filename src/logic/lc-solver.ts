@@ -15,6 +15,7 @@
 import type { LCTerm, CoercionType, SynthesisExample } from "./types.js";
 import { fuseRRF, type LineResult } from "./rrf.js";
 import { applyGravityDampening, type DampenableResult } from "./dampening.js";
+import { QValueStore, rerank as rerankFn } from "./qvalue.js";
 import { resolveConstraints } from "./constraint-resolver.js";
 import { run, Rel, eq, conde, exist, failo, type Var, type Substitution } from "../minikanren/index.js";
 import { synthesizeExtractor, compileToFunction, prettyPrint, type Example } from "../synthesis/evalo/index.js";
@@ -260,6 +261,45 @@ function evaluate(
       const dampenedCount = results.filter((r, i) => r.score !== dampened[i].score).length;
       log(`[Solver] Dampened ${dampenedCount} of ${results.length} results`);
       return dampened;
+    }
+
+    case "rerank": {
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`rerank: expected array, got ${typeof collection}`);
+      }
+      // Normalize to LineResult format
+      const normalized = (collection as unknown[]).map((item: unknown) => {
+        const obj = item as Record<string, unknown>;
+        return {
+          ...(obj as object),
+          line: String(obj.line ?? ""),
+          lineNum: Number(obj.lineNum ?? 0),
+          score: Number(obj.score ?? 1),
+        };
+      });
+      // Get or create Q-value store from bindings
+      let store = bindings.get("_qstore") as QValueStore | undefined;
+      if (!store) {
+        store = new QValueStore();
+        bindings.set("_qstore", store);
+      }
+      // Auto-reward: if previous RESULTS exist, reward those lines (they were useful enough to query again)
+      const prevResults = bindings.get("RESULTS");
+      if (Array.isArray(prevResults) && prevResults.length > 0) {
+        const prevLineNums = prevResults
+          .filter((r: unknown) => typeof r === "object" && r !== null && "lineNum" in (r as Record<string, unknown>))
+          .map((r: unknown) => Number((r as Record<string, unknown>).lineNum));
+        if (prevLineNums.length > 0) {
+          store.rewardReusedLines(prevLineNums, 0.4);
+          log(`[Solver] Auto-rewarded ${prevLineNums.length} lines from previous RESULTS`);
+        }
+      }
+
+      log(`[Solver] Reranking ${normalized.length} results (Q-store: ${store.getTotalUpdates()} updates)`);
+      const reranked = rerankFn(normalized, store);
+      log(`[Solver] Reranked ${reranked.length} results`);
+      return reranked;
     }
 
     case "text_stats": {

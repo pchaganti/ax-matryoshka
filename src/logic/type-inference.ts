@@ -64,6 +64,10 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
       // dampen returns array of {line, lineNum, score} (same shape, adjusted scores)
       return { tag: "array", element: { tag: "any" } };
 
+    case "rerank":
+      // rerank returns array of {line, lineNum, score, qScore}
+      return { tag: "array", element: { tag: "any" } };
+
     case "text_stats":
       // text_stats returns {length, lineCount, sample}
       return { tag: "any" };

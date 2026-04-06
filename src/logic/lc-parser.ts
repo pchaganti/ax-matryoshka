@@ -502,6 +502,12 @@ function parseList(state: ParserState): LCTerm | null {
       return { tag: "dampen", collection, query: query.value };
     }
 
+    case "rerank": {
+      const collection = parseTerm(state);
+      if (!collection) return null;
+      return { tag: "rerank", collection };
+    }
+
     case "text_stats": {
       return { tag: "text_stats" };
     }
@@ -975,6 +981,8 @@ export function prettyPrint(term: LCTerm): string {
       return `(fuse ${term.collections.map(c => prettyPrint(c)).join(" ")})`;
     case "dampen":
       return `(dampen ${prettyPrint(term.collection)} "${escapeForPrint(term.query)}")`;
+    case "rerank":
+      return `(rerank ${prettyPrint(term.collection)})`;
     case "text_stats":
       return "(text_stats)";
     case "lines":

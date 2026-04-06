@@ -433,6 +433,8 @@ FUSION:
                                 Example: (fuse (grep "ERROR") (bm25 "error handling"))
   (dampen results "query")      Remove false positives by checking term overlap
                                 Example: (dampen (bm25 "error") "database error")
+  (rerank results)              Rerank using Q-value learning (learns across turns)
+                                Example: (rerank (fuse (grep "ERROR") (bm25 "error")))
 
 COLLECTION OPERATIONS (pure - work on RESULTS):
   (filter RESULTS pred)         Keep items matching predicate
