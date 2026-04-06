@@ -37,8 +37,8 @@ describe("Audit #37", () => {
   // =========================================================================
   describe("#3 — history pruning should validate both roles in pair", () => {
     it("should check history[3] role before splice(2,2)", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const pruneHistory = source.match(/const pruneHistory[\s\S]*?};/);
+      const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+      const pruneHistory = source.match(/function pruneHistory[\s\S]*?\}\s*\}/);
       expect(pruneHistory).not.toBeNull();
       const body = pruneHistory![0];
       // Should check both history[2] and history[3] roles before splicing a pair

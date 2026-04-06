@@ -65,8 +65,8 @@ describe("Audit #74", () => {
   // =========================================================================
   describe("#5 — rlm pruneHistory should always terminate", () => {
     it("should have break or forced removal in else branch", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const pruneStart = source.indexOf("const pruneHistory");
+      const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+      const pruneStart = source.indexOf("function pruneHistory");
       expect(pruneStart).toBeGreaterThan(-1);
       const block = source.slice(pruneStart, pruneStart + 900);
       // The else branch must have a break to prevent infinite loop
