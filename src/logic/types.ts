@@ -20,6 +20,7 @@ export type LCTerm =
   | LCLit
   | LCGrep
   | LCFuzzySearch
+  | LCBm25
   | LCTextStats
   | LCLines
   | LCFilter
@@ -80,6 +81,16 @@ export interface LCGrep {
  */
 export interface LCFuzzySearch {
   tag: "fuzzy_search";
+  query: string;
+  limit?: number;
+}
+
+/**
+ * (bm25 <query> [<limit>]) - BM25 ranked text search
+ * Returns array of {line, lineNum, score} ranked by BM25 relevance
+ */
+export interface LCBm25 {
+  tag: "bm25";
   query: string;
   limit?: number;
 }

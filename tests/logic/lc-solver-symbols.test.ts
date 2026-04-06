@@ -123,6 +123,7 @@ type ID = string | number;
         return results;
       },
       fuzzy_search: () => [],
+      bm25: () => [],
       text_stats: () => ({
         length: sampleCode.length,
         lineCount: sampleCode.split("\n").length,

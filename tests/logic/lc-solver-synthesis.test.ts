@@ -55,6 +55,7 @@ function createMockTools(content: string): SolverTools {
         .filter((r) => r.score > 0)
         .slice(0, limit);
     },
+    bm25: (_query: string, _limit = 10) => [],
     text_stats: () => ({
       length: content.length,
       lineCount: lines.length,

@@ -12,6 +12,7 @@ import { readFile } from "node:fs/promises";
 import { parse as parseLC } from "../logic/lc-parser.js";
 import { inferType, typeToString } from "../logic/type-inference.js";
 import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } from "../logic/lc-solver.js";
+import { buildBM25Index, searchBM25, type BM25Index } from "../logic/bm25.js";
 
 /**
  * Result of executing a Nucleus command
@@ -149,6 +150,16 @@ function createSolverTools(context: string): SolverTools {
       });
       return results.slice(0, clampedLimit);
     },
+
+    bm25: (() => {
+      let index: BM25Index | null = null;
+      return (query: string, limit: number = 10) => {
+        if (!index) {
+          index = buildBM25Index(lines);
+        }
+        return searchBM25(query, lines, index, undefined, limit);
+      };
+    })(),
 
     text_stats: () => ({ ...textStats }),
   };

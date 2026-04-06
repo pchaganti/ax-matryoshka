@@ -23,6 +23,7 @@ import { SynthesisIntegrator } from "./synthesis-integrator.js";
 export interface SolverTools {
   grep: (pattern: string) => Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }>;
   fuzzy_search: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
+  bm25: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
   text_stats: () => { length: number; lineCount: number; sample: { start: string; middle: string; end: string } };
   context: string;
 }
@@ -193,6 +194,20 @@ function evaluate(
       log(`[Solver] Executing fuzzy_search("${term.query}", ${fuzzyLimit})`);
       const results = tools.fuzzy_search(term.query, fuzzyLimit);
       log(`[Solver] Found ${results.length} fuzzy matches`);
+      return results;
+    }
+
+    case "bm25": {
+      const bm25Limit = Math.min(Math.max(1, term.limit ?? 10), 1000);
+      log(`[Solver] Executing bm25("${term.query}", ${bm25Limit})`);
+      const results = tools.bm25(term.query, bm25Limit);
+      log(`[Solver] Found ${results.length} BM25 matches`);
+      if (results.length > 0) {
+        log(`[Solver] Top BM25 results:`);
+        results.slice(0, 5).forEach((r, i) => {
+          log(`  ${i + 1}. [line ${r.lineNum}, score ${r.score.toFixed(2)}] ${r.line.slice(0, 80)}`);
+        });
+      }
       return results;
     }
 

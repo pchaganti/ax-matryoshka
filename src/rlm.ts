@@ -21,6 +21,7 @@ import { parse as parseLC } from "./logic/lc-parser.js";
 import { isClassifyTerm, validateClassifyExamples } from "./logic/lc-compiler.js";
 import { inferType, typeToString } from "./logic/type-inference.js";
 import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } from "./logic/lc-solver.js";
+import * as bm25Module from "./logic/bm25.js";
 
 /**
  * Create SolverTools from document content
@@ -138,6 +139,17 @@ function createSolverTools(context: string): SolverTools {
       results.sort((a, b) => b.score - a.score);
       return results.slice(0, limit);
     },
+
+    bm25: (() => {
+      // Lazy-init BM25 index on first use
+      let index: import("./logic/bm25.js").BM25Index | null = null;
+      return (query: string, limit: number = 10) => {
+        if (!index) {
+          index = bm25Module.buildBM25Index(lines);
+        }
+        return bm25Module.searchBM25(query, lines, index, undefined, limit);
+      };
+    })(),
 
     text_stats: () => ({ ...textStats }),
   };
