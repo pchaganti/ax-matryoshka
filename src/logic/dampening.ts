@@ -8,23 +8,7 @@
  * Ablation-validated in Drift pipeline (P@5 delta: -0.256)
  */
 
-// ── Stopwords (from Ori-Mnemos) ─────────────────────────────────────
-
-const STOPWORDS = new Set([
-  "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-  "have", "has", "had", "do", "does", "did", "will", "would", "could",
-  "should", "may", "might", "shall", "can", "need", "dare", "ought",
-  "used", "to", "of", "in", "for", "on", "with", "at", "by", "from",
-  "as", "into", "through", "during", "before", "after", "above", "below",
-  "between", "out", "off", "over", "under", "again", "further", "then",
-  "once", "here", "there", "when", "where", "why", "how", "all", "both",
-  "each", "few", "more", "most", "other", "some", "such", "no", "nor",
-  "not", "only", "own", "same", "so", "than", "too", "very", "just",
-  "don", "now", "and", "but", "or", "if", "while", "about", "what",
-  "which", "who", "whom", "this", "that", "these", "those", "am", "it",
-  "its", "my", "your", "his", "her", "our", "their", "i", "me", "we",
-  "you", "he", "she", "they", "them", "up",
-]);
+import { STOPWORDS } from "./stopwords.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -56,22 +40,30 @@ export function extractKeyTerms(text: string): Set<string> {
  * Catches false positives where BM25/fuzzy scoring produces high
  * scores for lines that don't actually contain relevant terms.
  *
+ * The threshold is adaptive: defaults to 30% of the max score in the
+ * result set, so it works correctly regardless of score scale (raw BM25
+ * scores, RRF fused scores, etc.).
+ *
  * @param results - Search results to dampen
  * @param query - Original search query
- * @param threshold - Score threshold; only dampen results above this (default 0.3)
+ * @param threshold - Score threshold; only dampen above this. If not provided, uses 30% of max score.
  * @param penalty - Multiplier for dampened results (default 0.5)
  */
 export function applyGravityDampening(
   results: DampenableResult[],
   query: string,
-  threshold: number = 0.3,
+  threshold?: number,
   penalty: number = 0.5,
 ): DampenableResult[] {
   const queryTerms = extractKeyTerms(query);
   if (queryTerms.size === 0) return results;
+  if (results.length === 0) return results;
+
+  // Adaptive threshold: 30% of max score if not explicitly provided
+  const effectiveThreshold = threshold ?? (Math.max(...results.map(r => r.score)) * 0.3);
 
   return results.map((result) => {
-    if (result.score <= threshold) return result;
+    if (result.score <= effectiveThreshold) return result;
 
     // Check term overlap against line content
     const lineTerms = extractKeyTerms(result.line);

@@ -71,9 +71,10 @@ describe("applyGravityDampening", () => {
     expect(dampened[2].score).toBeCloseTo(0.30);
   });
 
-  it("should not dampen results below threshold", () => {
+  it("should not dampen results below adaptive threshold", () => {
     const dampened = applyGravityDampening(results, "nonexistent term");
-    // Line 4 score (0.20) is below default threshold (0.3) → keep
+    // Adaptive threshold = 0.95 * 0.3 = 0.285
+    // Line 4 score (0.20) is below threshold → keep
     expect(dampened[3].score).toBe(0.20);
   });
 
@@ -97,7 +98,7 @@ describe("applyGravityDampening", () => {
   });
 
   it("should respect custom threshold", () => {
-    // Threshold 0.9 → only line 1 (0.95) is above
+    // Explicit threshold 0.9 → only line 1 (0.95) is above
     const dampened = applyGravityDampening(results, "nonexistent", 0.9);
     expect(dampened[0].score).toBeCloseTo(0.475); // 0.95 * 0.5
     expect(dampened[1].score).toBe(0.80); // below threshold
@@ -107,6 +108,22 @@ describe("applyGravityDampening", () => {
     const dampened = applyGravityDampening(results, "nonexistent", 0.3, 0.25);
     // Line 1 (0.95) dampened by 0.25x
     expect(dampened[0].score).toBeCloseTo(0.2375);
+  });
+
+  it("should use adaptive threshold with small scores (e.g. RRF output)", () => {
+    // Simulate RRF-scale scores (very small)
+    const smallScoreResults: DampenableResult[] = [
+      { line: "no overlap here", lineNum: 1, score: 0.01 },
+      { line: "also no overlap", lineNum: 2, score: 0.005 },
+      { line: "database connection error", lineNum: 3, score: 0.008 },
+    ];
+    // Adaptive threshold = 0.01 * 0.3 = 0.003
+    // Line 1 (0.01) and line 3 (0.008) are above threshold
+    // Line 3 has "database" overlap with query → keep
+    // Line 1 has no overlap → dampen
+    const dampened = applyGravityDampening(smallScoreResults, "database");
+    expect(dampened[0].score).toBeCloseTo(0.005); // 0.01 * 0.5
+    expect(dampened[2].score).toBe(0.008); // overlap → kept
   });
 
   it("should handle empty results array", () => {
