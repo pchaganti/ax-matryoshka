@@ -31,7 +31,7 @@ describe("Nucleus Adapter", () => {
     });
 
     it("should explain available commands", () => {
-      expect(prompt).toContain("COMMANDS");
+      expect(prompt).toContain("SEARCH");
       expect(prompt).toContain("grep");
       expect(prompt).toContain("sum");
     });

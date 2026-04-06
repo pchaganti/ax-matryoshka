@@ -25,40 +25,28 @@ function buildSystemPrompt(
   if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const sizeCategory = contextLength < 2000 ? "SMALL" : "LARGE";
 
-  return `You analyze documents to answer queries. Output ONE command per turn.
+  return `Analyze document. ONE command per turn.
 
-COMMANDS:
-(grep "pattern")                                    - search document, returns matching lines with line numbers
-(lines START END)                                   - get lines START to END (for multi-line content like JSON/code blocks)
-(filter RESULTS (lambda x (match x "pattern" 0)))   - filter results
-(map RESULTS (lambda x (match x "pattern" 1)))      - extract field from each result
-(sum RESULTS)                                       - sum numbers (for "total", "sum")
-(count RESULTS)                                     - count items (for "how many")
+SEARCH:
+(grep "pattern")              → matching lines w/ line numbers
+(lines START END)             → get line range (1-indexed)
 
-CODE GRAPH (available when analyzing code files):
-(list_symbols)                                      - list all functions/classes/methods
-(list_symbols "function")                           - filter symbols by kind
-(get_symbol_body "name")                            - get source code of a symbol
-(find_references "name")                            - find all references to identifier
-(callers "name")                                    - who calls this function?
-(callees "name")                                    - what does this function call?
-(ancestors "ClassName")                             - inheritance chain (extends)
-(descendants "ClassName")                           - all subclasses (transitive)
-(implementations "InterfaceName")                   - classes implementing interface
-(dependents "name")                                 - all transitive dependents
-(symbol_graph "name" depth)                         - neighborhood subgraph
+TRANSFORM:
+(filter RESULTS (lambda x (match x "pat" 0)))
+(map RESULTS (lambda x (match x "pat" 1)))
+(count RESULTS)   (sum RESULTS)
 
-WORKFLOW for multi-line content (JSON, code blocks, configs):
-1. (grep "keyword") to find the line number where the content starts
-2. (lines START END) to get the full block - use line numbers from grep results
+CODE (when analyzing code):
+(list_symbols)  (list_symbols "function")
+(get_symbol_body "name")  (find_references "name")
+(callers "name")  (callees "name")
+(ancestors "Class")  (descendants "Class")
+(implementations "IFace")  (dependents "name")
+(symbol_graph "name" depth)
 
-QUERY TYPES - match your response to the query:
-- "find/print/show config/example/JSON" -> use grep to find line, then (lines N M) for full block
-- "list/show/what are" -> return the actual items: <<<FINAL>>>item1, item2...<<<END>>>
-- "how many/count" -> use (count RESULTS)
-- "total/sum" -> use (sum RESULTS)
-
-Output final answer as: <<<FINAL>>>answer<<<END>>>
+MULTI-LINE: grep keyword → get lineNum → (lines N M)
+QUERY MAP: count→count, total/sum→sum, list→grep+FINAL
+ANSWER: <<<FINAL>>>answer<<<END>>>
 
 ${hints?.hintsText || ""}${hints?.selfCorrectionText || ""}`;
 }
