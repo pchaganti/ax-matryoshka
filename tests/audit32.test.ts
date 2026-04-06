@@ -151,7 +151,7 @@ describe("Audit #32", () => {
     // Issue: Auto-termination on intermediate log output
     describe("#9 — auto-termination should not trigger on intermediate results", () => {
       it("should require explicit done signal before auto-terminating", () => {
-        const source = readFileSync("src/rlm.ts", "utf-8");
+        const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
         // Find the auto-termination logic
         const autoTerm = source.match(/computedMatch[\s\S]*?Auto-terminating/);
         expect(autoTerm).not.toBeNull();
@@ -164,7 +164,7 @@ describe("Audit #32", () => {
     // Issue: FINAL_VAR returns empty sandbox memory instead of solver bindings
     describe("#10 — FINAL_VAR should check solver bindings", () => {
       it("should look up variable in solver bindings when FINAL_VAR is used", () => {
-        const source = readFileSync("src/rlm.ts", "utf-8");
+        const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
         // Find the FINAL_VAR handling section
         const finalVar = source.match(/finalAnswer\.type === "var"[\s\S]*?resultToReturn\s*=.*$/m);
         expect(finalVar).not.toBeNull();
@@ -246,8 +246,8 @@ describe("Audit #32", () => {
     // Issue: History pruning can corrupt conversation at odd boundaries
     describe("#16 — history pruning should validate entry roles", () => {
       it("should ensure pruning maintains alternating roles", () => {
-        const source = readFileSync("src/rlm.ts", "utf-8");
-        const pruneSection = source.match(/pruneHistory[\s\S]*?\}\s*;/);
+        const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+        const pruneSection = source.match(/pruneHistory[\s\S]*?\}\s*\}/);
         expect(pruneSection).not.toBeNull();
         // Should check role before splicing, or splice in validated pairs
         expect(pruneSection![0]).toMatch(/role|assistant|pair/i);

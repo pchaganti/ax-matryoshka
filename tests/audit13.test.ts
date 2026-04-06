@@ -254,10 +254,10 @@ describe("Issue #15: HTTP adapter should reject NaN port/timeout", () => {
 describe("Issue #8: History prune should remove pairs not singles", () => {
   it("rlm.ts pruneHistory should splice(2,2) not splice(2,1)", async () => {
     const fs = await import("node:fs/promises");
-    const source = await fs.readFile("src/rlm.ts", "utf-8");
+    const source = await fs.readFile("src/fsm/rlm-states.ts", "utf-8");
 
-    // Find the pruneHistory function
-    const pruneMatch = source.match(/const pruneHistory[\s\S]*?};/);
+    // Find the pruneHistory function (moved to fsm/rlm-states.ts)
+    const pruneMatch = source.match(/function pruneHistory[\s\S]*?\}\s*\}/);
     expect(pruneMatch).not.toBeNull();
     const pruneBody = pruneMatch![0];
 

@@ -14,15 +14,13 @@ import type { LLMQueryFn } from "./llm/types.js";
 import type { ModelAdapter, FinalVarMarker, RAGHints } from "./adapters/types.js";
 import { createNucleusAdapter } from "./adapters/nucleus.js";
 import type { SynthesisConstraint } from "./constraints/types.js";
-import { verifyResult } from "./constraints/verifier.js";
+// verifyResult is now used in fsm/rlm-states.ts
 import { getRAGManager, type RAGManager } from "./rag/manager.js";
-import { analyzeExecution, getEncouragement } from "./feedback/execution-feedback.js";
-import { parse as parseLC } from "./logic/lc-parser.js";
-import { isClassifyTerm, validateClassifyExamples } from "./logic/lc-compiler.js";
-import { inferType, typeToString } from "./logic/type-inference.js";
-import { solve as solveTerm, validateRegex, type SolverTools, type Bindings } from "./logic/lc-solver.js";
+import { validateRegex, type SolverTools } from "./logic/lc-solver.js";
 import * as bm25Module from "./logic/bm25.js";
 import * as semanticModule from "./logic/semantic.js";
+import { FSMEngine } from "./fsm/engine.js";
+import { buildRLMSpec, createInitialContext, type RLMContext } from "./fsm/rlm-states.js";
 
 /**
  * Create SolverTools from document content
@@ -174,7 +172,7 @@ export type { FinalVarMarker } from "./adapters/types.js";
  * Generate classifier guidance from grep output
  * Shows the model concrete example lines to use with (classify ...)
  */
-function generateClassifierGuidance(
+export function generateClassifierGuidance(
   logs: string[],
   query: string
 ): string | null {
@@ -436,46 +434,7 @@ function parseNumericResult(result: unknown): number | null {
   return null;
 }
 
-/**
- * Verify a result against constraints, returning verification feedback if invalid
- */
-function verifyAndReturnResult(
-  result: unknown,
-  constraint: SynthesisConstraint | undefined,
-  log: (msg: string) => void
-): { valid: true; result: unknown } | { valid: false; feedback: string } {
-  if (!constraint) {
-    return { valid: true, result };
-  }
-
-  // Try to coerce string results to the expected type
-  let resultToVerify = result;
-  if (constraint.output.type === "number" && typeof result === "string") {
-    const parsed = parseNumericResult(result);
-    if (parsed !== null) {
-      resultToVerify = parsed;
-    }
-  }
-
-  const verification = verifyResult(resultToVerify, constraint);
-
-  if (verification.valid) {
-    log(`[Verification] Result satisfies all constraints`);
-    return { valid: true, result: resultToVerify };
-  }
-
-  log(`[Verification] Result FAILED constraint verification:`);
-  for (const error of verification.errors) {
-    log(`  - ${error}`);
-  }
-
-  const feedback = `## CONSTRAINT VIOLATION\n\n` +
-    `Your result does not satisfy the required constraints:\n` +
-    verification.errors.map(e => `- ${e}`).join("\n") +
-    `\n\nPlease fix your approach and try again.`;
-
-  return { valid: false, feedback };
-}
+// verifyAndReturnResult has moved to fsm/rlm-states.ts
 
 /**
  * Run the RLM execution loop
@@ -610,482 +569,31 @@ export async function runRLM(
     log(`[RLM] Output constraint: ${constraint.output.type}`);
   }
 
-  // Build conversation history with sliding window to prevent unbounded growth
-  const MAX_HISTORY_ENTRIES = 40;
-  const history: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userMessage },
-  ];
-
-  // Prune old history entries while keeping the system prompt and initial user message
-  const pruneHistory = () => {
-    while (history.length > MAX_HISTORY_ENTRIES) {
-      // Remove one assistant+user pair (2 entries) at index 2, preserving system prompt and initial user message
-      // Validate we're removing a complete assistant+user pair to maintain alternating roles
-      if (history.length > 3 && history[2]?.role === "assistant" && history[3]?.role === "user") {
-        history.splice(2, 2);
-      } else if (history.length > 3 && history[2]?.role === "user" && history[3]?.role === "assistant") {
-        // Misaligned but still a pair — remove both to maintain parity
-        history.splice(2, 2);
-      } else {
-        // Safety: roles are misaligned and no valid pair found
-        if (history.length <= 2) {
-          break;
-        }
-        history.splice(2, Math.min(2, history.length - 2));
-        // Break if splice couldn't reduce the length (prevents infinite loop)
-        if (history.length > MAX_HISTORY_ENTRIES) {
-          break;
-        }
-      }
-    }
-  };
-
-  // Track whether code has been executed (to detect hallucination risk)
-  let codeExecuted = false;
-  // Track if the last execution had an error (don't accept answers after errors)
-  let lastExecutionHadError = false;
-  // Track if last output was unhelpful (like [object Object])
-  let lastOutputWasUnhelpful = false;
-  // Track repeated "done" patterns to detect stuck model
-  let doneCount = 0;
-  let lastMeaningfulOutput = "";
-  // Track consecutive no-code responses to detect stuck model
-  let noCodeCount = 0;
-  // Track last executed code to detect repetition
-  let lastCode = "";
-  // Track result counts for better feedback
-  let lastResultCount = 0;
-  let previousResultCount = 0;
-  // Bindings for cross-turn state - allows referencing previous results
-  const solverBindings: Bindings = new Map();
-
   try {
-    for (let turn = 1; turn <= maxTurns; turn++) {
-      log(`\n${"─".repeat(50)}`);
-      log(`[Turn ${turn}/${maxTurns}] Querying LLM...`);
+    // Run the FSM-based execution loop
+    const fsmCtx = createInitialContext({
+      query,
+      adapter,
+      llmClient,
+      solverTools,
+      sandbox,
+      systemPrompt,
+      userMessage,
+      constraint,
+      ragManager: ragManager ?? undefined,
+      sessionId,
+      maxTurns,
+      log,
+    });
 
-      // Build prompt from history
-      const prompt = history.map((h) => `${h.role.toUpperCase()}: ${h.content}`).join("\n\n");
+    const engine = new FSMEngine<RLMContext>();
+    const finalCtx = await engine.run(buildRLMSpec(), fsmCtx);
 
-      // Get LLM response
-      const response = await llmClient(prompt);
-      if (!response) {
-        return `Error: LLM returned empty response at turn ${turn}`;
-      }
-      history.push({ role: "assistant", content: response });
-      pruneHistory();
-
-      // Extract and execute code FIRST (before checking final answer)
-      // This ensures if response has both code and final marker, code runs first
-      const code = adapter.extractCode(response);
-
-      // Log the LLM's raw response and extracted Nucleus grammar
-      log(`[Turn ${turn}] LLM response:`);
-      log(response.slice(0, 500));
-      if (code) {
-        log(`[Turn ${turn}] Extracted Nucleus: ${code}`);
-      }
-
-      if (code) {
-        // Check if the code block contains <<<FINAL>>> markers (model put answer inside code block)
-        const finalInCode = code.match(/<<<FINAL>>>([\s\S]*?)<<<END>>>/);
-        if (finalInCode) {
-          log(`[Turn ${turn}] Found final answer inside code block`);
-          if (!codeExecuted) {
-            log(`[Turn ${turn}] Rejecting - no code executed yet`);
-            const feedback = `You put <<<FINAL>>> inside the code block. First run code to get the answer, then put <<<FINAL>>> OUTSIDE the code block.`;
-            history.push({ role: "user", content: feedback });
-            continue;
-          }
-          const extractedAnswer = finalInCode[1].trim();
-          // Validate the extracted answer doesn't look like code
-          // (model might have put FINAL markers inside console.log strings)
-          const looksLikeCode = /console\.log|function\s*\(|const\s+\w+\s*=|let\s+\w+\s*=|var\s+\w+\s*=|\);|\(\s*["']/.test(extractedAnswer);
-          if (looksLikeCode) {
-            log(`[Turn ${turn}] Rejecting - extracted content looks like code, not an answer`);
-            const feedback = `ERROR: You put <<<FINAL>>> markers inside your code/strings, not after the code block.
-
-The FINAL markers must be OUTSIDE and AFTER your code block:
-\`\`\`javascript
-console.log("done");
-\`\`\`
-<<<FINAL>>>
-Your actual answer here (plain text, not code)
-<<<END>>>
-
-Try again with proper formatting.`;
-            history.push({ role: "user", content: feedback });
-            continue;
-          }
-          const verification = verifyAndReturnResult(extractedAnswer, constraint, log);
-          return verification.valid ? verification.result : extractedAnswer;
-        }
-
-        codeExecuted = true;
-        noCodeCount = 0; // Reset no-code counter on successful code extraction
-
-        // Check if code is being repeated (skip if either is empty)
-        const trimmedCode = code.trim();
-        const isRepeatedCode = trimmedCode.length > 0 && trimmedCode === lastCode.trim();
-        if (isRepeatedCode) {
-          log(`[Turn ${turn}] WARNING: Repeated code detected`);
-          history.push({ role: "user", content: adapter.getRepeatedCodeFeedback(lastResultCount) });
-          continue;
-        }
-        lastCode = code;
-
-        // NUCLEUS LC EXECUTION: All models use Lambda Calculus terms
-        // This reduces token entropy and allows formal verification
-        log(`[Turn ${turn}] Parsing LC term...`);
-
-        // Parse the LC term
-        const lcResult = parseLC(code);
-
-        if (!lcResult.success || !lcResult.term) {
-          log(`[Turn ${turn}] LC parse error: ${lcResult.error}`);
-          log(`[Turn ${turn}] Failed to parse: ${code}`);
-          history.push({
-            role: "user",
-            content: adapter.getErrorFeedback(lcResult.error || "Parse error", code),
-          });
-          continue;
-        }
-
-        log(`[Turn ${turn}] LC term parsed successfully`);
-
-        // Type inference (fail-fast validation)
-        const typeResult = inferType(lcResult.term);
-        if (!typeResult.valid) {
-          log(`[Turn ${turn}] Type inference failed: ${typeResult.error}`);
-          history.push({
-            role: "user",
-            content: `Type error: ${typeResult.error}\n\nCheck your LC term structure.`,
-          });
-          continue;
-        }
-
-        if (typeResult.type) {
-          log(`[Turn ${turn}] Inferred type: ${typeToString(typeResult.type)}`);
-        }
-
-        // Validate classify examples against previous grep output
-        if (isClassifyTerm(lcResult.term)) {
-          const prevLogs = history
-            .filter((h) => h.role === "user" && h.content.includes("Logs:"))
-            .flatMap((h) => h.content.split("\n"));
-
-          const validationError = validateClassifyExamples(lcResult.term, prevLogs);
-          if (validationError) {
-            log(`[Turn ${turn}] Classify validation error: ${validationError}`);
-            history.push({
-              role: "user",
-              content: `ERROR: ${validationError}\n\nCopy the EXACT lines from the grep output above.`,
-            });
-            continue;
-          }
-        }
-
-        // Execute LC term directly using the solver (miniKanren-backed)
-        log(`[Turn ${turn}] Executing LC term with solver...`);
-        log(`[Turn ${turn}] Term: ${code}`);
-        if (solverBindings.size > 0) {
-          log(`[Turn ${turn}] Available bindings: ${[...solverBindings.keys()].join(", ")}`);
-        }
-
-        const solverResult = solveTerm(lcResult.term, solverTools, solverBindings);
-
-        // Convert solver result to sandbox-compatible result format
-        const result = {
-          result: solverResult.value,
-          logs: solverResult.logs,
-          error: solverResult.success ? undefined : solverResult.error,
-        };
-
-        // Bind result for next turn - model can reference as RESULTS or _N
-        // IMPORTANT: Only overwrite RESULTS with arrays. Scalar values (count, sum)
-        // are stored in _N bindings but don't replace the array in RESULTS.
-        // This prevents (count RESULTS) from destroying the data for subsequent (sum RESULTS).
-        if (solverResult.success && solverResult.value !== null && solverResult.value !== undefined) {
-          solverBindings.set(`_${turn}`, solverResult.value);
-
-          if (Array.isArray(solverResult.value)) {
-            // Array result - update RESULTS and track count, cap size to prevent memory exhaustion
-            const MAX_RESULTS_SIZE = 100000;
-            const cappedValue = solverResult.value.length > MAX_RESULTS_SIZE
-              ? solverResult.value.slice(0, MAX_RESULTS_SIZE)
-              : solverResult.value;
-            solverBindings.set("RESULTS", cappedValue);
-            previousResultCount = lastResultCount;
-            lastResultCount = cappedValue.length;
-            log(`[Turn ${turn}] Bound result to RESULTS and _${turn}`);
-          } else {
-            // Scalar result - only bind to _N, preserve RESULTS
-            log(`[Turn ${turn}] Bound scalar result to _${turn} (RESULTS preserved)`);
-          }
-          // Evict old turn bindings to prevent unbounded growth
-          const MAX_SOLVER_BINDINGS = 200;
-          if (solverBindings.size > MAX_SOLVER_BINDINGS) {
-            const keys = [...solverBindings.keys()];
-            const turnKeys = keys.filter(k => /^_\d+$/.test(k))
-              .sort((a, b) => {
-                const aNum = parseInt(a.slice(1), 10);
-                const bNum = parseInt(b.slice(1), 10);
-                if (!Number.isFinite(aNum) || !Number.isFinite(bNum)) return 0;
-                if (aNum < bNum) return -1;
-                if (aNum > bNum) return 1;
-                return 0;
-              });
-            const nonTurnCount = keys.length - turnKeys.length;
-            const maxTurnKeys = Math.max(1, MAX_SOLVER_BINDINGS - nonTurnCount);
-            const toRemove = turnKeys.slice(0, Math.max(0, turnKeys.length - maxTurnKeys));
-            for (const key of toRemove) {
-              solverBindings.delete(key);
-            }
-          }
-        } else {
-          previousResultCount = lastResultCount;
-          lastResultCount = 0;
-        }
-
-        // Build execution feedback with truncation to minimize context passing
-        const MAX_OUTPUT_LENGTH = 4000; // Max chars per output section
-        const truncate = (s: string, max: number = MAX_OUTPUT_LENGTH): string => {
-          if (s.length <= max) return s;
-          const half = Math.max(0, Math.floor(max / 2) - 20);
-          if (half === 0) return s.slice(0, max);
-          return s.slice(0, half) + `\n... [${s.length - max} chars truncated] ...\n` + s.slice(-half);
-        };
-
-        let feedback = `Turn ${turn} Sandbox execution:\n`;
-
-        if (result.logs.length > 0) {
-          log(`[Turn ${turn}] Console output:`);
-          result.logs.forEach(l => log(`  ${l}`));
-          const logsText = result.logs.join("\n");
-          feedback += `Logs:\n${truncate(logsText)}\n`;
-
-          // Use centralized feedback system to analyze execution
-          const executionFeedback = analyzeExecution({
-            code: code,
-            logs: result.logs,
-            error: result.error,
-            turn,
-          });
-
-          if (executionFeedback) {
-            log(`[Turn ${turn}] Detected issue: ${executionFeedback.type}`);
-            feedback += `\n${executionFeedback.message}\n`;
-            feedback += `\n${getEncouragement(turn, maxTurns)}\n`;
-          }
-
-          // Track meaningful output vs "done" / repeated patterns
-          const isDoneOnly = result.logs.length === 1 && result.logs[0].toLowerCase().trim() === "done";
-          const isRepeatedOutput = logsText === lastMeaningfulOutput;
-          const hasObjectObject = logsText.includes("[object Object]");
-          const isUnhelpfulOutput = hasObjectObject || isDoneOnly || (executionFeedback?.shouldReject ?? false);
-
-          if (isUnhelpfulOutput || isRepeatedOutput) {
-            lastOutputWasUnhelpful = true;
-            doneCount++;
-            if (doneCount >= 3 && lastMeaningfulOutput) {
-              log(`[Turn ${turn}] Detected stuck pattern. Auto-terminating with last meaningful output.`);
-              const verification = verifyAndReturnResult(lastMeaningfulOutput, constraint, log);
-              return verification.valid ? verification.result : lastMeaningfulOutput;
-            }
-            // Add feedback to encourage different approach
-            if (isRepeatedOutput) {
-              feedback += `\nWARNING: Output is the same as before. Try a DIFFERENT approach:\n`;
-              feedback += `- Use grep("keyword") to search for specific data\n`;
-              feedback += `- Try different search terms related to the query\n`;
-              feedback += `- Do NOT repeat the same code\n`;
-            }
-          } else if (!hasObjectObject) {
-            lastOutputWasUnhelpful = false;
-            // Save meaningful output - prefer computed results over raw data dumps
-            // Look for patterns like "Total: X", "Result: X", "Answer: X", or assignments
-            const computedMatch = logsText.match(/(?:total|sum|result|answer|count|average|mean)[^:]*:\s*([\d,.]+)/i);
-            // Look for any substantial numeric data (4+ digits) or structured output
-            const hasRawData = logsText.match(/[\d,]{4,}|"[^"]+"\s*:/);
-
-            if (computedMatch && turn > 2) {
-              // Look for the answer line (only auto-terminate after initial exploration)
-              const answerLine = result.logs.find(line =>
-                /(?:total|sum|result|answer|count|average|mean)[^:]*:/i.test(line)
-              );
-
-              if (answerLine) {
-                log(`[Turn ${turn}] Computed answer found: ${answerLine}`);
-                // Verify constraints if specified
-                const verification = verifyAndReturnResult(answerLine, constraint, log);
-                if (verification.valid) {
-                  log(`[Turn ${turn}] Auto-terminating with computed result`);
-                  return verification.result;
-                } else {
-                  log(`[Turn ${turn}] Constraint violation - continuing`);
-                  feedback += `\n${verification.feedback}`;
-                }
-              }
-
-              // Fallback: save as meaningful output
-              lastMeaningfulOutput = logsText;
-              doneCount = 0;
-            } else if (hasRawData && !lastMeaningfulOutput) {
-              // Fall back to raw data only if no computed result yet
-              lastMeaningfulOutput = logsText;
-              doneCount = 0;
-            }
-          }
-        }
-
-        if (result.error) {
-          log(`[Turn ${turn}] Error: ${result.error}`);
-          feedback += `Error: ${result.error}\n`;
-          lastExecutionHadError = true;
-
-          // Record failure for self-correction learning
-          if (ragManager) {
-            ragManager.recordFailure({
-              query,
-              code: code.slice(0, 500),
-              error: result.error,
-              timestamp: Date.now(),
-              sessionId,
-            });
-            log(`[RAG] Recorded failure for self-correction`);
-          }
-        } else {
-          lastExecutionHadError = false;
-        }
-
-        if (result.result !== undefined && result.result !== null) {
-          let resultStr: string;
-          try {
-            const MAX_RESULT_JSON = 50_000;
-            resultStr = JSON.stringify(result.result, null, 2).slice(0, MAX_RESULT_JSON);
-          } catch {
-            resultStr = String(result.result);
-          }
-          log(`[Turn ${turn}] Result: ${resultStr}`);
-          feedback += `Result: ${truncate(resultStr)}\n`;
-        }
-
-        // Generate classifier guidance for search results
-        const classifierGuidance = generateClassifierGuidance(result.logs, query);
-        if (classifierGuidance) {
-          feedback += `\n${classifierGuidance}`;
-        }
-
-        // After aggregate operations, show the result clearly
-        if (typeof result.result === "number") {
-          feedback += `\n\nResult: ${result.result}. If this answers the query, output: <<<FINAL>>>${result.result}<<<END>>>`;
-        }
-
-        // Add adapter-specific success feedback (language reminders, etc.)
-        feedback += `\n\n${adapter.getSuccessFeedback(lastResultCount, previousResultCount, query)}`;
-
-        history.push({ role: "user", content: feedback });
-
-        // Check for final answer AFTER code execution (same response may have both)
-        // But only if there was no error, output was helpful, and result is not an array
-        // (arrays indicate more processing is needed - don't accept premature answers)
-        const resultIsArray = Array.isArray(solverResult?.value);
-        if (!result.error && !lastOutputWasUnhelpful && !resultIsArray) {
-          const finalAnswer = adapter.extractFinalAnswer(response);
-          if (finalAnswer !== null) {
-            log(`[Turn ${turn}] Final answer found after code execution`);
-            let resultToReturn: unknown;
-            if (typeof finalAnswer === "object" && finalAnswer.type === "var") {
-              log(`[Turn ${turn}] Returning variable: ${finalAnswer.name}`);
-              // Check solver bindings first (preferred), then sandbox memory
-              const solverValue = solverBindings?.get(finalAnswer.name) ?? solverBindings?.get("RESULTS");
-              if (solverValue !== undefined) {
-                log(`[Turn ${turn}] Found variable in solver bindings`);
-                resultToReturn = solverValue;
-              } else {
-                const mem = sandbox.getMemory();
-                if (mem.length === 0 && lastMeaningfulOutput) {
-                  log(`[Turn ${turn}] Memory empty, returning last meaningful output instead`);
-                  resultToReturn = lastMeaningfulOutput;
-                } else {
-                  resultToReturn = mem;
-                }
-              }
-            } else {
-              resultToReturn = finalAnswer;
-            }
-
-            // Verify constraints if specified
-            const verification = verifyAndReturnResult(resultToReturn, constraint, log);
-            if (verification.valid) {
-              return verification.result;
-            } else {
-              log(`[Turn ${turn}] Constraint violation - continuing`);
-              history.push({ role: "user", content: verification.feedback });
-              continue;
-            }
-          }
-        }
-      } else {
-        log(`[Turn ${turn}] No Nucleus command extracted`);
-
-        noCodeCount++;
-        // If model is stuck (3+ consecutive no-code responses) and we have meaningful output, return it
-        if (noCodeCount >= 3 && lastMeaningfulOutput) {
-          log(`[Turn ${turn}] Model stuck (${noCodeCount} consecutive no-code responses). Returning last meaningful output.`);
-          const verification = verifyAndReturnResult(lastMeaningfulOutput, constraint, log);
-          if (verification.valid) {
-            return verification.result;
-          }
-          // Continue even if verification fails - we need to break out of the stuck state
-          return lastMeaningfulOutput;
-        }
-
-        // Check for final answer in responses without code
-        const finalAnswer = adapter.extractFinalAnswer(response);
-        if (finalAnswer !== null) {
-          // Reject if no code was ever executed
-          if (!codeExecuted) {
-            log(`[Turn ${turn}] Rejecting final answer - no code executed yet`);
-            const feedback = `ERROR: You tried to answer without reading the document.\n\n${adapter.getNoCodeFeedback()}`;
-            history.push({ role: "user", content: feedback });
-            continue;
-          }
-
-          // Reject if last execution had an error (model might be explaining the error, not answering)
-          if (lastExecutionHadError) {
-            log(`[Turn ${turn}] Rejecting final answer - last execution had error, need retry`);
-            history.push({ role: "user", content: adapter.getErrorFeedback("Previous execution failed") });
-            continue;
-          }
-
-          log(`[Turn ${turn}] Final answer received`);
-          let resultToReturn: unknown;
-          if (typeof finalAnswer === "object" && finalAnswer.type === "var") {
-            log(`[Turn ${turn}] Returning variable: ${finalAnswer.name}`);
-            const solverValue = solverBindings?.get(finalAnswer.name) ?? solverBindings?.get("RESULTS");
-            resultToReturn = solverValue !== undefined ? solverValue : sandbox.getMemory();
-          } else {
-            resultToReturn = finalAnswer;
-          }
-
-          // Verify constraints if specified
-          const verification = verifyAndReturnResult(resultToReturn, constraint, log);
-          if (verification.valid) {
-            return verification.result;
-          } else {
-            log(`[Turn ${turn}] Constraint violation - continuing`);
-            history.push({ role: "user", content: verification.feedback });
-            continue;
-          }
-        }
-
-        // Add feedback to prompt the model to provide code
-        history.push({ role: "user", content: adapter.getNoCodeFeedback() });
-      }
+    if (finalCtx.result !== null) {
+      return finalCtx.result;
     }
 
-    // Max turns reached
+    // Max turns reached without final answer
     log(`\n[RLM] Max turns (${maxTurns}) reached without final answer`);
     return `Max turns (${maxTurns}) reached without final answer. Last memory state: ${JSON.stringify(sandbox.getMemory())}`;
   } finally {

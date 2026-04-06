@@ -147,15 +147,15 @@ describe("Audit #35", () => {
     // #7 — JSON.stringify circular reference crash
     describe("#7 — RLM should handle circular references in result", () => {
       it("should have try/catch around JSON.stringify of result", () => {
-        const source = readFileSync("src/rlm.ts", "utf-8");
-        // Look for safe stringify pattern near result.result
+        const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+        // Look for safe stringify pattern near result.value
         const stringifyBlock = source.match(
-          /result\.result[\s\S]{0,200}JSON\.stringify/
+          /result\.value[\s\S]{0,200}JSON\.stringify/
         );
         expect(stringifyBlock).not.toBeNull();
         // Should have try/catch or safe stringify
         const surrounding = source.match(
-          /try\s*\{[\s\S]*?JSON\.stringify\(result\.result[\s\S]*?\}\s*catch/
+          /try\s*\{[\s\S]*?JSON\.stringify\(result\.value[\s\S]*?\}\s*catch/
         );
         expect(surrounding).not.toBeNull();
       });
@@ -230,8 +230,8 @@ describe("Audit #35", () => {
     // #13 — truncate with small max values
     describe("#13 — truncate should handle small max values safely", () => {
       it("should use Math.max(0, ...) for half calculation", () => {
-        const source = readFileSync("src/rlm.ts", "utf-8");
-        const truncate = source.match(/const truncate[\s\S]*?slice\(-half\)/);
+        const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+        const truncate = source.match(/function truncate[\s\S]*?slice\(-half\)/);
         expect(truncate).not.toBeNull();
         expect(truncate![0]).toMatch(/Math\.max\(0/);
       });

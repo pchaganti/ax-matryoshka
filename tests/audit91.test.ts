@@ -106,8 +106,8 @@ describe("Audit #91", () => {
   // =========================================================================
   describe("#7 — rlm.ts should cap JSON.stringify of result", () => {
     it("should limit stringified result length", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const jsonLine = source.indexOf("JSON.stringify(result.result");
+      const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+      const jsonLine = source.indexOf("JSON.stringify(result.value");
       expect(jsonLine).toBeGreaterThan(-1);
       const block = source.slice(jsonLine, jsonLine + 200);
       // Should slice or truncate the serialized output

@@ -315,7 +315,7 @@ describe("Audit #34", () => {
     // #18 — auto-termination regex too broad
     describe("#18 — auto-termination should be more conservative", () => {
       it("should require more than just keyword match", () => {
-        const source = readFileSync("src/rlm.ts", "utf-8");
+        const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
         const autoTerm = source.match(/computedMatch[\s\S]*?Auto-terminating/);
         expect(autoTerm).not.toBeNull();
         // Should require additional evidence beyond a keyword match
