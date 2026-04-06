@@ -493,6 +493,15 @@ function parseList(state: ParserState): LCTerm | null {
       return { tag: "fuse", collections };
     }
 
+    case "dampen": {
+      const collection = parseTerm(state);
+      if (!collection) return null;
+      const query = parseTerm(state);
+      if (!query || query.tag !== "lit" || typeof query.value !== "string")
+        return null;
+      return { tag: "dampen", collection, query: query.value };
+    }
+
     case "text_stats": {
       return { tag: "text_stats" };
     }
@@ -964,6 +973,8 @@ export function prettyPrint(term: LCTerm): string {
         : `(bm25 "${escapeForPrint(term.query)}")`;
     case "fuse":
       return `(fuse ${term.collections.map(c => prettyPrint(c)).join(" ")})`;
+    case "dampen":
+      return `(dampen ${prettyPrint(term.collection)} "${escapeForPrint(term.query)}")`;
     case "text_stats":
       return "(text_stats)";
     case "lines":

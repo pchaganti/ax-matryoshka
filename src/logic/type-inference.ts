@@ -60,6 +60,10 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
       // fuse returns array of {line, lineNum, score, signals}
       return { tag: "array", element: { tag: "any" } };
 
+    case "dampen":
+      // dampen returns array of {line, lineNum, score} (same shape, adjusted scores)
+      return { tag: "array", element: { tag: "any" } };
+
     case "text_stats":
       // text_stats returns {length, lineCount, sample}
       return { tag: "any" };

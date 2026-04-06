@@ -431,6 +431,8 @@ SYMBOL OPERATIONS (requires tree-sitter - .ts, .js, .py, .go, .md, etc.):
 FUSION:
   (fuse expr1 expr2 ...)        Fuse results from multiple searches using RRF
                                 Example: (fuse (grep "ERROR") (bm25 "error handling"))
+  (dampen results "query")      Remove false positives by checking term overlap
+                                Example: (dampen (bm25 "error") "database error")
 
 COLLECTION OPERATIONS (pure - work on RESULTS):
   (filter RESULTS pred)         Keep items matching predicate
