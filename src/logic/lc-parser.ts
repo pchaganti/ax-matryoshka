@@ -508,6 +508,19 @@ function parseList(state: ParserState): LCTerm | null {
       return { tag: "rerank", collection };
     }
 
+    case "semantic": {
+      const query = parseTerm(state);
+      if (!query || query.tag !== "lit" || typeof query.value !== "string")
+        return null;
+      const limitTerm = peek(state);
+      let limit: number | undefined;
+      if (limitTerm && limitTerm.type === "number") {
+        consume(state);
+        limit = limitTerm.value;
+      }
+      return { tag: "semantic", query: query.value, limit };
+    }
+
     case "text_stats": {
       return { tag: "text_stats" };
     }
@@ -983,6 +996,10 @@ export function prettyPrint(term: LCTerm): string {
       return `(dampen ${prettyPrint(term.collection)} "${escapeForPrint(term.query)}")`;
     case "rerank":
       return `(rerank ${prettyPrint(term.collection)})`;
+    case "semantic":
+      return term.limit
+        ? `(semantic "${escapeForPrint(term.query)}" ${term.limit})`
+        : `(semantic "${escapeForPrint(term.query)}")`;
     case "text_stats":
       return "(text_stats)";
     case "lines":

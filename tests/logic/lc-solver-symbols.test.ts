@@ -124,6 +124,7 @@ type ID = string | number;
       },
       fuzzy_search: () => [],
       bm25: () => [],
+      semantic: () => [],
       text_stats: () => ({
         length: sampleCode.length,
         lineCount: sampleCode.split("\n").length,

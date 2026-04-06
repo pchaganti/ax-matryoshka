@@ -24,6 +24,7 @@ export type LCTerm =
   | LCFuse
   | LCDampen
   | LCRerank
+  | LCSemantic
   | LCTextStats
   | LCLines
   | LCFilter
@@ -126,6 +127,16 @@ export interface LCDampen {
 export interface LCRerank {
   tag: "rerank";
   collection: LCTerm;
+}
+
+/**
+ * (semantic <query> [<limit>]) - TF-IDF cosine similarity search
+ * Returns lines ranked by semantic similarity to query
+ */
+export interface LCSemantic {
+  tag: "semantic";
+  query: string;
+  limit?: number;
 }
 
 /**

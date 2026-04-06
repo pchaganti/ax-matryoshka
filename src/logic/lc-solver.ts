@@ -27,6 +27,7 @@ export interface SolverTools {
   grep: (pattern: string) => Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }>;
   fuzzy_search: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
   bm25: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
+  semantic: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
   text_stats: () => { length: number; lineCount: number; sample: { start: string; middle: string; end: string } };
   context: string;
 }
@@ -300,6 +301,14 @@ function evaluate(
       const reranked = rerankFn(normalized, store);
       log(`[Solver] Reranked ${reranked.length} results`);
       return reranked;
+    }
+
+    case "semantic": {
+      const semanticLimit = Math.min(Math.max(1, term.limit ?? 10), 1000);
+      log(`[Solver] Executing semantic("${term.query}", ${semanticLimit})`);
+      const results = tools.semantic(term.query, semanticLimit);
+      log(`[Solver] Found ${results.length} semantic matches`);
+      return results;
     }
 
     case "text_stats": {

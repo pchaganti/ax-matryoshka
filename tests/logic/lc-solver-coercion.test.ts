@@ -39,6 +39,7 @@ function createMockTools(context: string): SolverTools {
         .slice(0, limit);
     },
     bm25: (_query: string, _limit = 10) => [],
+    semantic: (_query: string, _limit = 10) => [],
     text_stats: () => ({
       length: context.length,
       lineCount: lines.length,
