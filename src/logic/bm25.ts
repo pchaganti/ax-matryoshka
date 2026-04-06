@@ -8,12 +8,7 @@
  * to estimate relevance of documents to a given search query.
  */
 
-// ── Stopwords (from Ori-Mnemos) ─────────────────────────────────────
-const STOPWORDS = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-  "has", "he", "in", "is", "it", "its", "of", "on", "or", "that",
-  "the", "to", "was", "were", "will", "with",
-]);
+import { STOPWORDS } from "./stopwords.js";
 
 // ── Types ────────────────────────────────────────────────────────────
 export interface BM25Index {

@@ -22,6 +22,7 @@ export type LCTerm =
   | LCFuzzySearch
   | LCBm25
   | LCFuse
+  | LCDampen
   | LCTextStats
   | LCLines
   | LCFilter
@@ -104,6 +105,17 @@ export interface LCBm25 {
 export interface LCFuse {
   tag: "fuse";
   collections: LCTerm[];
+}
+
+/**
+ * (dampen <collection> <query>) - apply gravity dampening to results
+ * Halves score for results that lack overlap with query terms.
+ * Catches false positives from fuzzy/BM25 scoring.
+ */
+export interface LCDampen {
+  tag: "dampen";
+  collection: LCTerm;
+  query: string;
 }
 
 /**

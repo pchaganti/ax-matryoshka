@@ -14,6 +14,7 @@
 
 import type { LCTerm, CoercionType, SynthesisExample } from "./types.js";
 import { fuseRRF, type LineResult } from "./rrf.js";
+import { applyGravityDampening, type DampenableResult } from "./dampening.js";
 import { resolveConstraints } from "./constraint-resolver.js";
 import { run, Rel, eq, conde, exist, failo, type Var, type Substitution } from "../minikanren/index.js";
 import { synthesizeExtractor, compileToFunction, prettyPrint, type Example } from "../synthesis/evalo/index.js";
@@ -237,6 +238,28 @@ function evaluate(
       const fused = fuseRRF(signals);
       log(`[Solver] Fused into ${fused.length} results`);
       return fused;
+    }
+
+    case "dampen": {
+      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`dampen: expected array, got ${typeof collection}`);
+      }
+      // Normalize to DampenableResult — ensure all have line, lineNum, score
+      const results: DampenableResult[] = (collection as unknown[]).map((item: unknown) => {
+        const obj = item as Record<string, unknown>;
+        return {
+          ...(obj as object),
+          line: String(obj.line ?? ""),
+          lineNum: Number(obj.lineNum ?? 0),
+          score: Number(obj.score ?? 1),
+        };
+      });
+      log(`[Solver] Applying gravity dampening to ${results.length} results with query "${term.query}"`);
+      const dampened = applyGravityDampening(results, term.query);
+      const dampenedCount = results.filter((r, i) => r.score !== dampened[i].score).length;
+      log(`[Solver] Dampened ${dampenedCount} of ${results.length} results`);
+      return dampened;
     }
 
     case "text_stats": {
