@@ -91,18 +91,93 @@ await nucleus.executeCommand({ type: "query", command: "(count RESULTS)" });
 await nucleus.executeCommand({ type: "query", command: "(sum RESULTS)" });
 ```
 
+### Handle System
+
+Query results are stored server-side as handles (e.g., `$res1`). You receive compact stubs instead of full data, saving 97%+ tokens. Use `lattice_expand` to inspect actual content when needed.
+
+- **`lattice_expand`** - View full data from a handle (supports `limit`, `offset`, `format`)
+- **`lattice_bindings`** - Show all active handles and their stubs
+- **`lattice_reset`** - Clear all handles but keep the document loaded
+- **`lattice_status`** - Session info, active handles, timeout
+
 ### Common Queries
+
+#### Search
 ```scheme
-(grep "pattern")                    ; Search for regex pattern
+(grep "pattern")                    ; Regex search
 (bm25 "query terms" 10)            ; BM25 ranked keyword search
 (semantic "query terms" 10)         ; TF-IDF cosine similarity search
 (fuzzy_search "query" 10)          ; Fuzzy text search
-(count RESULTS)                     ; Count matches
-(sum RESULTS)                       ; Sum numeric values
-(map RESULTS (lambda x (match x "regex" 1)))  ; Extract data
-(filter RESULTS (lambda x (match x "pat" 0))) ; Filter results
-(lines 10 20)                       ; Get specific line range
+(text_stats)                        ; Document statistics
+(lines 10 20)                       ; Get specific line range (1-indexed)
 ```
+
+#### Symbol Operations (.ts, .js, .py, .go, .md, etc.)
+```scheme
+(list_symbols)                      ; List all symbols (functions, classes, headings, etc.)
+(list_symbols "function")           ; Filter by kind: "function", "class", "method", "interface", "type", "struct"
+(get_symbol_body "funcName")        ; Get source code for a symbol
+(get_symbol_body RESULTS)           ; Get source code from previous query result
+(find_references "identifier")      ; Find all references to an identifier
+```
+
+#### Graph Operations (knowledge graph for code structure)
+```scheme
+(callers "funcName")                ; Who calls this function?
+(callees "funcName")                ; What does this function call?
+(ancestors "ClassName")             ; Inheritance chain (extends)
+(descendants "ClassName")           ; All subclasses (transitive)
+(implementations "InterfaceName")   ; Classes implementing this interface
+(dependents "name")                 ; All transitive dependents
+(dependents "name" 2)               ; Dependents within depth limit
+(symbol_graph "name" 1)             ; Neighborhood subgraph around symbol
+```
+
+#### Collection Operations
+```scheme
+(count RESULTS)                     ; Count items
+(sum RESULTS)                       ; Sum numeric values
+(reduce RESULTS init fn)            ; Generic reduce
+(map RESULTS (lambda (x) (match x "regex" 1)))   ; Extract/transform data
+(filter RESULTS (lambda (x) (match x "pat" 0)))  ; Filter results
+```
+
+#### Predicates (for filter)
+```scheme
+(lambda (x) (match x "pattern" group))           ; Regex match predicate
+(classify "line1" true "line2" false)             ; Build classifier from examples
+```
+
+#### String Operations
+```scheme
+(match str "pattern" 1)             ; Extract regex group
+(replace str "from" "to")          ; Replace pattern in string
+(split str "delim" index)          ; Split and get part at index
+(parseInt str)                      ; Parse string to integer
+(parseFloat str)                    ; Parse string to float
+```
+
+#### Type Coercion
+```scheme
+(parseDate str)                     ; Parse date string to ISO format
+(parseCurrency str)                 ; Parse currency string to number
+(parseNumber str)                   ; Parse numeric string with separators
+(coerce term "type")                ; Coerce to: date/currency/number/boolean/string
+```
+
+#### Synthesis
+```scheme
+(synthesize (example "in1" out1) (example "in2" out2) ...)  ; Synthesize function from examples
+```
+
+#### Variables
+```scheme
+RESULTS                             ; Last array result (auto-bound)
+_1, _2, _3, ...                    ; Results from turn N (auto-bound)
+context                             ; Raw document content
+```
+
+Note: `$res1`, `$res2`, etc. are handle stubs for `lattice_expand` only. Use `RESULTS` or `_1`, `_2`, `_3` to reference previous results in queries.
 
 ### Multi-Signal Search Pipeline
 ```scheme
@@ -117,6 +192,29 @@ await nucleus.executeCommand({ type: "query", command: "(sum RESULTS)" });
 
 ;; Full pipeline
 (rerank (dampen (fuse (grep "ERROR") (bm25 "error") (semantic "failure")) "error"))
+```
+
+### Example Workflows
+
+#### Symbol Workflow
+```
+1. (list_symbols "function")         → $res1: Array(15) [preview]
+2. (get_symbol_body "myFunction")    → Returns source code directly
+3. (find_references "myFunction")    → $res2: Array(8) [references]
+```
+
+#### Graph Workflow
+```
+1. (callers "handleRequest")         → $res1: Array(3) [who calls it]
+2. (callees "handleRequest")         → $res2: Array(5) [what it calls]
+3. (ancestors "MyService")           → $res3: [BaseService, EventEmitter]
+4. (symbol_graph "handleRequest" 2)  → Subgraph: 12 nodes, 15 edges
+```
+
+#### Markdown Workflow
+```
+1. (list_symbols)                    → $res1: Array(12) [# Intro, ## Setup, ...]
+2. (grep "## Installation")         → Find specific section content
 ```
 
 ### HTTP Server Option

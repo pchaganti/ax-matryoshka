@@ -158,6 +158,16 @@ SYMBOL OPERATIONS (.ts, .js, .py, .go, .md, and more):
   (get_symbol_body "funcName")  Get source code for a symbol
   (find_references "identifier") Find all references to an identifier
 
+GRAPH OPERATIONS (knowledge graph for code structure):
+  (callers "funcName")          Who calls this function?
+  (callees "funcName")          What does this function call?
+  (ancestors "ClassName")       Inheritance chain (extends)
+  (descendants "ClassName")     All subclasses (transitive)
+  (implementations "IFace")     Classes implementing this interface
+  (dependents "name")           All transitive dependents
+  (dependents "name" 2)         Dependents within depth limit
+  (symbol_graph "name" 1)       Neighborhood subgraph around symbol
+
 AGGREGATE (returns scalar directly):
   (count RESULTS)               Count items in current results
   (sum RESULTS)                 Sum numeric values (auto-extracts from $1,234 format)
