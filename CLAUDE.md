@@ -94,11 +94,29 @@ await nucleus.executeCommand({ type: "query", command: "(sum RESULTS)" });
 ### Common Queries
 ```scheme
 (grep "pattern")                    ; Search for regex pattern
+(bm25 "query terms" 10)            ; BM25 ranked keyword search
+(semantic "query terms" 10)         ; TF-IDF cosine similarity search
+(fuzzy_search "query" 10)          ; Fuzzy text search
 (count RESULTS)                     ; Count matches
 (sum RESULTS)                       ; Sum numeric values
 (map RESULTS (lambda x (match x "regex" 1)))  ; Extract data
 (filter RESULTS (lambda x (match x "pat" 0))) ; Filter results
 (lines 10 20)                       ; Get specific line range
+```
+
+### Multi-Signal Search Pipeline
+```scheme
+;; Fuse multiple search signals using Reciprocal Rank Fusion
+(fuse (grep "ERROR") (bm25 "error handling") (semantic "failure"))
+
+;; Remove false positives with gravity dampening
+(dampen (bm25 "database error") "database error")
+
+;; Q-value learning reranker (learns across turns)
+(rerank (fuse (grep "ERROR") (bm25 "error")))
+
+;; Full pipeline
+(rerank (dampen (fuse (grep "ERROR") (bm25 "error") (semantic "failure")) "error"))
 ```
 
 ### HTTP Server Option

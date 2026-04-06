@@ -106,6 +106,10 @@ The LLM never writes JavaScript. It outputs Nucleus commands that Lattice execut
 | **Lattice Parser** | Parses S-expressions to AST |
 | **Lattice Solver** | Executes commands against document |
 | **In-Memory Handles** | Handle-based storage with FTS5 (97% token savings) |
+| **BM25 + Semantic** | Ranked keyword and TF-IDF cosine similarity search |
+| **RRF Fusion** | Reciprocal Rank Fusion for multi-signal search |
+| **Dampening** | Gravity dampening to remove false positives |
+| **Q-Value Reranker** | Learns which lines are useful across turns |
 | **miniKanren** | Relational engine for classification |
 | **RAG Hints** | Few-shot examples from past successes |
 
@@ -291,7 +295,27 @@ The model:
 ```scheme
 (grep "pattern")              ; Regex search, returns matches with line numbers
 (fuzzy_search "query" 10)     ; Fuzzy search, returns top N matches with scores
+(bm25 "query terms" 10)      ; BM25 ranked keyword search (TF-IDF scoring)
+(semantic "query terms" 10)   ; TF-IDF cosine similarity search
 (text_stats)                  ; Document metadata (length, line count, samples)
+```
+
+### Multi-Signal Fusion & Ranking
+
+Combine results from multiple search operations for better relevance:
+
+```scheme
+;; Reciprocal Rank Fusion — merge results from different search signals
+(fuse (grep "ERROR") (bm25 "error handling") (semantic "failure"))
+
+;; Gravity dampening — halve scores for false positives lacking query term overlap
+(dampen (bm25 "database error") "database error")
+
+;; Q-value reranking — learns which lines are useful across turns
+(rerank (fuse (grep "ERROR") (bm25 "error")))
+
+;; Full pipeline: fuse → dampen → rerank
+(rerank (dampen (fuse (grep "ERROR") (bm25 "error") (semantic "failure")) "error"))
 ```
 
 ### Symbol Operations (Code Files)
@@ -557,7 +581,13 @@ src/
 │   ├── lc-parser.ts    # Nucleus parser
 │   ├── lc-solver.ts    # Command executor (uses miniKanren)
 │   ├── type-inference.ts
-│   └── constraint-resolver.ts
+│   ├── constraint-resolver.ts
+│   ├── bm25.ts         # BM25 keyword search (from Ori-Mnemos)
+│   ├── semantic.ts     # TF-IDF cosine similarity search
+│   ├── rrf.ts          # Reciprocal Rank Fusion (from Ori-Mnemos)
+│   ├── dampening.ts    # Gravity dampening (from Ori-Mnemos)
+│   ├── qvalue.ts       # Q-value learning reranker (from Ori-Mnemos)
+│   └── stopwords.ts    # Shared stopword set
 ├── persistence/        # In-memory handle storage (97% token savings)
 │   ├── session-db.ts   # In-memory SQLite with FTS5
 │   ├── handle-registry.ts  # Handle creation and stubs
@@ -583,6 +613,7 @@ src/
 
 This project incorporates ideas and code from:
 
+- **[Ori-Mnemos](https://github.com/aayoawoyemi/Ori-Mnemos)** - A persistent memory infrastructure for AI agents implementing the Recursive Memory Harness framework. BM25 search, Reciprocal Rank Fusion, gravity dampening, and Q-value learning reranking were ported from Ori-Mnemos and adapted for line-based document analysis.
 - **[Nucleus](https://github.com/michaelwhitford/nucleus)** - A symbolic S-expression language by Michael Whitford. RLM uses Nucleus syntax for the constrained DSL that the LLM outputs, providing a rigid grammar that reduces model errors.
 - **[ramo](https://github.com/wjlewis/ramo)** - A miniKanren implementation in TypeScript by Will Lewis. Used for constraint-based program synthesis.
 - **[Barliman](https://github.com/webyrd/Barliman)** - A prototype smart editor by William Byrd and Greg Rosenblatt that uses program synthesis to assist programmers. The Barliman-style approach of providing input/output constraints instead of code inspired the synthesis workflow.
