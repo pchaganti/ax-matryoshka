@@ -349,6 +349,118 @@ end
     });
   });
 
+  describe("Clojure", () => {
+    it("should extract ns, def, defn, and defmacro", async () => {
+      const code = `
+(ns myapp.core
+  (:require [clojure.string :as str]))
+
+(def config {:port 3000})
+
+(defn greet [name]
+  (str "Hello, " name))
+
+(defn- private-fn [x]
+  (+ x 1))
+
+(defmacro with-logging [& body]
+  \`(do (println "Logging...") ~@body))
+`;
+      const symbols = await extractor.extractSymbols(code, ".clj");
+
+      const nsSymbol = symbols.find((s) => s.kind === "namespace" && s.name === "myapp.core");
+      expect(nsSymbol).toBeDefined();
+
+      const varSymbol = symbols.find((s) => s.kind === "variable" && s.name === "config");
+      expect(varSymbol).toBeDefined();
+
+      const functionNames = symbols.filter((s) => s.kind === "function").map((s) => s.name);
+      expect(functionNames).toContain("greet");
+      expect(functionNames).toContain("private-fn");
+      expect(functionNames).toContain("with-logging");
+    });
+
+    it("should extract defprotocol and defrecord", async () => {
+      const code = `
+(defprotocol MyProtocol
+  (my-method [this x]))
+
+(defrecord MyRecord [field1 field2])
+`;
+      const symbols = await extractor.extractSymbols(code, ".clj");
+
+      const protocolSymbol = symbols.find((s) => s.kind === "interface" && s.name === "MyProtocol");
+      expect(protocolSymbol).toBeDefined();
+
+      const recordSymbol = symbols.find((s) => s.kind === "class" && s.name === "MyRecord");
+      expect(recordSymbol).toBeDefined();
+    });
+
+    it("should extract defmulti and defmethod with dispatch values", async () => {
+      const code = `
+(defmulti dispatch-fn :type)
+
+(defmethod dispatch-fn :a [m]
+  (:value m))
+
+(defmethod dispatch-fn :b [m]
+  (:other m))
+`;
+      const symbols = await extractor.extractSymbols(code, ".clj");
+
+      const multiSymbol = symbols.find((s) => s.kind === "function" && s.name === "dispatch-fn");
+      expect(multiSymbol).toBeDefined();
+
+      const methodSymbols = symbols.filter((s) => s.kind === "function" && s.name.startsWith("dispatch-fn :"));
+      expect(methodSymbols.length).toBe(2);
+      expect(methodSymbols.map((s) => s.name)).toContain("dispatch-fn :a");
+      expect(methodSymbols.map((s) => s.name)).toContain("dispatch-fn :b");
+    });
+
+    it("should include signatures for function definitions", async () => {
+      const code = `
+(defn greet [name]
+  (str "Hello, " name))
+`;
+      const symbols = await extractor.extractSymbols(code, ".clj");
+
+      const greet = symbols.find((s) => s.name === "greet");
+      expect(greet).toBeDefined();
+      expect(greet!.signature).toBe("(defn greet [name]");
+    });
+
+    it("should preserve map destructuring in signatures", async () => {
+      const code = `
+(defn handler [{:keys [params body]} request]
+  (process params body))
+`;
+      const symbols = await extractor.extractSymbols(code, ".clj");
+
+      const handler = symbols.find((s) => s.name === "handler");
+      expect(handler).toBeDefined();
+      expect(handler!.signature).toBe("(defn handler [{:keys [params body]} request]");
+    });
+
+    it("should work with ClojureScript files", async () => {
+      const code = `
+(ns myapp.views
+  (:require [reagent.core :as r]))
+
+(defn main-view []
+  [:div "Hello"])
+`;
+      const symbols = await extractor.extractSymbols(code, ".cljs");
+
+      const nsSymbol = symbols.find((s) => s.kind === "namespace");
+      expect(nsSymbol).toBeDefined();
+      expect(nsSymbol!.name).toBe("myapp.views");
+
+      const funcSymbol = symbols.find((s) => s.kind === "function");
+      expect(funcSymbol).toBeDefined();
+      expect(funcSymbol!.name).toBe("main-view");
+    });
+  });
+
   describe("error handling", () => {
     it("should return empty array for parse errors", async () => {
       const code = `

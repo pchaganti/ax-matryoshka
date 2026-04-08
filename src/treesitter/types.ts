@@ -77,4 +77,8 @@ export interface LanguageConfig {
   moduleExport?: string;
   /** AST node type to symbol kind mapping */
   symbols: Record<string, SymbolKind>;
+  /** Whether the package uses ESM/WASM (loaded via web-tree-sitter) */
+  esm?: boolean;
+  /** WASM file name within the package root (required when esm is true) */
+  wasmFile?: string;
 }

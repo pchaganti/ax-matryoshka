@@ -19,6 +19,10 @@ export interface BuiltinGrammar {
   symbols: Record<string, SymbolKind>;
   /** How to extract grammar from module (for special cases like TypeScript) */
   moduleExport?: string;
+  /** Whether the package uses ESM/WASM (loaded via web-tree-sitter) */
+  esm?: boolean;
+  /** WASM file name within the package root (required when esm is true) */
+  wasmFile?: string;
 }
 
 /**
@@ -309,10 +313,12 @@ export const BUILTIN_GRAMMARS: Record<string, BuiltinGrammar> = {
   },
 
   clojure: {
-    package: "tree-sitter-clojure",
+    package: "@yogthos/tree-sitter-clojure",
     extensions: [".clj", ".cljs", ".cljc", ".edn"],
+    esm: true,
+    wasmFile: "tree-sitter-clojure.wasm",
     symbols: {
-      list_lit: "function", // defn, def, etc.
+      list_lit: "function", // defn, def, ns, defprotocol, etc. — handled specially
     },
   },
 

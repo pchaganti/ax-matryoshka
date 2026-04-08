@@ -83,6 +83,7 @@
     "@tree-sitter-grammars/tree-sitter-markdown": "^0.3.2",
     "@types/better-sqlite3": "^7.6.13",
     "@vscode/tree-sitter-wasm": "^0.3.0",
+    "@yogthos/tree-sitter-clojure": "^0.0.14",
     "better-sqlite3": "^12.6.2",
     "graphology": "^0.26.0",
     "graphology-dag": "^0.4.1",

@@ -3,10 +3,12 @@
  *
  * Handles initialization and lazy-loading of language grammars.
  * Uses native Node.js tree-sitter bindings for optimal performance.
+ * Falls back to web-tree-sitter (WASM) for grammars that require it.
  * Supports both built-in and custom grammars from config.
  */
 
 import { createRequire } from "node:module";
+import { dirname, resolve } from "node:path";
 import type { SupportedLanguage } from "./types.js";
 import {
   getLanguageForExtension,
@@ -28,12 +30,27 @@ type TreeSitterLanguage = any;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TreeSitterTree = any;
 
+// Lazy-loaded WASM parser components
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let WasmParserClass: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let WasmLanguageClass: any = null;
+
+async function initWasm(): Promise<void> {
+  if (!WasmParserClass) {
+    const mod = require("web-tree-sitter");
+    WasmLanguageClass = mod.Language;
+    await mod.Parser.init();
+    WasmParserClass = mod.Parser;
+  }
+}
+
 /**
  * ParserRegistry manages Tree-sitter parsers
  */
 export class ParserRegistry {
   private parser: TreeSitterParser | null = null;
-  private languages: Map<string, TreeSitterLanguage> = new Map();
+  private languages: Map<string, { lang: TreeSitterLanguage; wasm: boolean }> = new Map();
   private initialized: boolean = false;
 
   /**
@@ -77,7 +94,7 @@ export class ParserRegistry {
   /**
    * Load a language grammar (lazy-loaded on first use)
    */
-  private loadLanguage(language: string): TreeSitterLanguage {
+  private async loadLanguage(language: string): Promise<{ lang: TreeSitterLanguage; wasm: boolean }> {
     // Return cached language if available
     const cached = this.languages.get(language);
     if (cached) return cached;
@@ -88,7 +105,26 @@ export class ParserRegistry {
       throw new Error(`Unknown language: ${language}`);
     }
 
-    // Load the grammar module
+    // WASM path: load via web-tree-sitter for ESM/WASM grammars
+    if (config.esm && config.wasmFile) {
+      try {
+        await initWasm();
+        const pkgPath = require.resolve(`${config.package}/package.json`);
+        const pkgDir = dirname(pkgPath);
+        const wasmPath = resolve(pkgDir, config.wasmFile);
+        const lang = await WasmLanguageClass.load(wasmPath);
+        const entry = { lang, wasm: true };
+        this.languages.set(language, entry);
+        return entry;
+      } catch (err) {
+        throw new Error(
+          `Grammar package '${config.package}' not installed or WASM file missing. ` +
+            `Run: npm install ${config.package}`
+        );
+      }
+    }
+
+    // Native path: load via require() for CJS grammars
     let grammarModule;
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -125,8 +161,9 @@ export class ParserRegistry {
     }
 
     // Cache the language
-    this.languages.set(language, lang);
-    return lang;
+    const entry = { lang, wasm: false };
+    this.languages.set(language, entry);
+    return entry;
   }
 
   /**
@@ -164,10 +201,18 @@ export class ParserRegistry {
     }
 
     // Load the language grammar
-    const lang = this.loadLanguage(language);
+    const loaded = await this.loadLanguage(language);
 
-    // Set the parser language and parse
-    this.parser.setLanguage(lang);
+    if (loaded.wasm) {
+      // Use web-tree-sitter for WASM grammars
+      await initWasm();
+      const wasmParser = new WasmParserClass();
+      wasmParser.setLanguage(loaded.lang);
+      return wasmParser.parse(content);
+    }
+
+    // Use native tree-sitter for CJS grammars
+    this.parser.setLanguage(loaded.lang);
     return this.parser.parse(content);
   }
 
