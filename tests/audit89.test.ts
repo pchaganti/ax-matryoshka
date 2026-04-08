@@ -119,7 +119,7 @@ describe("Audit #89", () => {
   // =========================================================================
   describe("#8 — grep beforeMatch should use searchContext", () => {
     it("should use searchContext for line number calculation", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/grep.js", "utf-8");
       const beforeMatch = source.indexOf("beforeMatch");
       expect(beforeMatch).toBeGreaterThan(-1);
       const block = source.slice(beforeMatch, beforeMatch + 100);

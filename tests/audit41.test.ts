@@ -11,9 +11,9 @@ describe("Audit #41", () => {
   // =========================================================================
   describe("#1 — sandbox-tools should lock down constructor property", () => {
     it("should define constructor as undefined on sandboxGlobals", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/safe-globals.js", "utf-8");
       // Should have Object.defineProperty lockdown for constructor
-      expect(source).toMatch(/defineProperty\(sandboxGlobals,\s*['"]constructor['"]/);
+      expect(source).toMatch(/defineProperty\(globals,\s*['"]constructor['"]/);
     });
   });
 

@@ -47,11 +47,11 @@ describe("Audit #82", () => {
   // =========================================================================
   describe("#2 — execute() console override should truncate log messages", () => {
     it("should truncate log messages before pushing", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/sandbox.js", "utf-8");
       // Find the execute method's console.log override (not the initial one)
       const executeBlock = source.indexOf("const executionLogs");
       expect(executeBlock).toBeGreaterThan(-1);
-      const logOverride = source.indexOf("sandboxGlobals.console.log = ", executeBlock);
+      const logOverride = source.indexOf("consoleImpl.log = ", executeBlock);
       expect(logOverride).toBeGreaterThan(-1);
       const block = source.slice(logOverride, logOverride + 200);
       expect(block).toMatch(/\.slice\(0,|MAX_LOG_ENTRY|msg\.length/);
@@ -63,11 +63,11 @@ describe("Audit #82", () => {
   // =========================================================================
   describe("#3 — execute() should cap declaration script size", () => {
     it("should limit declaration script length before vm.Script", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/sandbox.js", "utf-8");
       const declJoin = source.indexOf('declarations.join("\\n")');
       expect(declJoin).toBeGreaterThan(-1);
       const block = source.slice(declJoin - 200, declJoin + 100);
-      expect(block).toMatch(/MAX_DECL|declScript\.length|declarations\.join.*\.length/);
+      expect(block).toMatch(/MAX_DECL|declCode\.length|declarations\.join.*\.length/);
     });
   });
 

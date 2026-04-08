@@ -40,7 +40,7 @@ describe("Audit #57", () => {
   // =========================================================================
   describe("#3 — sandbox-tools grep should check pattern is valid", () => {
     it("should guard against null/undefined pattern", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/grep.js", "utf-8");
       const grepFn = source.match(/function grep\(pattern[\s\S]*?pattern\.length/);
       expect(grepFn).not.toBeNull();
       expect(grepFn![0]).toMatch(/!pattern|typeof pattern|pattern\s*==\s*null/);

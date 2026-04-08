@@ -66,7 +66,7 @@ describe("Audit #94", () => {
   // =========================================================================
   describe("#4 — count_tokens should cap input before split", () => {
     it("should cap string length before splitting on whitespace", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/text-utils.js", "utf-8");
       const countStart = source.indexOf("function count_tokens");
       expect(countStart).toBeGreaterThan(-1);
       const block = source.slice(countStart, countStart + 400);

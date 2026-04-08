@@ -66,7 +66,7 @@ describe("Audit #84", () => {
   // =========================================================================
   describe("#4 — sandbox should expose Number.isNaN/Number.isFinite", () => {
     it("should use Number.isNaN instead of global isNaN", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/safe-globals.js", "utf-8");
       const sandboxGlobals = source.indexOf("isNaN");
       expect(sandboxGlobals).toBeGreaterThan(-1);
       // Find the sandbox globals section (near parseInt/parseFloat)

@@ -4,12 +4,21 @@
  *
  * Uses the relational synthesis engine (evalo) for Barliman-style
  * constraint-based program synthesis.
+ *
+ * Built on repl-sandbox's createSandbox with synthesis-specific
+ * globals and init code injected via the extension model.
  */
 
-import vm from "node:vm";
-import { FUZZY_SEARCH_IMPL } from "../fuzzy-search.js";
+import {
+  createSandbox,
+  GREP_IMPL,
+  FUZZY_SEARCH_IMPL,
+  COUNT_TOKENS_IMPL,
+  LOCATE_LINE_IMPL,
+  LLM_QUERY_IMPL,
+} from "repl-sandbox";
+import type { SandboxResult, SandboxOptions } from "repl-sandbox";
 import { SynthesisCoordinator } from "./coordinator.js";
-import type { SandboxResult, SandboxOptions } from "../sandbox.js";
 import {
   synthesizeExtractor as relationalSynthesize,
   compileToFunction,
@@ -33,7 +42,31 @@ export interface SandboxWithSynthesis {
 
 export interface SandboxWithSynthesisOptions extends SandboxOptions {
   verbose?: boolean;
+  maxSubCalls?: number;
 }
+
+/** Init code injected into the VM to expose synthesis functions */
+const SYNTHESIS_INIT_CODE = `
+function synthesize_regex(positive, negative) {
+  return __synthesisBridge.synthesize_regex(positive, negative || []);
+}
+
+function synthesize_extractor(examples) {
+  return __synthesisBridge.synthesize_extractor(examples);
+}
+
+function get_extractor_code(examples) {
+  return __synthesisBridge.get_extractor_code(examples);
+}
+
+function test_regex(pattern, str) {
+  return __synthesisBridge.test_regex(pattern, str);
+}
+
+function extract_with_regex(pattern, str) {
+  return __synthesisBridge.extract_with_regex(pattern, str);
+}
+`;
 
 /**
  * Create a sandboxed execution environment with synthesis capabilities
@@ -50,31 +83,20 @@ export async function createSandboxWithSynthesis(
     if (verbose) console.log(msg);
   };
 
-  // Persistent state across executions
-  const MAX_LOGS = 5000;
-  const logs: string[] = [];
-  const memory: unknown[] = [];
+  // Sub-call counting for LLM bridge
   let subCallCount = 0;
-  let disposed = false;
 
-  // Pre-compute text stats
-  const lines = context.split("\n");
-  const textStats = {
-    length: context.length,
-    lineCount: lines.length,
-    sample: {
-      start: lines.slice(0, 5).join("\n"),
-      middle: lines
-        .slice(
-          Math.max(0, Math.floor(lines.length / 2) - 2),
-          Math.floor(lines.length / 2) + 3
-        )
-        .join("\n"),
-      end: lines.slice(-5).join("\n"),
-    },
+  const llmBridge = async (prompt: string, queryOptions?: LLMQueryOptions): Promise<string> => {
+    subCallCount++;
+    if (subCallCount > maxSubCalls) {
+      throw new Error(
+        `Max sub-calls limit exceeded (${maxSubCalls}). Use text_stats() and fuzzy_search() to narrow your search first.`
+      );
+    }
+    return llmQueryFn(prompt, queryOptions);
   };
 
-  // Create synthesis bridge functions
+  // Build synthesis bridge functions
   const synthesisBridge = {
     synthesize_regex: (
       positive: string[],
@@ -118,12 +140,10 @@ export async function createSandboxWithSynthesis(
         return null;
       }
 
-      // Cap examples to prevent excessive synthesis time
       if (examples.length > MAX_EXAMPLES) {
         examples = examples.slice(0, MAX_EXAMPLES);
       }
 
-      // Validate output types — reject objects/arrays/functions
       examples = examples.filter(e => {
         const output = e.output;
         return typeof output === "string" || typeof output === "number" || typeof output === "boolean" || output === null;
@@ -141,7 +161,6 @@ export async function createSandboxWithSynthesis(
         log(`  ... and ${examples.length - 3} more`);
       }
 
-      // Try relational synthesis first (Barliman-style)
       try {
         const relationalExamples: Example[] = examples.map(e => ({
           input: e.input,
@@ -161,12 +180,10 @@ export async function createSandboxWithSynthesis(
           return fn;
         }
       } catch (err) {
-        // Log but continue to fallback
         const errMsg = err instanceof Error ? err.message : String(err);
         log(`[Synthesis] Relational synthesis failed: ${errMsg}`);
       }
 
-      // Fallback to coordinator-based synthesis
       const result = coordinator.synthesize({
         type: "extractor",
         description: "sandbox_synthesis",
@@ -195,7 +212,6 @@ export async function createSandboxWithSynthesis(
         return null;
       }
 
-      // Check for conflicting examples
       const inputMap = new Map<string, unknown>();
       for (const ex of examples) {
         if (inputMap.has(ex.input)) {
@@ -204,7 +220,7 @@ export async function createSandboxWithSynthesis(
             const existJson = JSON.stringify(existing);
             const outJson = JSON.stringify(ex.output);
             log(`[Synthesis] CONFLICT: Same input "${ex.input}" has different outputs: ${existJson.length > 1000 ? existJson.slice(0, 1000) + "..." : existJson} vs ${outJson.length > 1000 ? outJson.slice(0, 1000) + "..." : outJson}`);
-            return null; // Conflicting outputs for same input
+            return null;
           }
         }
         inputMap.set(ex.input, ex.output);
@@ -212,7 +228,6 @@ export async function createSandboxWithSynthesis(
 
       log(`[Synthesis] get_extractor_code called with ${examples.length} constraints`);
 
-      // Try relational synthesis first (Barliman-style)
       try {
         const relationalExamples: Example[] = examples.map(e => ({
           input: e.input,
@@ -232,7 +247,6 @@ export async function createSandboxWithSynthesis(
         log(`[Synthesis] Relational synthesis failed: ${errMsg}`);
       }
 
-      // Fallback to coordinator-based synthesis
       const result = coordinator.synthesize({
         type: "extractor",
         description: "sandbox_synthesis",
@@ -259,7 +273,6 @@ export async function createSandboxWithSynthesis(
         const regex = new RegExp(pattern);
         const match = str.match(regex);
         if (!match) return null;
-        // Return first capture group if available, otherwise full match
         return match[1] ?? match[0];
       } catch {
         return null;
@@ -267,494 +280,22 @@ export async function createSandboxWithSynthesis(
     },
   };
 
-  // Create the sandbox context with restricted globals
-  const sandboxGlobals = {
-    // The document context (read-only via getter)
-    context,
-
-    // Memory buffer (persists across executions)
-    memory,
-
-    // Console with log capture
-    console: {
-      log: (...args: unknown[]) => {
-        const MAX_LOG_ENTRY = 10_000;
-        const MAX_ARG_LENGTH = 1_000;
-        logs.push(args.map((a) => String(a).slice(0, MAX_ARG_LENGTH)).join(" ").slice(0, MAX_LOG_ENTRY));
-      },
-      error: (...args: unknown[]) => {
-        const MAX_LOG_ENTRY = 10_000;
-        const MAX_ARG_LENGTH = 1_000;
-        logs.push(`[ERROR] ${args.map((a) => String(a).slice(0, MAX_ARG_LENGTH)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
-      },
-      warn: (...args: unknown[]) => {
-        const MAX_LOG_ENTRY = 10_000;
-        const MAX_ARG_LENGTH = 1_000;
-        logs.push(`[WARN] ${args.map((a) => String(a).slice(0, MAX_ARG_LENGTH)).join(" ")}`.slice(0, MAX_LOG_ENTRY));
-      },
+  // Create sandbox using repl-sandbox with synthesis extensions
+  const sandbox = createSandbox(context, {
+    globals: {
+      __llmQueryBridge: llmBridge,
+      __synthesisBridge: synthesisBridge,
     },
-
-    // text_stats function
-    text_stats: () => ({ ...textStats }),
-
-    // Lines array for fuzzy search
-    __linesArray: lines,
-
-    // Synthesis bridge functions
-    __synthesisBridge: synthesisBridge,
-
-    // LLM query bridge (async)
-    __llmQueryBridge: async (
-      prompt: string,
-      queryOptions?: LLMQueryOptions
-    ): Promise<string> => {
-      if (disposed) {
-        throw new Error("Sandbox has been disposed");
-      }
-
-      subCallCount++;
-      if (subCallCount > maxSubCalls) {
-        throw new Error(
-          `Max sub-calls limit exceeded (${maxSubCalls}). Use text_stats() and fuzzy_search() to narrow your search first.`
-        );
-      }
-
-      const result = await llmQueryFn(prompt, queryOptions);
-      if (disposed) {
-        throw new Error("Sandbox was disposed during LLM query");
-      }
-      return result;
-    },
-
-    // Safe built-ins
-    JSON,
-    Math,
-    Date,
-    Array,
-    Object: Object.freeze(Object.create(null, {
-      keys: { value: Object.keys, enumerable: true },
-      values: { value: Object.values, enumerable: true },
-      entries: { value: Object.entries, enumerable: true },
-      // Object.assign removed — can enable prototype pollution via __proto__ keys
-      freeze: { value: Object.freeze, enumerable: true },
-      // Object.fromEntries removed — can create objects with __proto__ keys
-      getOwnPropertyNames: { value: Object.getOwnPropertyNames, enumerable: true },
-      hasOwn: { value: Object.hasOwn, enumerable: true },
-      is: { value: Object.is, enumerable: true },
-      create: { value: Object.create, enumerable: true },
-      // Object.defineProperty removed — can define getters/setters bypassing sandbox
-    })),
-    String,
-    Number,
-    Boolean,
-    RegExp,
-    Map,
-    Set,
-    Promise,
-    parseInt,
-    parseFloat,
-    isNaN: Number.isNaN,
-    isFinite: Number.isFinite,
-    encodeURIComponent,
-    decodeURIComponent,
-    // Override eval to prevent arbitrary code execution in sandbox
-    eval: () => { throw new Error("eval is not allowed in sandbox"); },
-
-    // Async iteration support
-    Symbol,
-  };
-
-  // Lock down constructor to prevent VM escape via this.constructor.constructor
-  Object.defineProperty(sandboxGlobals, 'constructor', {
-    value: undefined,
-    writable: false,
-    configurable: false,
+    builtins: [GREP_IMPL, FUZZY_SEARCH_IMPL, COUNT_TOKENS_IMPL, LOCATE_LINE_IMPL, LLM_QUERY_IMPL],
+    initCode: SYNTHESIS_INIT_CODE,
+    timeoutMs: options.timeoutMs,
+    maxLogs: options.maxLogs,
   });
 
-  // Create VM context
-  const vmContext = vm.createContext(sandboxGlobals);
-
-  // Initialize the sandbox with fuzzy search, native tools, synthesis tools, and llm_query wrapper
-  const initCode = `
-    ${FUZZY_SEARCH_IMPL}
-
-    // Wrap llm_query to be async-friendly
-    async function llm_query(prompt, options) {
-      return await __llmQueryBridge(prompt, options);
-    }
-
-    /**
-     * batch_llm_query - Execute multiple LLM queries in parallel
-     */
-    async function batch_llm_query(prompts, options) {
-      if (!prompts || prompts.length === 0) {
-        return [];
-      }
-      const promises = prompts.map(prompt => __llmQueryBridge(prompt, options));
-      return await Promise.all(promises);
-    }
-
-    /**
-     * grep - Fast regex search returning matches with line numbers
-     */
-    var MAX_GREP_RESULTS = 10000;
-    var MAX_GREP_ITERATIONS = 1000000;
-    var MAX_CONTEXT_LENGTH = 50_000_000;
-    function grep(pattern, flags) {
-      if (!pattern || typeof pattern !== "string") return [];
-      if (pattern.length > 500) return [];
-      if (/(\\((?:[^()]*[+*])[^()]*\\))[+*]/.test(pattern)) return [];
-      try { new RegExp(pattern); } catch(e) { return []; }
-      if (flags && typeof flags !== "string") flags = "";
-      let f = (flags || '').replace(/[^gimsuy]/g, '');
-      if (!f.includes('g')) f += 'g';
-      if (!f.includes('m')) f += 'm';
-      if (!f.includes('i')) f += 'i';
-      const regex = new RegExp(pattern, f);
-      const results = [];
-      let match;
-      var iterations = 0;
-      var searchContext = context.length > MAX_CONTEXT_LENGTH ? context.slice(0, MAX_CONTEXT_LENGTH) : context;
-
-      while ((match = regex.exec(searchContext)) !== null) {
-        if (++iterations >= MAX_GREP_ITERATIONS) break;
-        const beforeMatch = searchContext.slice(0, match.index);
-        const lineNum = (beforeMatch.match(/\\n/g) || []).length + 1;
-        const line = __linesArray[lineNum - 1] || '';
-
-        results.push({
-          match: match[0],
-          line: line,
-          lineNum: lineNum,
-          index: match.index,
-          groups: match.slice(1)
-        });
-
-        if (results.length >= MAX_GREP_RESULTS) {
-          break;
-        }
-
-        if (match[0].length === 0) {
-          regex.lastIndex++;
-        }
-      }
-
-      return results;
-    }
-
-    /**
-     * count_tokens - Estimate token count for text
-     */
-    var MAX_TOKEN_WORDS = 100000;
-    function count_tokens(text) {
-      const MAX_TOKEN_INPUT = 1_000_000;
-      var str = text === undefined ? context : text;
-      if (!str || str.length === 0) return 0;
-      if (str.length > MAX_TOKEN_INPUT) str = str.slice(0, MAX_TOKEN_INPUT);
-
-      var words = str.split(/\\s+/).filter(w => w.length > 0);
-      if (words.length > MAX_TOKEN_WORDS) words = words.slice(0, MAX_TOKEN_WORDS);
-      let tokenCount = 0;
-
-      for (const word of words) {
-        const punctuation = (word.match(/[^a-zA-Z0-9]/g) || []).length;
-        const cleanWord = word.replace(/[^a-zA-Z0-9]/g, '');
-
-        if (cleanWord.length === 0) {
-          tokenCount += punctuation;
-        } else if (cleanWord.length <= 12) {
-          tokenCount += 1 + Math.floor(punctuation / 2);
-        } else {
-          tokenCount += Math.ceil(cleanWord.length / 6) + Math.floor(punctuation / 2);
-        }
-      }
-
-      return tokenCount;
-    }
-
-    /**
-     * locate_line - Extract lines by line number (1-based)
-     */
-    function locate_line(start, end) {
-      const totalLines = __linesArray.length;
-      let startIdx = start <= 0 ? Math.max(0, totalLines + start) : start - 1;
-      let endIdx = end === undefined ? startIdx : (end <= 0 ? Math.max(0, totalLines + end) : end - 1);
-
-      if (startIdx < 0 || startIdx >= totalLines) return '';
-      if (endIdx < 0) endIdx = 0;
-      if (endIdx >= totalLines) endIdx = totalLines - 1;
-
-      if (startIdx > endIdx) {
-        const tmp = startIdx;
-        startIdx = endIdx;
-        endIdx = tmp;
-      }
-
-      // Clamp startIdx to 0 after swap (could be negative from swap with negative endIdx)
-      startIdx = Math.max(0, startIdx);
-
-      return __linesArray.slice(startIdx, endIdx + 1).join('\\n');
-    }
-
-    // ===== SYNTHESIS TOOLS =====
-
-    /**
-     * synthesize_regex - Request regex synthesis from examples
-     * @param {string[]} positive - Strings that should match
-     * @param {string[]} [negative] - Strings that should NOT match
-     * @returns {string|null} Synthesized regex pattern string or null
-     */
-    function synthesize_regex(positive, negative) {
-      return __synthesisBridge.synthesize_regex(positive, negative || []);
-    }
-
-    /**
-     * synthesize_extractor - Request extractor synthesis from input/output examples
-     * @param {Array<{input: string, output: unknown}>} examples - Input/output pairs
-     * @returns {Function|null} Extractor function or null
-     */
-    function synthesize_extractor(examples) {
-      return __synthesisBridge.synthesize_extractor(examples);
-    }
-
-    /**
-     * get_extractor_code - Get the code string for a synthesized extractor
-     * @param {Array<{input: string, output: unknown}>} examples - Input/output pairs
-     * @returns {string|null} Extractor code string or null
-     */
-    function get_extractor_code(examples) {
-      return __synthesisBridge.get_extractor_code(examples);
-    }
-
-    /**
-     * test_regex - Test a regex pattern against a string
-     * @param {string} pattern - The regex pattern string
-     * @param {string} str - String to test
-     * @returns {boolean} True if matches
-     */
-    function test_regex(pattern, str) {
-      return __synthesisBridge.test_regex(pattern, str);
-    }
-
-    /**
-     * extract_with_regex - Extract using a regex pattern
-     * @param {string} pattern - The regex pattern string (with optional capture group)
-     * @param {string} str - String to extract from
-     * @returns {string|null} Captured group (or full match) or null
-     */
-    function extract_with_regex(pattern, str) {
-      return __synthesisBridge.extract_with_regex(pattern, str);
-    }
-  `;
-
-  vm.runInContext(initCode, vmContext);
-
-  // Helper function to extract declarations
-  function extractDeclarations(code: string): {
-    declarations: string[];
-    mainCode: string;
-  } {
-    const codeLines = code.split("\n");
-    const declarations: string[] = [];
-    const mainLines: string[] = [];
-
-    for (const line of codeLines) {
-      const trimmed = line.trimStart();
-      const indent = line.length - trimmed.length;
-
-      if (
-        indent <= 2 &&
-        (trimmed.startsWith("const ") ||
-          trimmed.startsWith("let ") ||
-          trimmed.startsWith("var "))
-      ) {
-        const match = trimmed.match(
-          /^(?:const|let|var)\s+(\w+|\{[^}]+\}|\[[^\]]+\])/
-        );
-        if (match) {
-          const varName = match[1];
-          if (varName.startsWith("{") || varName.startsWith("[")) {
-            declarations.push(line.replace(/^(\s*)(?:const|let)/, "$1var"));
-          } else {
-            declarations.push(`var ${varName};`);
-            mainLines.push(line.replace(/^(\s*)(?:const|let|var)\s+/, "$1"));
-          }
-        } else {
-          mainLines.push(line);
-        }
-      } else {
-        mainLines.push(line);
-      }
-    }
-
-    return { declarations, mainCode: mainLines.join("\n") };
-  }
-
-  // Helper function to wrap code for return
-  function wrapCodeForReturn(code: string): string {
-    const trimmed = code.trim();
-    if (!trimmed) return code;
-
-    const codeLines = trimmed.split("\n");
-    let lastIndex = codeLines.length - 1;
-    while (lastIndex >= 0 && !codeLines[lastIndex].trim()) {
-      lastIndex--;
-    }
-
-    if (lastIndex < 0) return code;
-
-    const lastLine = codeLines[lastIndex].trim();
-    const lineWithoutSemi = lastLine.endsWith(";")
-      ? lastLine.slice(0, -1)
-      : lastLine;
-
-    const isStatement =
-      lastLine.startsWith("//") ||      // Comment - don't wrap
-      lastLine.startsWith("/*") ||      // Block comment start
-      lastLine.startsWith("const ") ||
-      lastLine.startsWith("let ") ||
-      lastLine.startsWith("var ") ||
-      lastLine.startsWith("function ") ||
-      lastLine.startsWith("class ") ||
-      lastLine.startsWith("if ") ||
-      lastLine.startsWith("if(") ||
-      lastLine.startsWith("for ") ||
-      lastLine.startsWith("for(") ||
-      lastLine.startsWith("while ") ||
-      lastLine.startsWith("while(") ||
-      lastLine.startsWith("switch ") ||
-      lastLine.startsWith("switch(") ||
-      lastLine.startsWith("try ") ||
-      lastLine.startsWith("try{") ||
-      lastLine.startsWith("return ") ||
-      lastLine.startsWith("throw ") ||
-      lastLine === "}" ||
-      lastLine.endsWith("{") ||
-      lastLine.endsWith("}") ||
-      lineWithoutSemi.endsWith("}") ||
-      lineWithoutSemi === ")" ||
-      /^\s*\}\s*\)/.test(lineWithoutSemi);
-
-    if (isStatement) return code;
-
-    const beforeLast = codeLines.slice(0, lastIndex).join("\n");
-    let expression = lastLine;
-    if (expression.endsWith(";")) {
-      expression = expression.slice(0, -1);
-    }
-
-    return `${beforeLast}\n__result__ = ${expression};`;
-  }
-
   return {
-    async execute(code: string, timeoutMs = 30000): Promise<SandboxResult> {
-      if (disposed) {
-        return {
-          result: null,
-          logs: [...logs],
-          error: "Sandbox has been disposed",
-        };
-      }
-
-      const executionLogs: string[] = [];
-
-      const originalLog = sandboxGlobals.console.log;
-      const originalError = sandboxGlobals.console.error;
-      const originalWarn = sandboxGlobals.console.warn;
-
-      const MAX_LOG_ENTRY = 10_000;
-      sandboxGlobals.console.log = (...args: unknown[]) => {
-        const msg = args.map((a) => String(a)).join(" ").slice(0, MAX_LOG_ENTRY);
-        executionLogs.push(msg);
-        logs.push(msg);
-      };
-      sandboxGlobals.console.error = (...args: unknown[]) => {
-        const msg = `[ERROR] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY);
-        executionLogs.push(msg);
-        logs.push(msg);
-      };
-      sandboxGlobals.console.warn = (...args: unknown[]) => {
-        const msg = `[WARN] ${args.map((a) => String(a)).join(" ")}`.slice(0, MAX_LOG_ENTRY);
-        executionLogs.push(msg);
-        logs.push(msg);
-      };
-
-      try {
-        const { declarations, mainCode } = extractDeclarations(code);
-
-        if (declarations.length > 0) {
-          const MAX_DECL_LENGTH = 100_000;
-          const declCode = declarations.join("\n");
-          if (declCode.length > MAX_DECL_LENGTH) {
-            throw new Error("Declaration script too large");
-          }
-          const declScript = new vm.Script(declCode);
-          declScript.runInContext(vmContext);
-        }
-
-        const wrappedCode = `
-          (async () => {
-            var __result__;
-            ${wrapCodeForReturn(mainCode)}
-            return __result__;
-          })()
-        `;
-
-        const script = new vm.Script(wrappedCode);
-
-        const resultPromise = script.runInContext(vmContext, {
-          timeout: timeoutMs,
-          displayErrors: true,
-        }) as Promise<unknown>;
-
-        let timeoutId: ReturnType<typeof setTimeout> | undefined;
-        const timeoutPromise = new Promise((_, reject) => {
-          timeoutId = setTimeout(
-            () => reject(new Error(`Execution timeout after ${timeoutMs}ms`)),
-            timeoutMs
-          );
-        });
-
-        try {
-          const result = await Promise.race([resultPromise, timeoutPromise]);
-          return {
-            result,
-            logs: executionLogs,
-          };
-        } finally {
-          if (timeoutId) clearTimeout(timeoutId);
-        }
-      } catch (err) {
-        const errorMessage =
-          err instanceof Error ? err.message : String(err);
-
-        return {
-          result: null,
-          logs: executionLogs,
-          error: errorMessage,
-        };
-      } finally {
-        sandboxGlobals.console.log = originalLog;
-        sandboxGlobals.console.error = originalError;
-        sandboxGlobals.console.warn = originalWarn;
-        if (logs.length > MAX_LOGS) {
-          logs.splice(0, logs.length - MAX_LOGS);
-        }
-      }
-    },
-
-    getMemory(): unknown[] {
-      return [...memory];
-    },
-
-    dispose(): void {
-      disposed = true;
-      logs.length = 0;
-      memory.length = 0;
-    },
-
-    getCoordinator(): SynthesisCoordinator {
-      return coordinator;
-    },
+    execute: sandbox.execute.bind(sandbox),
+    getMemory: sandbox.getMemory.bind(sandbox),
+    dispose: sandbox.dispose.bind(sandbox),
+    getCoordinator: () => coordinator,
   };
 }

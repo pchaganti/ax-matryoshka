@@ -19,7 +19,7 @@ import { getRAGManager, type RAGManager } from "./rag/manager.js";
 import { validateRegex, type SolverTools } from "./logic/lc-solver.js";
 import * as bm25Module from "./logic/bm25.js";
 import * as semanticModule from "./logic/semantic.js";
-import { FSMEngine } from "./fsm/engine.js";
+import { FSMEngine } from "repl-sandbox";
 import { buildRLMSpec, createInitialContext, type RLMContext } from "./fsm/rlm-states.js";
 
 /**
