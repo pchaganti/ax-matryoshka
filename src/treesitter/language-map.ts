@@ -24,6 +24,8 @@ function builtinToConfig(language: string, builtin: BuiltinGrammar): LanguageCon
     package: builtin.package,
     moduleExport: builtin.moduleExport,
     symbols: builtin.symbols,
+    esm: builtin.esm,
+    wasmFile: builtin.wasmFile,
   };
 }
 

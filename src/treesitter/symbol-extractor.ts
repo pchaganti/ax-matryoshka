@@ -76,6 +76,15 @@ const CONTAINER_TYPES = new Set([
 ]);
 
 const ELIXIR_FUNCTION_MACROS = new Set(["def", "defp", "defmacro", "defmacrop"]);
+
+/** Clojure def forms that define functions */
+const CLOJURE_FUNCTION_FORMS = new Set(["defn", "defn-", "defmacro", "defmethod", "defmulti"]);
+/** Clojure def forms that define types/protocols (containers) */
+const CLOJURE_CONTAINER_FORMS = new Set(["defprotocol", "defrecord", "deftype", "definterface"]);
+/** Clojure forms that define variables/constants */
+const CLOJURE_VARIABLE_FORMS = new Set(["def", "defonce"]);
+/** The ns form */
+const CLOJURE_NS_FORM = "ns";
 const SIGNATURE_FUNCTION_TYPES = [
   "function_declaration",
   "method_definition",
@@ -178,6 +187,14 @@ export class SymbolExtractor {
         symbols.push(elixirSymbol.symbol);
         if (elixirSymbol.isContainer) {
           currentParentId = elixirSymbol.symbol.id!;
+        }
+      }
+    } else if (language === "clojure" && node.type === "list_lit") {
+      const clojureSymbol = this.extractClojureListSymbol(node, parentId);
+      if (clojureSymbol) {
+        symbols.push(clojureSymbol.symbol);
+        if (clojureSymbol.isContainer) {
+          currentParentId = clojureSymbol.symbol.id!;
         }
       }
     } else {
@@ -558,6 +575,113 @@ export class SymbolExtractor {
     return this.getNormalizedNodeText(node);
   }
 
+  /**
+   * Extract a symbol from a Clojure list_lit node (e.g., (defn foo [...] ...))
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private extractClojureListSymbol(
+    node: any,
+    parentId: number | null
+  ): { symbol: Symbol; isContainer: boolean } | null {
+    const formName = this.getClojureFormName(node);
+    if (!formName) return null;
+
+    const defName = this.getClojureDefinedName(node);
+    if (!defName) return null;
+
+    if (CLOJURE_FUNCTION_FORMS.has(formName)) {
+      // defmethod includes the dispatch value: (defmethod foo :bar [...] ...)
+      const name = formName === "defmethod"
+        ? this.getClojureDefmethodName(node) ?? defName
+        : defName;
+      const symbol = this.buildSymbol(name, node, "function", parentId, "clojure");
+      return symbol ? { symbol, isContainer: false } : null;
+    }
+
+    if (CLOJURE_CONTAINER_FORMS.has(formName)) {
+      const kind: SymbolKind = formName === "defprotocol" || formName === "definterface"
+        ? "interface" : "class";
+      const symbol = this.buildSymbol(defName, node, kind, parentId, "clojure");
+      return symbol ? { symbol, isContainer: true } : null;
+    }
+
+    if (CLOJURE_VARIABLE_FORMS.has(formName)) {
+      const symbol = this.buildSymbol(defName, node, "variable", parentId, "clojure");
+      return symbol ? { symbol, isContainer: false } : null;
+    }
+
+    if (formName === CLOJURE_NS_FORM) {
+      const symbol = this.buildSymbol(defName, node, "namespace", parentId, "clojure");
+      return symbol ? { symbol, isContainer: true } : null;
+    }
+
+    return null;
+  }
+
+  /**
+   * Get the form name from a Clojure list_lit (first sym_lit child's text)
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getClojureFormName(node: any): string | null {
+    if (!node || node.type !== "list_lit") return null;
+    const childLimit = Math.min(node.childCount ?? 0, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
+      const child = node.child(i);
+      if (child?.type === "sym_lit") {
+        const nameNode = child.childForFieldName?.("name");
+        return nameNode?.text?.trim() ?? child.text?.trim() ?? null;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Get the defined name from a Clojure def form (second sym_lit child)
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getClojureDefinedName(node: any): string | null {
+    if (!node) return null;
+    let symCount = 0;
+    const childLimit = Math.min(node.childCount ?? 0, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
+      const child = node.child(i);
+      if (child?.type === "sym_lit") {
+        symCount++;
+        if (symCount === 2) {
+          const nameNode = child.childForFieldName?.("name");
+          return nameNode?.text?.trim() ?? child.text?.trim() ?? null;
+        }
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Get defmethod name including dispatch value: "name :dispatch-val"
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getClojureDefmethodName(node: any): string | null {
+    const name = this.getClojureDefinedName(node);
+    if (!name) return null;
+
+    // The dispatch value is the third meaningful child after defmethod and name
+    let symCount = 0;
+    const childLimit = Math.min(node.childCount ?? 0, MAX_CHILDREN);
+    for (let i = 0; i < childLimit; i++) {
+      const child = node.child(i);
+      if (!child?.isNamed) continue;
+      if (child.type === "sym_lit") {
+        symCount++;
+        continue;
+      }
+      // After the 2 sym_lits (defmethod + name), the next named node is the dispatch value
+      if (symCount >= 2 && child.text) {
+        return `${name} ${child.text.trim()}`;
+      }
+    }
+    return name;
+  }
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private getNormalizedNodeText(node: any): string | null {
     if (!node || typeof node.text !== "string") return null;
@@ -590,7 +714,9 @@ export class SymbolExtractor {
 
     const isElixirDefinition =
       language === "elixir" && node.type === "call" && ELIXIR_FUNCTION_MACROS.has(this.getElixirCallTargetName(node) ?? "");
-    if (!SIGNATURE_FUNCTION_TYPES.includes(node.type) && !isElixirDefinition) return undefined;
+    const isClojureDefinition =
+      language === "clojure" && node.type === "list_lit" && CLOJURE_FUNCTION_FORMS.has(this.getClojureFormName(node) ?? "");
+    if (!SIGNATURE_FUNCTION_TYPES.includes(node.type) && !isElixirDefinition && !isClojureDefinition) return undefined;
 
     const text = node.text;
     const lines = text.split("\n", 50);
@@ -602,7 +728,9 @@ export class SymbolExtractor {
         if (colonIndex !== -1) {
           firstLine = firstLine.substring(0, colonIndex + 1);
         }
-      } else {
+      } else if (language !== "clojure") {
+        // Skip brace truncation for Clojure — {} is used for map literals
+        // and commonly appears in parameter destructuring
         const braceIndex = firstLine.indexOf("{");
         if (braceIndex !== -1) {
           firstLine = firstLine.substring(0, braceIndex).trim();

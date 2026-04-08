@@ -117,7 +117,7 @@ describe("Audit #61", () => {
       const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
       const sigStart = source.indexOf("private getSignature");
       expect(sigStart).toBeGreaterThan(-1);
-      const block = source.slice(sigStart, sigStart + 600);
+      const block = source.slice(sigStart, sigStart + 800);
       // split("\n", limit) or split("\n").slice(0, N)
       expect(block).toMatch(/split\("\\n",\s*\d+\)|split\("\\n"\)\.slice/);
     });
