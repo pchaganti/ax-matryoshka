@@ -11,7 +11,7 @@ describe("Audit #47", () => {
   // =========================================================================
   describe("#1 — sandbox grep should sanitize flags parameter", () => {
     it("should only allow safe regex flags via whitelist", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/grep.js", "utf-8");
       const grepFn = source.match(/function grep\(pattern, flags\)[\s\S]*?while/);
       expect(grepFn).not.toBeNull();
       // Should whitelist-filter flags to only safe regex characters [gimsuy]
@@ -121,8 +121,8 @@ describe("Audit #47", () => {
   // =========================================================================
   describe("#10 — sandbox locate_line should clamp negative start to 0", () => {
     it("should clamp startIdx to 0 when negative after normalization", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
-      const locateFn = source.match(/function locate_line[\s\S]*?\n    \}/);
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/text-utils.js", "utf-8");
+      const locateFn = source.match(/function locate_line[\s\S]*?join\('\\\\n'\)/);
       expect(locateFn).not.toBeNull();
       // Should clamp startIdx to >= 0 after swap, and validate ordering
       expect(locateFn![0]).toMatch(/startIdx\s*>\s*endIdx[\s\S]*?startIdx\s*=\s*Math\.max\(0/);

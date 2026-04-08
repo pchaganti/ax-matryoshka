@@ -117,7 +117,7 @@ describe("Audit #78", () => {
   // =========================================================================
   describe("#8 — grep should type-check flags parameter", () => {
     it("should validate typeof flags === string", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/grep.js", "utf-8");
       const grepFn = source.indexOf("function grep(pattern, flags)");
       expect(grepFn).toBeGreaterThan(-1);
       const block = source.slice(grepFn, grepFn + 400);

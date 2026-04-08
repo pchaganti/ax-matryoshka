@@ -10,7 +10,7 @@ import type { SynthesisConstraint } from "../constraints/types.js";
 import type { SandboxWithSynthesis } from "../synthesis/sandbox-tools.js";
 import type { RAGManager } from "../rag/manager.js";
 import type { SolverTools, Bindings } from "../logic/lc-solver.js";
-import type { FSMSpec, State } from "./engine.js";
+import type { FSMSpec, State } from "repl-sandbox";
 
 import { parse as parseLC } from "../logic/lc-parser.js";
 import { isClassifyTerm, validateClassifyExamples } from "../logic/lc-compiler.js";

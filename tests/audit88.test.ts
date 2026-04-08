@@ -35,8 +35,8 @@ describe("Audit #88", () => {
   // =========================================================================
   describe("#2 — console.log should cap individual args before join", () => {
     it("should slice individual args before joining", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
-      const logFn = source.indexOf("log: (...args");
+      const source = readFileSync("node_modules/repl-sandbox/dist/sandbox.js", "utf-8");
+      const logFn = source.indexOf("log: (...args)");
       expect(logFn).toBeGreaterThan(-1);
       const block = source.slice(logFn, logFn + 300);
       // Each arg should be individually capped via .slice() before join
@@ -49,7 +49,7 @@ describe("Audit #88", () => {
   // =========================================================================
   describe("#3 — grep should cap context size", () => {
     it("should limit context length before processing", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/grep.js", "utf-8");
       const grepFn = source.indexOf("function grep(pattern");
       expect(grepFn).toBeGreaterThan(-1);
       const block = source.slice(Math.max(0, grepFn - 200), grepFn + 500);

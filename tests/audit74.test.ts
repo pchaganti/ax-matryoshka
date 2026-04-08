@@ -51,8 +51,8 @@ describe("Audit #74", () => {
   // =========================================================================
   describe("#4 — sandbox-tools log entries should cap per-entry size", () => {
     it("should truncate individual log entries", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
-      const consoleLogs = source.indexOf("log: (...args: unknown[])");
+      const source = readFileSync("node_modules/repl-sandbox/dist/sandbox.js", "utf-8");
+      const consoleLogs = source.indexOf("log: (...args)");
       expect(consoleLogs).toBeGreaterThan(-1);
       const block = source.slice(consoleLogs, consoleLogs + 300);
       // Should have per-entry size cap via .slice or MAX_LOG_ENTRY

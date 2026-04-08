@@ -175,27 +175,30 @@ describe("SessionManager (Persistent Sandbox)", () => {
       expect(result.result).toHaveLength(1);
     });
 
-    it("should track sub-call count across queries", async () => {
+    it("should delegate llm_query calls to the provided LLM function", async () => {
+      // Sub-call counting is now in createSandboxWithSynthesis (sandbox-tools.ts),
+      // not in the session manager. The session manager delegates llm_query
+      // to the provided LLM function without counting.
+      const calls: string[] = [];
+      const trackingLLM = async (prompt: string) => {
+        calls.push(prompt);
+        return `Response: ${prompt}`;
+      };
+
       const sandbox = await sessionManager.getOrCreate(
         "/path/to/doc.txt",
         "Content",
-        mockLLM,
-        { maxSubCalls: 3 }
+        trackingLLM
       );
 
-      // First query: 2 calls
       await sandbox.execute(`
         await llm_query("call 1");
         await llm_query("call 2");
       `);
 
-      // Second query: 2 more calls (should hit limit)
-      const result = await sandbox.execute(`
-        await llm_query("call 3");
-        await llm_query("call 4");
-      `);
-
-      expect(result.error).toMatch(/max.*calls|limit.*exceeded/i);
+      expect(calls).toHaveLength(2);
+      expect(calls[0]).toBe("call 1");
+      expect(calls[1]).toBe("call 2");
     });
   });
 

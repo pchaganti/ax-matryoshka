@@ -134,7 +134,7 @@ describe("Audit #71", () => {
   // =========================================================================
   describe("#10 — sandbox count_tokens should cap words array", () => {
     it("should limit words array size", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/text-utils.js", "utf-8");
       const fnStart = source.indexOf("function count_tokens(");
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 300);

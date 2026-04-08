@@ -11,12 +11,11 @@ describe("Audit #40", () => {
   // =========================================================================
   describe("#1 — sandbox-tools should not expose raw Object global", () => {
     it("should use a frozen/safe Object instead of raw Object", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
-      // Find the sandboxGlobals object definition
-      const globalsBlock = source.match(/sandboxGlobals\s*=\s*\{[\s\S]*?Safe built-ins[\s\S]*?Object[\s\S]*?\n/);
-      expect(globalsBlock).not.toBeNull();
-      // Should NOT pass raw Object — should be a frozen safe subset
-      expect(globalsBlock![0]).not.toMatch(/^\s*Object,\s*$/m);
+      const source = readFileSync("node_modules/repl-sandbox/dist/safe-globals.js", "utf-8");
+      // Safe globals should use Object.freeze(Object.create(null, ...)) not raw Object
+      expect(source).toMatch(/Object\.freeze\(Object\.create\(null/);
+      // Should NOT pass raw Object
+      expect(source).not.toMatch(/^\s*Object,\s*$/m);
     });
   });
 
@@ -51,8 +50,8 @@ describe("Audit #40", () => {
   // =========================================================================
   describe("#4 — sandbox-tools should cap logs array", () => {
     it("should have a MAX_LOGS limit", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
-      expect(source).toMatch(/MAX_LOGS|logs\.length\s*>/);
+      const source = readFileSync("node_modules/repl-sandbox/dist/sandbox.js", "utf-8");
+      expect(source).toMatch(/maxLogs|logs\.length\s*>/);
     });
   });
 
@@ -61,7 +60,7 @@ describe("Audit #40", () => {
   // =========================================================================
   describe("#5 — sandbox-tools textStats.middle should guard negative index", () => {
     it("should use Math.max(0, ...) for middle slice start", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/sandbox.js", "utf-8");
       // The middle slice should use Math.max(0, ...) to prevent negative index
       expect(source).toMatch(/middle[\s\S]*?\.slice\(\s*\n?\s*Math\.max\(0/);
     });

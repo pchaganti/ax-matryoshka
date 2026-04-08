@@ -65,8 +65,8 @@ describe("Audit #93", () => {
   describe("#4 — session manager should cap sessions", () => {
     it("should have a MAX_SESSIONS limit", () => {
       const source = readFileSync("src/session.ts", "utf-8");
-      // Should have a max sessions cap
-      expect(source).toMatch(/MAX_SESSIONS|sessions\.size\s*>=|sessions\.size\s*>/);
+      // Should have a max sessions cap (either local or via repl-sandbox's maxSessions option)
+      expect(source).toMatch(/MAX_SESSIONS|maxSessions|sessions\.size\s*>=|sessions\.size\s*>/);
     });
   });
 
@@ -75,12 +75,12 @@ describe("Audit #93", () => {
   // =========================================================================
   describe("#5 — session getOrCreate should validate filePath length", () => {
     it("should check filePath length", () => {
-      const source = readFileSync("src/session.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/session.js", "utf-8");
       const getOrCreateStart = source.indexOf("async getOrCreate");
       expect(getOrCreateStart).toBeGreaterThan(-1);
       const block = source.slice(getOrCreateStart, getOrCreateStart + 400);
-      // Should validate filePath length
-      expect(block).toMatch(/filePath\.length|MAX_PATH/);
+      // Should validate key (filePath) length
+      expect(block).toMatch(/key\.length|maxKeyLength|MAX_PATH/);
     });
   });
 

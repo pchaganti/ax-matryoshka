@@ -65,10 +65,8 @@ describe("Audit #69", () => {
   // =========================================================================
   describe("#5 — sandbox grep should cap iterations", () => {
     it("should have MAX_GREP_ITERATIONS or iteration counter", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
-      const grepLoop = source.indexOf("while ((match = regex.exec(searchContext))") !== -1
-        ? source.indexOf("while ((match = regex.exec(searchContext))")
-        : source.indexOf("while ((match = regex.exec(context))");
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/grep.js", "utf-8");
+      const grepLoop = source.indexOf("while ((match = regex.exec(searchContext))");
       expect(grepLoop).toBeGreaterThan(-1);
       const block = source.slice(grepLoop, grepLoop + 300);
       expect(block).toMatch(/MAX_GREP_ITERATIONS|iterations\s*>=|iterations\s*>/i);

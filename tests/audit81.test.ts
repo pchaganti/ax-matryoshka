@@ -111,7 +111,7 @@ describe("Audit #81", () => {
   // =========================================================================
   describe("#7 — sandbox should not expose Object.assign", () => {
     it("should remove or guard Object.assign in sandbox globals", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/safe-globals.js", "utf-8");
       const objectBlock = source.indexOf("Object: Object.freeze(Object.create(null");
       expect(objectBlock).toBeGreaterThan(-1);
       const block = source.slice(objectBlock, objectBlock + 500);

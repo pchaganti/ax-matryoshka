@@ -72,7 +72,7 @@ describe("Audit #28", () => {
   // =============================================
   describe("#2 — locate_line newline join (not a bug)", () => {
     it("should use escaped newline in template literal context", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
+      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/text-utils.js", "utf-8");
       const joinMatch = source.match(/return __linesArray\.slice\(startIdx, endIdx \+ 1\)\.join\(([^)]+)\)/);
       expect(joinMatch).not.toBeNull();
       // In template literal context, '\\n' correctly becomes '\n' at runtime
