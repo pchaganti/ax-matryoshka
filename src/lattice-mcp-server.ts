@@ -322,8 +322,14 @@ The LLM carries this compact stub (~15 tokens) instead of the full content (~200
 
 WORKFLOW:
 1. lattice_memo content="<summary>" label="what this is"  → $memo1 stub
-2. Continue working, carrying just the stub
-3. lattice_expand $memo1  → Full content when you need it
+2. Keep a brief index in your response text so you remember what's stashed:
+   "Stashed: $memo1 (auth architecture — middleware chain, session flow)"
+3. Continue working, carrying just the index (~10 tokens per memo)
+4. lattice_expand $memo1  → Full content when you actually need it
+
+IMPORTANT: After stashing, always note the handle + label + a short description
+of what's inside in your response. This avoids needing lattice_bindings later
+to remember what you stored. Update the index when you add or delete memos.
 
 Memos persist across document loads. No lattice_load required.
 Session timeout: ${SESSION_TIMEOUT_MS / 60000} minutes (resets on any tool call).`,

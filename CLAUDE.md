@@ -263,6 +263,20 @@ lattice_expand $memo1
 lattice_load ./other-file.ts    # $memo1 survives this
 ```
 
+**IMPORTANT — Maintain a memo index**: After stashing memos, include a brief index
+in your response so you know what's available on future turns without calling
+`lattice_bindings`. Example:
+
+```
+Stashed memos:
+- $memo1: "auth module architecture" — key types, middleware chain, session flow
+- $memo2: "perf bottleneck analysis" — hot paths, allocation sites, recommendations
+```
+
+Keep the index to one line per memo (handle + label + what's inside). Update it
+when you add or delete memos. This costs ~10 tokens per memo but saves a tool call
+every time you need to decide what to expand.
+
 **Token savings**: ~93% over a 30-message session with 3 source files stashed as memos.
 Traditional roundtripping: 836K tokens. Memo-based: 57K tokens.
 
