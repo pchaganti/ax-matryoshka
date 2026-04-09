@@ -93,7 +93,7 @@
     "matryoshka-rlm": "^0.2.5",
     "ramo": "^0.1.2",
     "repl-sandbox": "^0.1.1",
-    "tree-sitter": "^0.21.1",
+    "tree-sitter": "^0.22.4",
     "tree-sitter-css": "^0.21.1",
     "tree-sitter-elixir": "^0.3.5",
     "tree-sitter-go": "^0.23.4",
