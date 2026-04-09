@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { tokenize, buildBM25Index, searchBM25 } from "../../src/logic/bm25.js";
+import { tokenize, buildBM25Index, searchBM25, type BM25Index } from "../../src/logic/bm25.js";
 
 describe("BM25 tokenizer", () => {
   it("should lowercase and split on non-alphanumeric", () => {
@@ -144,5 +144,21 @@ describe("BM25 search", () => {
     const results = searchBM25("error error error", lines, index);
     // Should still work, just boosting "error" term
     expect(results.length).toBeGreaterThan(0);
+  });
+
+  it("should return finite scores when avgDocLength is 0 (bug #1)", () => {
+    // Construct a mismatched index: avgDocLength=0 but termFreqs has entries
+    const index: BM25Index = {
+      termFreqs: new Map([["test", new Map([[1, 1]])]]),
+      docLengths: new Map([[1, 0]]),
+      avgDocLength: 0,
+      docCount: 1,
+    };
+    const lines = ["test line"];
+    const results = searchBM25("test", lines, index);
+    expect(results.length).toBeGreaterThan(0);
+    for (const r of results) {
+      expect(Number.isFinite(r.score)).toBe(true);
+    }
   });
 });

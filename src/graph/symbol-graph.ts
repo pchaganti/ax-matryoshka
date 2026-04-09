@@ -120,9 +120,20 @@ export class SymbolGraph {
     return this.transitiveIncoming(name, "extends");
   }
 
-  /** All classes that implement this interface */
+  /** All classes that implement this interface (transitive via extends) */
   implementations(name: string): Symbol[] {
-    return this.incomingByRelation(name, "implements");
+    const direct = this.incomingByRelation(name, "implements");
+    const all = [...direct];
+    const seen = new Set(direct.map(s => s.name));
+    for (const impl of direct) {
+      for (const desc of this.descendants(impl.name)) {
+        if (!seen.has(desc.name)) {
+          seen.add(desc.name);
+          all.push(desc);
+        }
+      }
+    }
+    return all;
   }
 
   /**
@@ -146,7 +157,7 @@ export class SymbolGraph {
         if (!visited.has(source)) {
           visited.add(source);
           const sym = this.graph.getNodeAttribute(source, "symbol");
-          result.push(sym);
+          if (sym) result.push(sym);
           queue.push({ node: source, depth: depth + 1 });
         }
       });
@@ -184,7 +195,8 @@ export class SymbolGraph {
 
     const nodes: Symbol[] = [];
     for (const n of nodeSet) {
-      nodes.push(this.graph.getNodeAttribute(n, "symbol"));
+      const sym = this.graph.getNodeAttribute(n, "symbol");
+      if (sym) nodes.push(sym);
     }
 
     const edges: NeighborhoodEdge[] = [];
@@ -215,7 +227,8 @@ export class SymbolGraph {
     const result: Symbol[] = [];
     this.graph.forEachInEdge(name, (_edge, attrs, source) => {
       if (attrs.relation === relation) {
-        result.push(this.graph.getNodeAttribute(source, "symbol"));
+        const sym = this.graph.getNodeAttribute(source, "symbol");
+        if (sym) result.push(sym);
       }
     });
     return result;
@@ -226,7 +239,8 @@ export class SymbolGraph {
     const result: Symbol[] = [];
     this.graph.forEachOutEdge(name, (_edge, attrs, _source, target) => {
       if (attrs.relation === relation) {
-        result.push(this.graph.getNodeAttribute(target, "symbol"));
+        const sym = this.graph.getNodeAttribute(target, "symbol");
+        if (sym) result.push(sym);
       }
     });
     return result;
@@ -242,7 +256,8 @@ export class SymbolGraph {
       this.graph.forEachInEdge(current, (_edge, attrs, source) => {
         if (attrs.relation === relation && !visited.has(source)) {
           visited.add(source);
-          result.push(this.graph.getNodeAttribute(source, "symbol"));
+          const sym = this.graph.getNodeAttribute(source, "symbol");
+          if (sym) result.push(sym);
           queue.push(source);
         }
       });

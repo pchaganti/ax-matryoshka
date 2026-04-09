@@ -165,6 +165,7 @@ export function rerank(
   const simNorm = zNormalize(simRaw);
   const qNorm = zNormalize(qRaw);
 
+  // Compute all scores before mutating store (atomic scoring)
   const reranked: RerankedResult[] = results.map((r, i) => {
     // Lambda blend
     const blended = (1 - lambda) * simNorm[i] + lambda * qNorm[i];
@@ -176,13 +177,13 @@ export function rerank(
     // Raw score
     const score = blended + ucb;
 
-    // Increment exposure
-    store.incrementExposure(r.lineNum);
-
     return { ...r, score, qScore: qRaw[i] };
   });
 
-  // Increment query count
+  // Mutate store after all scores are computed
+  for (const r of results) {
+    store.incrementExposure(r.lineNum);
+  }
   store.incrementQueryCount();
 
   reranked.sort((a, b) => b.score - a.score);

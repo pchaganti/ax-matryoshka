@@ -203,6 +203,18 @@ describe("SymbolGraph", () => {
     it("should return empty for class (not an interface)", () => {
       expect(graph.implementations("SqlRepo")).toEqual([]);
     });
+
+    it("should find transitive implementations via extends (bug #10)", () => {
+      // PooledSqlRepo extends SqlRepo which implements IRepo
+      graph.addSymbol(makeSymbol("PooledSqlRepo", "class"));
+      graph.addEdge("PooledSqlRepo", "SqlRepo", "extends");
+
+      const impls = graph.implementations("IRepo");
+      const names = impls.map((s) => s.name).sort();
+      expect(names).toContain("SqlRepo");
+      expect(names).toContain("MockRepo");
+      expect(names).toContain("PooledSqlRepo");
+    });
   });
 
   describe("dependents (transitive outgoing edges of any type)", () => {
@@ -259,6 +271,43 @@ describe("SymbolGraph", () => {
       const hood = graph.neighborhood("b", 2);
       const names = hood.nodes.map((s) => s.name).sort();
       expect(names).toEqual(["a", "b", "c", "d"]);
+    });
+  });
+
+  describe("null safety for missing symbol attributes (bug #9)", () => {
+    it("should filter undefined from dependents result", () => {
+      graph.addSymbol(makeSymbol("config", "variable"));
+      graph.addSymbol(makeSymbol("db", "class"));
+      graph.addEdge("db", "config", "imports");
+
+      // Add a corrupted node (no symbol attribute) via internal graph
+      const g = (graph as any).graph;
+      g.addNode("ghost", {});
+      // Manually add edge (bypassing SymbolGraph.addEdge which checks hasNode — node exists)
+      g.addEdge("ghost", "config", { relation: "calls" });
+
+      const deps = graph.dependents("config");
+      for (const dep of deps) {
+        expect(dep).toBeDefined();
+        expect(dep.name).toBeDefined();
+      }
+    });
+
+    it("should filter undefined from neighborhood nodes", () => {
+      graph.addSymbol(makeSymbol("a", "function"));
+      graph.addSymbol(makeSymbol("b", "function"));
+      graph.addEdge("a", "b", "calls");
+
+      // Add corrupted node connected to 'b'
+      const g = (graph as any).graph;
+      g.addNode("ghost", {});
+      g.addEdge("ghost", "b", { relation: "calls" });
+
+      const hood = graph.neighborhood("b", 1);
+      for (const node of hood.nodes) {
+        expect(node).toBeDefined();
+        expect(node.name).toBeDefined();
+      }
     });
   });
 

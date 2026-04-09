@@ -29,6 +29,15 @@ describe("normalizeWeights", () => {
     expect(result[1]).toBeCloseTo(1 / 3);
     expect(result[2]).toBeCloseTo(1 / 3);
   });
+
+  it("should return empty array for empty weights (bug #2)", () => {
+    const result = normalizeWeights([]);
+    expect(result).toEqual([]);
+    // Must not produce Infinity from 1/0
+    for (const w of result) {
+      expect(Number.isFinite(w)).toBe(true);
+    }
+  });
 });
 
 describe("fuseRRF", () => {

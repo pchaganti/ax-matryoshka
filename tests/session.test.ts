@@ -202,6 +202,42 @@ describe("SessionManager (Persistent Sandbox)", () => {
     });
   });
 
+  describe("llmFn cache invalidation (bug #8)", () => {
+    it("should use the new LLM function when llmFn changes", async () => {
+      const calls1: string[] = [];
+      const llmFn1 = async (prompt: string) => {
+        calls1.push(prompt);
+        return "response1";
+      };
+
+      const calls2: string[] = [];
+      const llmFn2 = async (prompt: string) => {
+        calls2.push(prompt);
+        return "response2";
+      };
+
+      // Create with first llmFn
+      await sessionManager.getOrCreate(
+        "/path/to/doc.txt",
+        "Same content",
+        llmFn1
+      );
+
+      // Get again with DIFFERENT llmFn but same content
+      const sandbox2 = await sessionManager.getOrCreate(
+        "/path/to/doc.txt",
+        "Same content",
+        llmFn2
+      );
+
+      // Call llm_query on the returned sandbox — should use llmFn2
+      await sandbox2.execute('await llm_query("test")');
+
+      expect(calls2).toHaveLength(1);
+      expect(calls1).toHaveLength(0);
+    });
+  });
+
   describe("listSessions", () => {
     it("should list all active session paths", async () => {
       await sessionManager.getOrCreate("/path/to/doc1.txt", "Content 1", mockLLM);

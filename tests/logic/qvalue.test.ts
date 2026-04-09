@@ -193,6 +193,45 @@ describe("rerank", () => {
     expect(typeof line1.qScore).toBe("number");
   });
 
+  it("should mutate store only after all scores are computed (bug #4)", () => {
+    const callLog: string[] = [];
+    const store = new QValueStore();
+
+    const origGetReward = store.getRewardStats.bind(store);
+    store.getRewardStats = (lineNum: number) => {
+      callLog.push(`getReward:${lineNum}`);
+      return origGetReward(lineNum);
+    };
+    const origIncExp = store.incrementExposure.bind(store);
+    store.incrementExposure = (lineNum: number) => {
+      callLog.push(`exposure:${lineNum}`);
+      origIncExp(lineNum);
+    };
+    const origIncQuery = store.incrementQueryCount.bind(store);
+    store.incrementQueryCount = () => {
+      callLog.push("queryCount");
+      origIncQuery();
+    };
+
+    const results: LineResult[] = [
+      { line: "A", lineNum: 1, score: 0.9 },
+      { line: "B", lineNum: 2, score: 0.8 },
+    ];
+
+    rerank(results, store);
+
+    // All getReward calls should come before any exposure calls
+    const lastRewardIdx = callLog.lastIndexOf(
+      callLog.filter(c => c.startsWith("getReward")).pop()!
+    );
+    const firstExposureIdx = callLog.indexOf(
+      callLog.find(c => c.startsWith("exposure"))!
+    );
+
+    expect(firstExposureIdx).toBeGreaterThan(lastRewardIdx);
+    expect(callLog[callLog.length - 1]).toBe("queryCount");
+  });
+
   it("should give exploration bonus to unseen lines", () => {
     const store = new QValueStore();
     // Only train line 1, leave others unseen

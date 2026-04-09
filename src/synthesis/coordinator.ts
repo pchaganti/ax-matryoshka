@@ -13,7 +13,7 @@ import { synthesizeProgram, exprToCode, testProgram, type Example } from "./rela
  * Safely evaluate synthesized code by validating it contains only safe operations.
  * Rejects code containing dangerous patterns before evaluation.
  */
-function safeEvalSynthesized(code: string): (input: string) => unknown {
+export function safeEvalSynthesized(code: string): (input: string) => unknown {
   // Cap code length to prevent memory exhaustion during Function construction
   const MAX_CODE_LENGTH = 50_000;
   if (code.length > MAX_CODE_LENGTH) {
@@ -26,6 +26,7 @@ function safeEvalSynthesized(code: string): (input: string) => unknown {
     /\bFunction\b/, /\bfetch\b/, /\bchild_process\b/,
     /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
     /\bwindow\b/, /\bdocument\b/, /\bprototype\b/,
+    /\batob\b/, /\bbtoa\b/, /\bglobal\b/, /\bself\b/,
   ];
   for (const pattern of dangerous) {
     if (pattern.test(code)) {
@@ -316,10 +317,14 @@ export class SynthesisCoordinator {
         if (!this.validateRegex(component.pattern)) continue;
         try {
           const regex = new RegExp(component.pattern);
-          const allMatch = request.positiveExamples.every((p) => regex.test(p));
-          const noneMatchNeg = !request.negativeExamples?.some((n) =>
-            regex.test(n)
-          );
+          const allMatch = request.positiveExamples.every((p) => {
+            regex.lastIndex = 0;
+            return regex.test(p);
+          });
+          const noneMatchNeg = !request.negativeExamples?.some((n) => {
+            regex.lastIndex = 0;
+            return regex.test(n);
+          });
 
           if (allMatch && noneMatchNeg) {
             this.knowledgeBase.recordUsage(component.id, true);

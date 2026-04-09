@@ -9,6 +9,7 @@ import {
   CollectedExample,
   SynthesisRequest,
   SynthesisResult,
+  safeEvalSynthesized,
 } from "../../src/synthesis/coordinator.js";
 
 describe("SynthesisCoordinator", () => {
@@ -377,6 +378,27 @@ describe("SynthesisCoordinator", () => {
       expect(results[0].success).toBe(true);
       expect(results[1].success).toBe(true);
     });
+  });
+});
+
+describe("safeEvalSynthesized sandbox (bug #6)", () => {
+  it("should block atob/btoa to prevent base64 bypass of blocklist", () => {
+    expect(() => safeEvalSynthesized(`(x) => atob(x)`)).toThrow();
+    expect(() => safeEvalSynthesized(`(x) => btoa(x)`)).toThrow();
+  });
+
+  it("should block access to global object", () => {
+    // 'global' is Node.js global scope — not in current blocklist
+    expect(() => safeEvalSynthesized(`(x) => global`)).toThrow();
+  });
+
+  it("should block access to self", () => {
+    expect(() => safeEvalSynthesized(`(x) => self`)).toThrow();
+  });
+
+  it("should still allow safe arrow functions", () => {
+    const fn = safeEvalSynthesized(`(x) => x.toUpperCase()`);
+    expect(fn("hello")).toBe("HELLO");
   });
 });
 

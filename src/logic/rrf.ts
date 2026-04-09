@@ -64,6 +64,7 @@ function buildIndex(results: LineResult[]): Map<number, RankEntry> {
 
 /** Normalize weights to sum to 1.0. Clamp negatives to 0. */
 export function normalizeWeights(weights: number[]): number[] {
+  if (weights.length === 0) return [];
   const clamped = weights.map(w => Math.max(0, w));
   const total = clamped.reduce((a, b) => a + b, 0);
   if (total <= 0) {
