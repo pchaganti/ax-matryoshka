@@ -26,6 +26,7 @@ export interface HandleMetadata {
 export class SessionDB {
   private db: Database.Database | null;
   private handleCounter: number = 0;
+  private memoCounter: number = 0;
 
   constructor() {
     // Create in-memory database
@@ -296,6 +297,59 @@ export class SessionDB {
     insertAll(data);
     this.handleCounter = nextId;
     return handle;
+  }
+
+  /**
+   * Create a memo handle for storing arbitrary context
+   * Uses $memo prefix and "memo" type to distinguish from query result handles
+   */
+  createMemoHandle(data: unknown[]): string {
+    if (!this.db) throw new Error("Database not open");
+
+    const MAX_HANDLE_ITEMS = 1_000_000;
+    if (data.length > MAX_HANDLE_ITEMS) {
+      data = data.slice(0, MAX_HANDLE_ITEMS);
+    }
+
+    if (this.memoCounter >= Number.MAX_SAFE_INTEGER - 1) {
+      throw new Error("Memo counter overflow");
+    }
+    const nextId = this.memoCounter + 1;
+    const handle = `$memo${nextId}`;
+    const now = Date.now();
+
+    const insertHandle = this.db.prepare(`
+      INSERT INTO handles (handle, type, count, created_at)
+      VALUES (?, ?, ?, ?)
+    `);
+
+    const insertData = this.db.prepare(`
+      INSERT INTO handle_data (handle, idx, data) VALUES (?, ?, ?)
+    `);
+
+    const insertAll = this.db.transaction((items: unknown[]) => {
+      insertHandle.run(handle, "memo", items.length, now);
+      for (let i = 0; i < items.length; i++) {
+        try {
+          insertData.run(handle, i, JSON.stringify(items[i]));
+        } catch {
+          insertData.run(handle, i, "null");
+        }
+      }
+    });
+
+    insertAll(data);
+    this.memoCounter = nextId;
+    return handle;
+  }
+
+  /**
+   * Delete all non-memo handles (query result handles)
+   * Preserves memo handles across document reloads
+   */
+  clearQueryHandles(): void {
+    if (!this.db) return;
+    this.db.exec("DELETE FROM handles WHERE type != 'memo'");
   }
 
   /**

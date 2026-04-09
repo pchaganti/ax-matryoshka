@@ -124,6 +124,14 @@ export class HandleSession {
   private loadedAt: Date | null = null;
   private lastAccessedAt: Date | null = null;
   private queryCount: number = 0;
+  private memoLabels: Map<string, string> = new Map();
+  /** Tracks byte size of each memo for budget enforcement */
+  private memoSizes: Map<string, number> = new Map();
+  private memoTotalBytes: number = 0;
+
+  // Memo limits — prevent unbounded memory growth
+  static readonly MAX_MEMOS = 100;
+  static readonly MAX_MEMO_BYTES = 10 * 1024 * 1024; // 10MB total across all memos
 
   private canExtractSymbols(ext: string): boolean {
     try {
@@ -485,7 +493,15 @@ export class HandleSession {
     const bindings: Record<string, string> = {};
 
     for (const handle of handles) {
-      bindings[handle] = this.registry.getStub(handle);
+      const memoLabel = this.memoLabels.get(handle);
+      if (memoLabel) {
+        // Show memo with label and size
+        const meta = this.db.getHandleMetadata(handle);
+        const count = meta?.count ?? 0;
+        bindings[handle] = `"${memoLabel}" (${count} lines)`;
+      } else {
+        bindings[handle] = this.registry.getStub(handle);
+      }
     }
 
     // Mark current RESULTS
@@ -512,14 +528,143 @@ export class HandleSession {
   }
 
   /**
+   * Store arbitrary context as a memo handle
+   * Returns a handle stub with the label for compact roundtripping.
+   * Evicts oldest memos when count or byte budget is exceeded.
+   */
+  memo(content: string, label: string): HandleResult {
+    this.lastAccessedAt = new Date();
+
+    const contentBytes = content.length;
+
+    // Evict oldest memos if we'd exceed limits
+    this.evictMemosIfNeeded(contentBytes);
+
+    const lines = content.split("\n");
+    const handle = this.db.createMemoHandle(lines);
+    this.memoLabels.set(handle, label);
+    this.memoSizes.set(handle, contentBytes);
+    this.memoTotalBytes += contentBytes;
+
+    const sizeKB = (contentBytes / 1024).toFixed(1);
+    const stub = `${handle}: "${label}" (${sizeKB}KB, ${lines.length} lines)`;
+
+    const estimatedFullTokens = estimateTokens(contentBytes);
+    const stubTokens = estimateTokens(stub.length);
+    const savingsPercent = estimatedFullTokens > 0
+      ? Math.round(((estimatedFullTokens - stubTokens) / estimatedFullTokens) * 100)
+      : 0;
+
+    return {
+      success: true,
+      handle,
+      stub,
+      logs: [],
+      tokenMetadata: {
+        estimatedFullTokens,
+        stubTokens,
+        savingsPercent,
+      },
+    };
+  }
+
+  /**
+   * Evict oldest memos until there's room for newBytes within budget
+   */
+  private evictMemosIfNeeded(newBytes: number): void {
+    // Get memo handles sorted numerically by ID (not alphabetically —
+    // alphabetical sort puts $memo10 before $memo2)
+    const memoHandles = this.registry.listHandles()
+      .filter(h => h.startsWith("$memo"))
+      .sort((a, b) => {
+        const aNum = parseInt(a.slice(5), 10);
+        const bNum = parseInt(b.slice(5), 10);
+        return aNum - bNum;
+      });
+
+    // Evict until under count limit (leave room for the new one)
+    while (memoHandles.length >= HandleSession.MAX_MEMOS) {
+      const oldest = memoHandles.shift()!;
+      this.deleteMemoInternal(oldest);
+    }
+
+    // Evict until under byte budget
+    while (this.memoTotalBytes + newBytes > HandleSession.MAX_MEMO_BYTES && memoHandles.length > 0) {
+      const oldest = memoHandles.shift()!;
+      this.deleteMemoInternal(oldest);
+    }
+  }
+
+  /**
+   * Delete a specific memo by handle
+   */
+  deleteMemo(handle: string): boolean {
+    if (!handle.startsWith("$memo") || !this.memoLabels.has(handle)) {
+      return false;
+    }
+    this.deleteMemoInternal(handle);
+    return true;
+  }
+
+  private deleteMemoInternal(handle: string): void {
+    const size = this.memoSizes.get(handle) ?? 0;
+    this.memoTotalBytes -= size;
+    this.memoSizes.delete(handle);
+    this.memoLabels.delete(handle);
+    this.registry.delete(handle);
+  }
+
+  /**
+   * Get memo label for a handle, or null if not a memo
+   */
+  getMemoLabel(handle: string): string | null {
+    return this.memoLabels.get(handle) ?? null;
+  }
+
+  /**
+   * Get memo usage stats
+   */
+  getMemoStats(): { count: number; totalBytes: number; maxCount: number; maxBytes: number } {
+    return {
+      count: this.memoLabels.size,
+      totalBytes: this.memoTotalBytes,
+      maxCount: HandleSession.MAX_MEMOS,
+      maxBytes: HandleSession.MAX_MEMO_BYTES,
+    };
+  }
+
+  /**
+   * Clear query result handles but preserve memo handles
+   * Used when loading a new document
+   */
+  clearQueryHandles(): void {
+    // Remove query handles from registry tracking
+    const handles = this.registry.listHandles();
+    for (const handle of handles) {
+      if (!handle.startsWith("$memo")) {
+        this.registry.delete(handle);
+      }
+    }
+    // Also clear from DB
+    this.db.clearQueryHandles();
+    // Reset engine bindings (turn variables are stale)
+    this.engine.reset();
+  }
+
+  /**
    * Reset bindings but keep document loaded
    */
   reset(): void {
-    // Clear handles
+    // Clear all handles (including memos)
     const handles = this.registry.listHandles();
     for (const handle of handles) {
       this.registry.delete(handle);
     }
+
+    // Clear memo tracking state
+    this.memoLabels.clear();
+    this.memoSizes.clear();
+    this.memoTotalBytes = 0;
 
     // Reset engine state
     this.engine.reset();
