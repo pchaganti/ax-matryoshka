@@ -33,5 +33,8 @@ blog.md
 # config
 config.json
 
+# Vibe
+.vibe/
+
 # Beads
 .beads/
