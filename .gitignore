@@ -1,3 +1,8 @@
+.clj-kondo/
+.lsp/
+.gitattributes
+AGENTS.md
+
 # Dependencies
 node_modules/
 
@@ -33,5 +38,11 @@ blog.md
 # config
 config.json
 
+# Vibe
+.vibe/
+
 # Beads
 .beads/
+
+# Anki
+anki-connect/

@@ -30,11 +30,11 @@ export class HandleOps {
    * Count items in a handle
    */
   count(handle: string): number {
-    const data = this.registry.get(handle);
-    if (data === null) {
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) {
       throw new Error(`Invalid handle: ${handle}`);
     }
-    return data.length;
+    return meta.count;
   }
 
   /**
@@ -131,6 +131,14 @@ export class HandleOps {
       const aVal = typeof a === "object" && a !== null ? (a as Record<string, unknown>)[field] : a;
       const bVal = typeof b === "object" && b !== null ? (b as Record<string, unknown>)[field] : b;
 
+      const aMissing = aVal === undefined || aVal === null;
+      const bMissing = bVal === undefined || bVal === null;
+
+      // Sort missing values to the end regardless of direction
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+
       let cmp = 0;
       if (typeof aVal === "number" && typeof bVal === "number") {
         cmp = aVal - bVal;
@@ -152,13 +160,13 @@ export class HandleOps {
     const MAX_PREVIEW = 10000;
     if (!Number.isFinite(n)) n = 0;
     n = Math.floor(n);
-    const data = this.registry.get(handle);
-    if (data === null) {
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) {
       throw new Error(`Invalid handle: ${handle}`);
     }
     if (n <= 0) return [];
     n = Math.min(n, MAX_PREVIEW);
-    return data.slice(0, n);
+    return this.db.getHandleDataSlice(handle, n);
   }
 
   /**
@@ -192,17 +200,20 @@ export class HandleOps {
    * Describe handle contents (schema + stats)
    */
   describe(handle: string): DescribeResult {
-    const data = this.registry.get(handle);
-    if (data === null) {
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) {
       throw new Error(`Invalid handle: ${handle}`);
     }
 
-    // Collect field names from objects
+    // Load only a small slice for field discovery and sample
+    const DESCRIBE_SAMPLE = 20;
+    const sampleData = this.db.getHandleDataSlice(handle, DESCRIBE_SAMPLE);
+
     const MAX_FIELDS = 10_000;
     const fields = new Set<string>();
-    for (const item of data) {
+    for (const item of sampleData) {
       if (typeof item === "object" && item !== null) {
-        for (const key of Object.keys(item)) {
+        for (const key of Object.keys(item as Record<string, unknown>)) {
           fields.add(key);
           if (fields.size >= MAX_FIELDS) break;
         }
@@ -211,9 +222,9 @@ export class HandleOps {
     }
 
     return {
-      count: data.length,
+      count: meta.count,
       fields: Array.from(fields).slice(0, MAX_FIELDS),
-      sample: data.slice(0, 3),
+      sample: sampleData.slice(0, 3),
     };
   }
 }

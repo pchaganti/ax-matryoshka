@@ -47,6 +47,8 @@ export function createSessionManager(): SessionManager {
     maxSessions: MAX_SESSIONS,
     dispose: (s) => s.dispose(),
   });
+  // Track the last llmFn used per filePath to detect changes
+  const llmFnMap = new Map<string, LLMQueryFn>();
 
   return {
     async getOrCreate(
@@ -55,6 +57,13 @@ export function createSessionManager(): SessionManager {
       llmFn: LLMQueryFn,
       options?: SandboxOptions
     ): Promise<Sandbox> {
+      // If llmFn changed for this path, invalidate the cached sandbox
+      const prevLlmFn = llmFnMap.get(filePath);
+      if (prevLlmFn !== undefined && prevLlmFn !== llmFn) {
+        mgr.clear(filePath);
+      }
+      llmFnMap.set(filePath, llmFn);
+
       const hash = hashContent(content);
       return mgr.getOrCreate(filePath, hash, async () =>
         createSandbox(content, {
@@ -81,10 +90,12 @@ export function createSessionManager(): SessionManager {
 
     clear(filePath: string): void {
       mgr.clear(filePath);
+      llmFnMap.delete(filePath);
     },
 
     clearAll(): void {
       mgr.clearAll();
+      llmFnMap.clear();
     },
 
     listSessions(): string[] {

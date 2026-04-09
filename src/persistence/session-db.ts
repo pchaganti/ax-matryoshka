@@ -426,7 +426,7 @@ export class SessionDB {
   listHandles(): string[] {
     if (!this.db) return [];
     const MAX_HANDLES = 100_000;
-    const stmt = this.db.prepare("SELECT handle FROM handles ORDER BY handle LIMIT ?");
+    const stmt = this.db.prepare("SELECT handle FROM handles ORDER BY created_at LIMIT ?");
     const rows = stmt.all(MAX_HANDLES) as Array<{ handle: string }>;
     return rows.map((r) => r.handle);
   }

@@ -111,7 +111,8 @@ export function searchBM25(
 
     for (const [lineNum, tf] of lineMap) {
       const dl = docLengths.get(lineNum) ?? 0;
-      const tfNorm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * (dl / avgDocLength)));
+      const dlRatio = avgDocLength > 0 ? dl / avgDocLength : 0;
+      const tfNorm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dlRatio));
       const termScore = idf * tfNorm;
       scores.set(lineNum, (scores.get(lineNum) ?? 0) + termScore);
     }

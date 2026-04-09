@@ -202,6 +202,52 @@ DEBUG: Cache hit ratio: 95%`;
     });
   });
 
+  describe("clearQueryHandles", () => {
+    beforeEach(() => {
+      session.loadContent(testDocument);
+    });
+
+    it("should clear resultsHandle explicitly after clearing query handles", () => {
+      session.execute('(grep "ERROR")');
+
+      const registry = (session as unknown as { registry: { getResults: () => string | null } }).registry;
+      expect(registry.getResults()).not.toBeNull();
+
+      session.clearQueryHandles();
+
+      expect(registry.getResults()).toBeNull();
+    });
+
+    it("should clear resultsHandle even when it points to a surviving memo handle", () => {
+      const memoResult = session.memo("test memo content", "test label");
+      const registry = (session as unknown as { registry: { setResults: (h: string) => void; getResults: () => string | null } }).registry;
+
+      // Simulate resultsHandle pointing to a memo (which survives clearQueryHandles)
+      registry.setResults(memoResult.handle!);
+      expect(registry.getResults()).toBe(memoResult.handle);
+
+      session.clearQueryHandles();
+
+      // resultsHandle should be null even though the memo handle still exists
+      expect(registry.getResults()).toBeNull();
+    });
+
+    it("should preserve memo handles while clearing query handles", () => {
+      session.execute('(grep "ERROR")');
+      session.memo("test memo content", "test label");
+
+      const bindingsBefore = session.getBindings();
+      const memoKeys = Object.keys(bindingsBefore).filter((k) => k.startsWith("$memo"));
+      expect(memoKeys.length).toBeGreaterThan(0);
+
+      session.clearQueryHandles();
+
+      const bindingsAfter = session.getBindings();
+      const memoKeysAfter = Object.keys(bindingsAfter).filter((k) => k.startsWith("$memo"));
+      expect(memoKeysAfter.length).toBe(memoKeys.length);
+    });
+  });
+
   describe("reset", () => {
     beforeEach(() => {
       session.loadContent(testDocument);

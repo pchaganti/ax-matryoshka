@@ -63,8 +63,9 @@ function fuzzyScore(text, pattern, maxDistance) {
     let errors = 0;
     let matched = 0;
     let j = start;
+    let i;
 
-    for (let i = 0; i < patternLen && j < textLen; i++) {
+    for (i = 0; i < patternLen && j < textLen; i++) {
       if (text[j] === pattern[i]) {
         matched++;
         j++;
@@ -91,6 +92,11 @@ function fuzzyScore(text, pattern, maxDistance) {
 
       if (errors > maxDistance) break;
     }
+
+    // Count remaining unmatched pattern chars as deletions
+    errors += patternLen - i;
+
+    if (errors > maxDistance) continue;
 
     if (matched >= patternLen - maxDistance) {
       bestScore = Math.min(bestScore, errors);

@@ -63,7 +63,9 @@ export function searchSemantic(
   const results: SemanticResult[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const lineVec = tfidfVector(index.lineTokens[i], index.idf);
+    const tokens = index.lineTokens[i];
+    if (!tokens) continue;
+    const lineVec = tfidfVector(tokens, index.idf);
     const score = cosineSimilarity(queryVec, lineVec);
     if (score > 0) {
       results.push({ line: lines[i], lineNum: i + 1, score });

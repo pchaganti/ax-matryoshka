@@ -94,4 +94,17 @@ describe("searchSemantic", () => {
       expect(r.lineNum).toBeGreaterThan(0);
     }
   });
+
+  it("should handle stale index with fewer tokens than lines", () => {
+    // Build index from fewer lines than we search
+    const shortIndex = buildSemanticIndex(lines.slice(0, 3));
+    // Searching all 7 lines with an index built from only 3
+    // should not crash — it should just skip lines without index entries
+    const results = searchSemantic("database", lines, shortIndex);
+    expect(results.length).toBeGreaterThan(0);
+    // Only lines 1-3 can be scored
+    for (const r of results) {
+      expect(r.lineNum).toBeLessThanOrEqual(3);
+    }
+  });
 });

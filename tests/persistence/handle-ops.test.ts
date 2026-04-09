@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { HandleOps } from "../../src/persistence/handle-ops.js";
 import { HandleRegistry } from "../../src/persistence/handle-registry.js";
 import { SessionDB } from "../../src/persistence/session-db.js";
@@ -40,6 +40,17 @@ describe("HandleOps", () => {
 
     it("should throw for invalid handle", () => {
       expect(() => ops.count("$resINVALID")).toThrow();
+    });
+
+    it("should use metadata count without loading full data", () => {
+      const data = Array.from({ length: 5000 }, (_, i) => ({ line: `Line ${i}`, lineNum: i }));
+      const handle = registry.store(data);
+
+      const getSpy = vi.spyOn(registry, "get");
+      const count = ops.count(handle);
+
+      expect(count).toBe(5000);
+      expect(getSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -187,6 +198,59 @@ describe("HandleOps", () => {
       expect(result![1].score).toBe(75);
       expect(result![2].score).toBe(50);
     });
+
+    it("should sort missing fields to end in ascending order", () => {
+      const data = [
+        { line: "no score", lineNum: 1 },
+        { line: "has score", lineNum: 2, score: 50 },
+        { line: "also no score", lineNum: 3 },
+        { line: "high score", lineNum: 4, score: 100 },
+      ];
+      const handle = registry.store(data);
+      const resultHandle = ops.sort(handle, "score", "asc");
+
+      const result = registry.get(resultHandle) as Array<Record<string, unknown>>;
+      // Items with score should come first, sorted by value
+      expect(result[0].score).toBe(50);
+      expect(result[1].score).toBe(100);
+      // Items without score should be at the end (not sorted as "undefined")
+      expect(result[2].score).toBeUndefined();
+      expect(result[3].score).toBeUndefined();
+    });
+
+    it("should sort missing fields to end in descending order", () => {
+      const data = [
+        { line: "no score", lineNum: 1 },
+        { line: "has score", lineNum: 2, score: 50 },
+        { line: "also no score", lineNum: 3 },
+        { line: "high score", lineNum: 4, score: 100 },
+      ];
+      const handle = registry.store(data);
+      const resultHandle = ops.sort(handle, "score", "desc");
+
+      const result = registry.get(resultHandle) as Array<Record<string, unknown>>;
+      // Items with score should come first, sorted by value descending
+      expect(result[0].score).toBe(100);
+      expect(result[1].score).toBe(50);
+      // Items without score should be at the end
+      expect(result[2].score).toBeUndefined();
+      expect(result[3].score).toBeUndefined();
+    });
+
+    it("should not treat missing numeric fields as string 'undefined'", () => {
+      const data = [
+        { line: "missing", lineNum: 1 },
+        { line: "present", lineNum: 2, score: 42 },
+      ];
+      const handle = registry.store(data);
+      const resultHandle = ops.sort(handle, "score", "asc");
+
+      const result = registry.get(resultHandle) as Array<Record<string, unknown>>;
+      // "undefined" string would sort before "42" alphabetically,
+      // but missing values should sort to the end instead
+      expect(result[0].score).toBe(42);
+      expect(result[1].score).toBeUndefined();
+    });
   });
 
   describe("preview", () => {
@@ -206,6 +270,18 @@ describe("HandleOps", () => {
 
       const preview = ops.preview(handle, 10);
       expect(preview).toHaveLength(2);
+    });
+
+    it("should use data slice without loading all data", () => {
+      const data = Array.from({ length: 5000 }, (_, i) => ({ line: `Line ${i}`, lineNum: i }));
+      const handle = registry.store(data);
+
+      const getSpy = vi.spyOn(registry, "get");
+      const preview = ops.preview(handle, 5);
+
+      expect(preview).toHaveLength(5);
+      expect(preview[0].lineNum).toBe(0);
+      expect(getSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -264,6 +340,20 @@ describe("HandleOps", () => {
       const desc = ops.describe(handle);
       expect(desc.sample).toBeDefined();
       expect(desc.sample[0].value).toBe(100);
+    });
+
+    it("should use metadata count and data slice without loading all data", () => {
+      const data = Array.from({ length: 5000 }, (_, i) => ({ line: `Line ${i}`, lineNum: i }));
+      const handle = registry.store(data);
+
+      const getSpy = vi.spyOn(registry, "get");
+      const desc = ops.describe(handle);
+
+      expect(desc.count).toBe(5000);
+      expect(desc.fields).toContain("line");
+      expect(desc.fields).toContain("lineNum");
+      expect(desc.sample).toHaveLength(3);
+      expect(getSpy).not.toHaveBeenCalled();
     });
   });
 });

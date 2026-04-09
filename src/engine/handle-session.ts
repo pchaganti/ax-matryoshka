@@ -647,6 +647,8 @@ export class HandleSession {
     }
     // Also clear from DB
     this.db.clearQueryHandles();
+    // Clear RESULTS reference (may point to deleted query handle or surviving memo)
+    this.registry.clearResults();
     // Reset engine bindings (turn variables are stale)
     this.engine.reset();
   }

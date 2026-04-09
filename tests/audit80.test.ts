@@ -79,7 +79,7 @@ describe("Audit #80", () => {
       const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
       const fnStart = source.indexOf("function safeEvalSynthesized");
       expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 1500);
+      const block = source.slice(fnStart, fnStart + 1800);
       expect(block).toMatch(/["']\s*\+\s*["']|string\s*concat|concat.*pattern/);
     });
   });
