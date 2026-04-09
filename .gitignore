@@ -1,3 +1,7 @@
+.clj-kondo/
+.lsp/
+AGENTS.md
+
 # Dependencies
 node_modules/
 
