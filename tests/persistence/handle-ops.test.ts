@@ -218,6 +218,18 @@ describe("HandleOps", () => {
       const preview = ops.preview(handle, 10);
       expect(preview).toHaveLength(2);
     });
+
+    it("should use data slice without loading all data", () => {
+      const data = Array.from({ length: 5000 }, (_, i) => ({ line: `Line ${i}`, lineNum: i }));
+      const handle = registry.store(data);
+
+      const getSpy = vi.spyOn(registry, "get");
+      const preview = ops.preview(handle, 5);
+
+      expect(preview).toHaveLength(5);
+      expect(preview[0].lineNum).toBe(0);
+      expect(getSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe("sample", () => {
@@ -275,6 +287,20 @@ describe("HandleOps", () => {
       const desc = ops.describe(handle);
       expect(desc.sample).toBeDefined();
       expect(desc.sample[0].value).toBe(100);
+    });
+
+    it("should use metadata count and data slice without loading all data", () => {
+      const data = Array.from({ length: 5000 }, (_, i) => ({ line: `Line ${i}`, lineNum: i }));
+      const handle = registry.store(data);
+
+      const getSpy = vi.spyOn(registry, "get");
+      const desc = ops.describe(handle);
+
+      expect(desc.count).toBe(5000);
+      expect(desc.fields).toContain("line");
+      expect(desc.fields).toContain("lineNum");
+      expect(desc.sample).toHaveLength(3);
+      expect(getSpy).not.toHaveBeenCalled();
     });
   });
 });

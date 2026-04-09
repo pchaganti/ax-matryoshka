@@ -87,7 +87,11 @@ describe("Audit22 #3: handle-ops preview negative n", () => {
       get: () => [1, 2, 3, 4, 5],
       store: (d: unknown[]) => "h:1",
     };
-    const ops = new HandleOps({} as any, registry);
+    const db: any = {
+      getHandleMetadata: () => ({ count: 5 }),
+      getHandleDataSlice: () => [1, 2, 3, 4, 5],
+    };
+    const ops = new HandleOps(db, registry);
     const result = ops.preview("h:0", -2);
     // Should return empty, not elements from end
     expect(result).toEqual([]);

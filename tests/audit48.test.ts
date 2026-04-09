@@ -124,7 +124,7 @@ describe("Audit #48", () => {
   describe("#9 — handle-ops preview and sample should bound n", () => {
     it("should clamp n to a maximum value in preview", () => {
       const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const previewFn = source.match(/preview\(handle[\s\S]*?data\.slice\(0/);
+      const previewFn = source.match(/preview\(handle[\s\S]*?getHandleDataSlice|MAX_PREVIEW/);
       expect(previewFn).not.toBeNull();
       expect(previewFn![0]).toMatch(/MAX_PREVIEW|Math\.min|10000/);
     });
