@@ -87,6 +87,24 @@ Handle-based: LLM sees stub          [50 tokens: "$res1: Array(1000) [preview...
 - `FTS5Search` - Phrase queries, boolean operators, relevance ranking
 - `CheckpointManager` - Save/restore session state
 
+### Memory Pad
+
+The Lattice engine doubles as a **context memory** for LLM agents. Instead of roundtripping large text blobs in every message, agents stash context server-side and carry only compact handle stubs:
+
+```
+Agent reads file, summarizes → lattice_memo "auth architecture"
+                              → $memo1: "auth architecture" (2.1KB, 50 lines)
+
+20 messages later, needs it  → lattice_expand $memo1
+                              → Full 50-line summary
+```
+
+**Token math** (30-message session, 3 source files stashed):
+- Traditional roundtripping: **836K tokens**
+- Memo-based (stubs + 6 expands): **57K tokens** — **93% savings**
+
+Memos persist across document loads (`lattice_load` clears query handles but keeps memos), support LRU eviction (100 memo cap, 10MB budget), and can be explicitly deleted when stale. No document needs to be loaded to use memos.
+
 ### The Role of the LLM
 
 The LLM does **reasoning**, not code generation:
@@ -106,6 +124,7 @@ The LLM never writes JavaScript. It outputs Nucleus commands that Lattice execut
 | **Lattice Parser** | Parses S-expressions to AST |
 | **Lattice Solver** | Executes commands against document |
 | **In-Memory Handles** | Handle-based storage with FTS5 (97% token savings) |
+| **Memory Pad** | Memo handles for stashing context across turns (93% savings) |
 | **BM25 + Semantic** | Ranked keyword and TF-IDF cosine similarity search |
 | **RRF Fusion** | Reciprocal Rank Fusion for multi-signal search |
 | **Dampening** | Gravity dampening to remove false positives |
@@ -203,10 +222,12 @@ The key advantage is **handle-based results**: query results are stored server-s
 | `lattice_load` | Load a document for analysis |
 | `lattice_query` | Execute Nucleus commands on the loaded document |
 | `lattice_expand` | Expand a handle to see full data (with optional limit/offset) |
+| `lattice_memo` | Store arbitrary context as a memo handle (no document required) |
+| `lattice_memo_delete` | Delete a stale memo to free memory |
 | `lattice_close` | Close the session and free memory |
-| `lattice_status` | Get session status and document info |
-| `lattice_bindings` | Show current variable bindings |
-| `lattice_reset` | Reset bindings but keep document loaded |
+| `lattice_status` | Get session status, document info, and memo usage |
+| `lattice_bindings` | Show current variable bindings and memo labels |
+| `lattice_reset` | Reset all bindings and memos but keep document loaded |
 | `lattice_help` | Get Nucleus command reference |
 
 #### Example MCP config
@@ -239,6 +260,19 @@ The key advantage is **handle-based results**: query results are stored server-s
 - Chain `grep → filter → count/sum` to refine progressively
 - Use `RESULTS` in queries (always points to last result)
 - Use `$res1`, `$res2` etc. with `lattice_expand` to inspect specific results
+
+#### Memory Pad Usage
+
+```
+1. lattice_memo(content="<file summary>", label="auth module")  → $memo1 stub
+2. lattice_memo(content="<analysis>", label="perf bottlenecks") → $memo2 stub
+3. # ... many turns later, need the auth context ...
+4. lattice_expand("$memo1")                                     → Full summary
+5. lattice_memo_delete("$memo1")                                → Drop when stale
+```
+
+Memos don't require a loaded document — they create a session automatically.
+Limits: 100 memos, 10MB total. Oldest evicted when exceeded.
 
 ### Programmatic
 
