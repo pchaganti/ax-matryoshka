@@ -42,3 +42,6 @@ config.json
 
 # Beads
 .beads/
+
+# Anki
+anki-connect/
