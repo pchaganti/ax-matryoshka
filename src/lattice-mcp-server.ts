@@ -34,8 +34,8 @@ import { resolve, sep } from "node:path";
 import { HandleSession } from "./engine/handle-session.js";
 import { getVersion } from "./version.js";
 
-// Configuration
-const SESSION_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+// Configuration — timeout is configurable via env var for long sessions
+const SESSION_TIMEOUT_MS = parseInt(process.env.LATTICE_TIMEOUT_MS || "") || 10 * 60 * 1000;
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB limit
 
 // Session state
@@ -92,14 +92,17 @@ function getSessionInfo(): string {
   const idle = info.lastAccessedAt ? Math.round((now.getTime() - info.lastAccessedAt.getTime()) / 1000) : 0;
   const timeout = Math.round(SESSION_TIMEOUT_MS / 1000 - idle);
 
+  const memo = session.getMemoStats();
+
   return `Session active:
-  Document: ${info.documentPath}
+  Document: ${info.documentPath || "(none)"}
   Size: ${(info.documentSize / 1024).toFixed(1)} KB
   Age: ${age}s
   Idle: ${idle}s
   Timeout in: ${Math.max(0, timeout)}s
   Queries: ${info.queryCount}
-  Active handles: ${info.handleCount}`;
+  Active handles: ${info.handleCount}
+  Memos: ${memo.count}/${memo.maxCount} (${(memo.totalBytes / 1024).toFixed(1)}KB / ${(memo.maxBytes / 1024 / 1024).toFixed(0)}MB)`;
 }
 
 const TOOLS = [
@@ -306,6 +309,57 @@ Use this to see what data you have available before deciding what to expand.`,
     },
   },
   {
+    name: "lattice_memo",
+    description: `Store arbitrary context as a memo handle for token-efficient roundtripping.
+
+USE THIS TO:
+- Stash file summaries, analysis results, plans, or any context
+- Avoid roundtripping large text in every message
+- Pull context back only when actually needed via lattice_expand
+
+RETURNS a handle stub like: $memo1: "auth-module architecture" (2.1KB, 50 lines)
+The LLM carries this compact stub (~15 tokens) instead of the full content (~2000 tokens).
+
+WORKFLOW:
+1. lattice_memo content="<summary>" label="what this is"  → $memo1 stub
+2. Continue working, carrying just the stub
+3. lattice_expand $memo1  → Full content when you need it
+
+Memos persist across document loads. No lattice_load required.
+Session timeout: ${SESSION_TIMEOUT_MS / 60000} minutes (resets on any tool call).`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        content: {
+          type: "string",
+          description: "The text content to store (file summary, analysis, plan, etc.)",
+        },
+        label: {
+          type: "string",
+          description: "Short label describing this memo (shown in handle stub)",
+        },
+      },
+      required: ["content", "label"],
+    },
+  },
+  {
+    name: "lattice_memo_delete",
+    description: `Delete a memo that is no longer needed to free memory.
+
+Use this when context becomes stale or irrelevant (e.g., after finishing work on a module).
+Check lattice_bindings to see current memos and their handles.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        handle: {
+          type: "string",
+          description: 'Memo handle to delete (e.g., "$memo1")',
+        },
+      },
+      required: ["handle"],
+    },
+  },
+  {
     name: "lattice_help",
     description: "Get complete Nucleus command reference documentation.",
     inputSchema: {
@@ -434,27 +488,38 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           };
         }
 
-        // Close existing session
-        if (session) {
-          closeSession("new document loaded");
-        }
-
-        // Create new session — use temp variable so `session` isn't
-        // left pointing at a half-initialised object if loadFile throws.
-        const newSession = new HandleSession();
+        // Reuse existing session if it has memos, otherwise create new
         let stats: { lineCount: number; size: number };
-        try {
-          stats = await newSession.loadFile(filePath);
-        } catch (loadErr) {
-          newSession.close();
-          return {
-            content: [{
-              type: "text",
-              text: `Error loading file: ${loadErr instanceof Error ? loadErr.message : String(loadErr)}`,
-            }],
-          };
+        if (session) {
+          // Clear query handles but preserve memos
+          session.clearQueryHandles();
+          try {
+            stats = await session.loadFile(filePath);
+          } catch (loadErr) {
+            return {
+              content: [{
+                type: "text",
+                text: `Error loading file: ${loadErr instanceof Error ? loadErr.message : String(loadErr)}`,
+              }],
+            };
+          }
+        } else {
+          // Create new session — use temp variable so `session` isn't
+          // left pointing at a half-initialised object if loadFile throws.
+          const newSession = new HandleSession();
+          try {
+            stats = await newSession.loadFile(filePath);
+          } catch (loadErr) {
+            newSession.close();
+            return {
+              content: [{
+                type: "text",
+                text: `Error loading file: ${loadErr instanceof Error ? loadErr.message : String(loadErr)}`,
+              }],
+            };
+          }
+          session = newSession;
         }
-        session = newSession;
 
         // Start inactivity timer
         resetInactivityTimer();
@@ -501,7 +566,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           return {
             content: [{
               type: "text",
-              text: "Error: No active session. Use lattice_load first.",
+              text: "Error: No active session. Use lattice_load or lattice_memo first.",
             }],
           };
         }
@@ -567,6 +632,64 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         resetInactivityTimer();
 
         return { content: [{ type: "text", text: "Bindings and handles cleared. Document still loaded." }] };
+      }
+
+      case "lattice_memo": {
+        const content = args.content as string;
+        const label = args.label as string;
+        if (!content) {
+          return { content: [{ type: "text", text: "Error: content is required" }] };
+        }
+        if (!label) {
+          return { content: [{ type: "text", text: "Error: label is required" }] };
+        }
+
+        // Auto-create session if none exists (memos don't require a loaded document)
+        if (!session) {
+          session = new HandleSession();
+          console.error("[Lattice] Auto-created session for memo storage");
+        }
+
+        resetInactivityTimer();
+
+        const result = session.memo(content, label);
+        if (!result.success) {
+          return { content: [{ type: "text", text: `Error: ${result.error}` }] };
+        }
+
+        let text = result.stub!;
+        if (result.tokenMetadata) {
+          text += `\n\nToken savings: ~${result.tokenMetadata.savingsPercent}% (${result.tokenMetadata.stubTokens} vs ~${result.tokenMetadata.estimatedFullTokens} tokens)`;
+        }
+        text += "\n\nUse lattice_expand to retrieve full content when needed.";
+        text += "\nMemos persist across document loads.";
+        return { content: [{ type: "text", text }] };
+      }
+
+      case "lattice_memo_delete": {
+        if (!session) {
+          return { content: [{ type: "text", text: "No active session." }] };
+        }
+
+        const handle = args.handle as string;
+        if (!handle) {
+          return { content: [{ type: "text", text: "Error: handle is required" }] };
+        }
+
+        resetInactivityTimer();
+
+        const deleted = session.deleteMemo(handle);
+        if (!deleted) {
+          return { content: [{ type: "text", text: `Error: ${handle} is not a memo handle or does not exist.` }] };
+        }
+
+        const stats = session.getMemoStats();
+        return {
+          content: [{
+            type: "text",
+            text: `Deleted ${handle}. Memos: ${stats.count}/${stats.maxCount} (${(stats.totalBytes / 1024).toFixed(1)}KB used)`,
+          }],
+        };
       }
 
       case "lattice_help": {

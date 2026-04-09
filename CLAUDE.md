@@ -1,47 +1,72 @@
-# Claude Code Guidelines for recursive-language-model
+# Claude Code Guidelines for Matryoshka RLM
+
+## What This Project Does
+
+**Matryoshka RLM** (Recursive Language Model) processes documents 100x larger than an LLM context window without RAG or chunking. The LLM emits **Nucleus commands** (constrained S-expressions), which are parsed, type-checked, and executed by the **Lattice logic engine**. Results are stored server-side in SQLite — the LLM sees only handle stubs (`$res1: Array(1000) [preview...]`), achieving **97%+ token savings**.
+
+```
+User Query → LLM Reasons → Nucleus S-expression
+                            → Parser validates → Lattice Engine executes
+                            → Results stored in SQLite
+                            → LLM sees handle stub only
+```
 
 ## CRITICAL: No Hardcoding
 
 **DO NOT hardcode specific use cases into the prompts or code.**
 
-This is a GENERAL-PURPOSE document analysis tool. It can be used for:
-- Log analysis
-- Financial documents
-- Scientific data
-- Weather reports
-- Any structured or semi-structured text
-
-When writing prompts or examples:
+This is a GENERAL-PURPOSE document analysis tool. When writing prompts or examples:
 - Use GENERIC patterns, not domain-specific ones
-- Say "data" not "sales data"
-- Say "values" not "currency values"
-- Say "pattern" not "$1,000"
+- Say "data" not "sales data", "values" not "currency values"
 - Let the LLM discover the actual data format from the document
-
-**Bad examples (too specific):**
-```javascript
-const hits = grep("SALES_DATA");
-const extractor = synthesize_extractor([
-  { input: "$1,000", output: 1000 }
-]);
-```
-
-**Good examples (generic):**
-```javascript
-const hits = grep("YOUR_PATTERN");
-const extractor = synthesize_extractor([
-  { input: examples[0], output: expectedOutput0 }
-]);
-```
 
 ## Architecture Overview
 
-- **RLM Entry** (`src/rlm.ts`): Main entry point, document loading, config
-- **FSM Engine** (`src/fsm/engine.ts`): Generic finite state machine runner
-- **RLM States** (`src/fsm/rlm-states.ts`): Analysis pipeline states (query_llm → parse_response → validate → execute → analyze → check_final_answer → done)
-- **Adapters** (`src/adapters/`): Model-specific prompting
-- **Synthesis** (`src/synthesis/`): miniKanren-based program synthesis
-- **Sandbox** (`src/synthesis/sandbox-tools.ts`): Safe code execution
+### Core Pipeline
+- **RLM Entry** (`src/rlm.ts`): Main CLI, document loading, LLM loop orchestration
+- **FSM Engine** (`src/fsm/engine.ts`): Generic finite state machine (repl-sandbox)
+- **RLM States** (`src/fsm/rlm-states.ts`): QueryLLM → ParseResponse → Execute → Verify → TermOrContinue
+- **Adapters** (`src/adapters/`): Model-specific prompting (nucleus, qwen, deepseek)
+
+### Lattice Engine (the core)
+- **Parser** (`src/logic/lc-parser.ts`): S-expression lexer → tokens → AST
+- **Solver** (`src/logic/lc-solver.ts`): Term evaluator using miniKanren for relational reasoning
+- **Type Inference** (`src/logic/type-inference.ts`): Type checking before execution
+- **Search** (`src/logic/bm25.ts`, `semantic.ts`, `rrf.ts`): BM25, TF-IDF, Reciprocal Rank Fusion
+- **Q-value Reranker** (`src/logic/qvalue.ts`): Learns across turns
+
+### Handle System (97% token savings)
+- **SessionDB** (`src/persistence/session-db.ts`): In-memory SQLite with FTS5
+- **HandleRegistry** (`src/persistence/handle-registry.ts`): Create/manage handle references
+- **HandleOps** (`src/persistence/handle-ops.ts`): Server-side filter/map/count/sum on handles
+- **HandleSession** (`src/engine/handle-session.ts`): Wraps NucleusEngine + handle storage
+
+### Nucleus Engine
+- **NucleusEngine** (`src/engine/nucleus-engine.ts`): Standalone command executor, bindings, cross-query state
+- **Bindings**: `RESULTS` (latest array), `_1`/`_2`/... (per-turn), `_fn_name` (synthesized fns)
+
+### Synthesis (Barliman-style)
+- **Coordinator** (`src/synthesis/coordinator.ts`): Routes to regex/extractor/relational synthesizers
+- **Evalo DSL** (`src/synthesis/evalo/`): Type-checked extraction language
+- **miniKanren** (`src/minikanren/`): Relational programming engine for constraint solving
+- LLM provides CONSTRAINTS (input/output examples), NOT code — synthesizer builds programs
+
+### Code Intelligence
+- **Tree-sitter** (`src/treesitter/`): Symbol extraction (functions, classes, methods) for .ts/.js/.py/.go/.md
+- **Symbol Graph** (`src/graph/`): Knowledge graph — callers, callees, ancestors, descendants, implementations
+
+### Entry Points / Adapters
+- `src/lattice-mcp-server.ts` — MCP server for Claude Code (handle-based)
+- `src/mcp-server.ts` — MCP server with full LLM orchestration
+- `src/tool/adapters/pipe.ts` — JSON subprocess control (stdin/stdout)
+- `src/tool/adapters/http.ts` — REST API with session lifecycle
+- `src/tool/adapters/claude-code.ts` — Auto-registers as MCP tools
+
+### Session Management
+- Session timeout: **10 minutes** inactivity (configurable in `lattice-mcp-server.ts`)
+- Timer resets on every query
+- Single session per MCP instance
+- Max document: 50MB, max handles: 200 (LRU eviction), max grep matches: 10,000
 
 ## Key Principle: Barliman-Style Synthesis
 
@@ -218,6 +243,31 @@ Note: `$res1`, `$res2`, etc. are handle stubs for `lattice_expand` only. Use `RE
 1. (list_symbols)                    → $res1: Array(12) [# Intro, ## Setup, ...]
 2. (grep "## Installation")         → Find specific section content
 ```
+
+### Memory Pad (lattice_memo)
+
+Store arbitrary context as handle-backed memos for token-efficient roundtripping.
+Instead of carrying full context in every message, store it server-side and reference by stub.
+
+```
+# Store context — no lattice_load required
+lattice_memo content="<file summary or analysis>" label="auth module architecture"
+→ $memo1: "auth module architecture" (2.1KB, 50 lines)
+
+# Continue working with just the stub (~15 tokens instead of ~500)
+# Pull back full content only when needed:
+lattice_expand $memo1
+→ Full text
+
+# Memos persist across document loads
+lattice_load ./other-file.ts    # $memo1 survives this
+```
+
+**Token savings**: ~93% over a 30-message session with 3 source files stashed as memos.
+Traditional roundtripping: 836K tokens. Memo-based: 57K tokens.
+
+**Session timeout**: 10 min inactivity (configurable via `LATTICE_TIMEOUT_MS` env var).
+Every tool call resets the timer.
 
 ### HTTP Server Option
 ```bash

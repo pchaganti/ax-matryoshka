@@ -144,12 +144,13 @@ export class HandleRegistry {
   }
 
   /**
-   * Evict the oldest handle to free space
+   * Evict the oldest non-memo handle to free space
    */
   evictOldest(): void {
     const handles = this.db.listHandles();
-    if (handles.length > 0) {
-      this.delete(handles[0]);
+    const target = handles.find(h => !h.startsWith("$memo"));
+    if (target) {
+      this.delete(target);
     }
   }
 }
