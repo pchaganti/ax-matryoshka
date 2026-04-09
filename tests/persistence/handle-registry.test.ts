@@ -155,6 +155,53 @@ describe("HandleRegistry", () => {
     });
   });
 
+  describe("eviction", () => {
+    it("should evict the oldest non-memo handle (creation order, not alphabetical)", () => {
+      // Create 10 handles so we get $res1..$res10
+      // Delete $res1 so the oldest remaining is $res2
+      // Alphabetical order would put $res10 before $res2, but creation
+      // order should evict $res2 first (the actually oldest remaining handle).
+      for (let i = 1; i <= 10; i++) {
+        registry.store([{ val: i }]);
+      }
+
+      // Delete $res1 — now $res2 is the oldest remaining
+      registry.delete("$res1");
+      expect(registry.listHandles()).toHaveLength(9);
+
+      registry.evictOldest();
+
+      // $res2 should be evicted (oldest by creation), NOT $res10
+      const remaining = registry.listHandles();
+      expect(remaining).not.toContain("$res2");
+      expect(remaining).toContain("$res10");
+      expect(remaining).toContain("$res3");
+      expect(remaining).toHaveLength(8);
+    });
+
+    it("should not evict memo handles", () => {
+      const memoData = Array.from({ length: 3 }, (_, i) => `memo line ${i}`);
+      const memoHandle = db.createMemoHandle(memoData);
+      const resHandle = registry.store([{ val: 1 }]);
+
+      registry.evictOldest();
+
+      // Memo handle should survive, query handle should be evicted
+      expect(registry.get(memoHandle)).not.toBeNull();
+      expect(registry.get(resHandle)).toBeNull();
+    });
+
+    it("should clear resultsHandle when the RESULTS handle is evicted", () => {
+      const handle = registry.store([{ val: 1 }]);
+      registry.setResults(handle);
+      expect(registry.getResults()).toBe(handle);
+
+      registry.evictOldest();
+
+      expect(registry.getResults()).toBeNull();
+    });
+  });
+
   describe("handle inspection", () => {
     it("should list all active handles", () => {
       registry.store([{ a: 1 }]);
