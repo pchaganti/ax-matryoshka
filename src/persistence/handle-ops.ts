@@ -30,11 +30,11 @@ export class HandleOps {
    * Count items in a handle
    */
   count(handle: string): number {
-    const data = this.registry.get(handle);
-    if (data === null) {
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) {
       throw new Error(`Invalid handle: ${handle}`);
     }
-    return data.length;
+    return meta.count;
   }
 
   /**

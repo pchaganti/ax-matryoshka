@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { HandleOps } from "../../src/persistence/handle-ops.js";
 import { HandleRegistry } from "../../src/persistence/handle-registry.js";
 import { SessionDB } from "../../src/persistence/session-db.js";
@@ -40,6 +40,17 @@ describe("HandleOps", () => {
 
     it("should throw for invalid handle", () => {
       expect(() => ops.count("$resINVALID")).toThrow();
+    });
+
+    it("should use metadata count without loading full data", () => {
+      const data = Array.from({ length: 5000 }, (_, i) => ({ line: `Line ${i}`, lineNum: i }));
+      const handle = registry.store(data);
+
+      const getSpy = vi.spyOn(registry, "get");
+      const count = ops.count(handle);
+
+      expect(count).toBe(5000);
+      expect(getSpy).not.toHaveBeenCalled();
     });
   });
 
