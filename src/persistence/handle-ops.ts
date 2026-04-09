@@ -131,6 +131,14 @@ export class HandleOps {
       const aVal = typeof a === "object" && a !== null ? (a as Record<string, unknown>)[field] : a;
       const bVal = typeof b === "object" && b !== null ? (b as Record<string, unknown>)[field] : b;
 
+      const aMissing = aVal === undefined || aVal === null;
+      const bMissing = bVal === undefined || bVal === null;
+
+      // Sort missing values to the end regardless of direction
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;
+      if (bMissing) return -1;
+
       let cmp = 0;
       if (typeof aVal === "number" && typeof bVal === "number") {
         cmp = aVal - bVal;

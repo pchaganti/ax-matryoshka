@@ -198,6 +198,59 @@ describe("HandleOps", () => {
       expect(result![1].score).toBe(75);
       expect(result![2].score).toBe(50);
     });
+
+    it("should sort missing fields to end in ascending order", () => {
+      const data = [
+        { line: "no score", lineNum: 1 },
+        { line: "has score", lineNum: 2, score: 50 },
+        { line: "also no score", lineNum: 3 },
+        { line: "high score", lineNum: 4, score: 100 },
+      ];
+      const handle = registry.store(data);
+      const resultHandle = ops.sort(handle, "score", "asc");
+
+      const result = registry.get(resultHandle) as Array<Record<string, unknown>>;
+      // Items with score should come first, sorted by value
+      expect(result[0].score).toBe(50);
+      expect(result[1].score).toBe(100);
+      // Items without score should be at the end (not sorted as "undefined")
+      expect(result[2].score).toBeUndefined();
+      expect(result[3].score).toBeUndefined();
+    });
+
+    it("should sort missing fields to end in descending order", () => {
+      const data = [
+        { line: "no score", lineNum: 1 },
+        { line: "has score", lineNum: 2, score: 50 },
+        { line: "also no score", lineNum: 3 },
+        { line: "high score", lineNum: 4, score: 100 },
+      ];
+      const handle = registry.store(data);
+      const resultHandle = ops.sort(handle, "score", "desc");
+
+      const result = registry.get(resultHandle) as Array<Record<string, unknown>>;
+      // Items with score should come first, sorted by value descending
+      expect(result[0].score).toBe(100);
+      expect(result[1].score).toBe(50);
+      // Items without score should be at the end
+      expect(result[2].score).toBeUndefined();
+      expect(result[3].score).toBeUndefined();
+    });
+
+    it("should not treat missing numeric fields as string 'undefined'", () => {
+      const data = [
+        { line: "missing", lineNum: 1 },
+        { line: "present", lineNum: 2, score: 42 },
+      ];
+      const handle = registry.store(data);
+      const resultHandle = ops.sort(handle, "score", "asc");
+
+      const result = registry.get(resultHandle) as Array<Record<string, unknown>>;
+      // "undefined" string would sort before "42" alphabetically,
+      // but missing values should sort to the end instead
+      expect(result[0].score).toBe(42);
+      expect(result[1].score).toBeUndefined();
+    });
   });
 
   describe("preview", () => {
