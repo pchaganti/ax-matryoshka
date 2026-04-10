@@ -79,7 +79,7 @@ describe("Audit #40", () => {
 
     it("sumFromLine should check isFinite", () => {
       const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const sumFromLine = source.match(/sumFromLine[\s\S]*?total \+= num/);
+      const sumFromLine = source.match(/sumFromLine[\s\S]*?acc \+ num/);
       expect(sumFromLine).not.toBeNull();
       expect(sumFromLine![0]).toMatch(/isFinite/);
     });

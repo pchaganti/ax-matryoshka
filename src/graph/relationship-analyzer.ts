@@ -65,11 +65,21 @@ export class RelationshipAnalyzer {
       .map((n) => escapeRegex(n));
     if (escapedNames.length === 0) return edges;
 
-    const CALL_PATTERN = new RegExp(
-      `(?:\\b(${escapedNames.join("|")})\\s*\\(|this\\.(${escapedNames.join("|")})\\s*\\()`,
-      "g"
-    );
-    const WORD_PATTERN = (name: string) => new RegExp(`\\b${escapeRegex(name)}\\b`);
+    const MAX_ALTERNATION = 500;
+    const useBatchRegex = escapedNames.length <= MAX_ALTERNATION;
+
+    const CALL_PATTERN = useBatchRegex
+      ? new RegExp(
+          `(?:\\b(${escapedNames.join("|")})\\s*\\(|this\\.(${escapedNames.join("|")})\\s*\\()`,
+          "g"
+        )
+      : null;
+
+    const callPatterns = useBatchRegex
+      ? null
+      : new Map<string, RegExp>(
+          escapedNames.map((n) => [n, new RegExp(`(?:\\b${n}\\s*\\(|this\\.${n}\\s*\\()`)])
+        );
 
     for (const sym of funcSymbols) {
       const bodyStart = sym.startLine;
@@ -79,15 +89,27 @@ export class RelationshipAnalyzer {
 
       for (let lineIdx = bodyStart - 1; lineIdx < bodyEnd && lineIdx < lines.length; lineIdx++) {
         const line = lines[lineIdx];
-        CALL_PATTERN.lastIndex = 0;
-        let match: RegExpExecArray | null;
-        while ((match = CALL_PATTERN.exec(line)) !== null) {
-          const targetName = match[1] || match[2];
-          if (!targetName) continue;
-          if (targetName === sym.name && lineIdx === bodyStart - 1) continue;
-          if (!seenTargets.has(targetName)) {
-            seenTargets.add(targetName);
-            addEdge(sym.name, targetName, "calls");
+
+        if (useBatchRegex && CALL_PATTERN) {
+          CALL_PATTERN.lastIndex = 0;
+          let match: RegExpExecArray | null;
+          while ((match = CALL_PATTERN.exec(line)) !== null) {
+            const targetName = match[1] || match[2];
+            if (!targetName) continue;
+            if (targetName === sym.name && lineIdx === bodyStart - 1) continue;
+            if (!seenTargets.has(targetName)) {
+              seenTargets.add(targetName);
+              addEdge(sym.name, targetName, "calls");
+            }
+          }
+        } else if (callPatterns) {
+          for (const [targetName, pattern] of callPatterns) {
+            if (targetName === sym.name && lineIdx === bodyStart - 1) continue;
+            if (seenTargets.has(targetName)) continue;
+            if (pattern.test(line)) {
+              seenTargets.add(targetName);
+              addEdge(sym.name, targetName, "calls");
+            }
           }
         }
       }

@@ -74,7 +74,7 @@ export class HandleOps {
       throw new Error(`Invalid handle: ${handle}`);
     }
 
-    let total = 0;
+    let acc = 0;
     const CHUNK = 5000;
     for (let offset = 0; offset < meta.count; offset += CHUNK) {
       const chunk = this.db.getHandleDataSlice(handle, CHUNK, offset);
@@ -84,14 +84,16 @@ export class HandleOps {
           const match = line.match(/\$?([\d,]+(?:\.\d+)?)/);
           if (match) {
             const num = parseFloat(match[1].replace(/,/g, ""));
-            if (!isNaN(num) && isFinite(num)) {
-              total += num;
+            if (!isNaN(num) && Number.isFinite(num)) {
+              const result = acc + num;
+              if (!Number.isFinite(result)) continue;
+              acc = result;
             }
           }
         }
       }
     }
-    return total;
+    return acc;
   }
 
   /**

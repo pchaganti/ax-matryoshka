@@ -51,7 +51,7 @@ export class FTS5Search {
    */
   searchByRelevance(query: string): SearchResult[] {
     const MAX_SEARCH_TERMS = 100;
-    const cappedQuery = query.toLowerCase().split(/\s+/).filter(t => t.length > 0).slice(0, MAX_SEARCH_TERMS).join(" ");
+    const cappedQuery = query.split(/\s+/).filter(t => t.length > 0).slice(0, MAX_SEARCH_TERMS).join(" ");
     return this.db.searchByRelevance(cappedQuery);
   }
 

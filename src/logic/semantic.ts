@@ -28,16 +28,21 @@ export interface SemanticResult {
 export interface SemanticIndex {
   lineTokens: string[][];
   idf: Map<string, number>;
-  lineVectors: Map<string, number>[];
+  lineVectors?: Map<string, number>[];
 }
 
 // ── Build index from document lines ─────────────────────────────────
 
+const MAX_PRECOMPUTE_LINES = 50_000;
+
 export function buildSemanticIndex(lines: string[]): SemanticIndex {
   const lineTokens = lines.map(line => ragTokenize(line));
   const idf = inverseDocumentFrequency(lineTokens);
-  const lineVectors = lineTokens.map(tokens => tfidfVector(tokens, idf));
-  return { lineTokens, idf, lineVectors };
+  const result: SemanticIndex = { lineTokens, idf };
+  if (lines.length <= MAX_PRECOMPUTE_LINES) {
+    result.lineVectors = lineTokens.map(tokens => tfidfVector(tokens, idf));
+  }
+  return result;
 }
 
 // ── Semantic search ─────────────────────────────────────────────────
@@ -65,7 +70,9 @@ export function searchSemantic(
   const results: SemanticResult[] = [];
 
   for (let i = 0; i < lines.length; i++) {
-    const lineVec = index.lineVectors[i];
+    const lineVec = index.lineVectors
+      ? index.lineVectors[i]
+      : tfidfVector(index.lineTokens[i], index.idf);
     if (!lineVec || lineVec.size === 0) continue;
     const score = cosineSimilarity(queryVec, lineVec);
     if (score > 0) {
