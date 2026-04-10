@@ -1,6 +1,7 @@
 import type { LLMProvider, LLMConfig, ProviderConfig, LLMQueryFn, LLMQueryOptions } from "./types.js";
 import { createOllamaProvider } from "./ollama.js";
 import { createDeepSeekProvider } from "./deepseek.js";
+import { createGLMProvider } from "./glm.js";
 
 export type { LLMProvider, LLMConfig, ProviderConfig, LLMQueryFn, LLMQueryOptions } from "./types.js";
 
@@ -9,6 +10,7 @@ type ProviderFactory = (config: ProviderConfig) => LLMProvider;
 const providerFactories: Record<string, ProviderFactory> = {
   ollama: createOllamaProvider,
   deepseek: createDeepSeekProvider,
+  glm: createGLMProvider,
 };
 
 /**
@@ -101,6 +103,7 @@ export function createLLMClient(
 
 export { createOllamaProvider } from "./ollama.js";
 export { createDeepSeekProvider } from "./deepseek.js";
+export { createGLMProvider } from "./glm.js";
 export { fetchWithRetry, type RetryOptions } from "./retry.js";
 
 /**
