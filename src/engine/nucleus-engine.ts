@@ -105,19 +105,20 @@ function createSolverTools(context: string): SolverTools {
       const MAX_GREP_MATCHES = 10000;
       const MAX_PATTERN_LENGTH = 1000;
       const MAX_CAPTURE_GROUPS = 50;
+      const GREP_TIME_BUDGET_MS = 5000;
       if (pattern.length > MAX_PATTERN_LENGTH) return [];
       const validation = validateRegex(pattern);
       if (!validation.valid) return [];
-      // Cap capture groups to prevent huge result objects
-      // Replace escaped backslashes first, then escaped chars, to correctly handle \\(
       const unescapedParens = pattern.replace(/\\\\/g, "").replace(/\\./g, "").match(/\(/g);
       if (unescapedParens && unescapedParens.length > MAX_CAPTURE_GROUPS) return [];
       const flags = "gmi";
       const regex = new RegExp(pattern, flags);
       const results: Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }> = [];
       let match;
+      const deadline = Date.now() + GREP_TIME_BUDGET_MS;
 
       while ((match = regex.exec(context)) !== null) {
+        if (Date.now() > deadline) break;
         const lineNum = lineAtOffset(match.index);
         const line = lines[lineNum - 1] || "";
 
@@ -377,11 +378,15 @@ export class NucleusEngine {
   /**
    * Get current variable bindings
    */
+  private static readonly DANGEROUS_KEYS = new Set([
+    "__proto__", "constructor", "prototype",
+    "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__",
+  ]);
+
   getBindings(): Record<string, unknown> {
-    const DANGEROUS_KEYS = new Set(["__proto__", "constructor", "prototype"]);
     const result: Record<string, unknown> = Object.create(null);
     for (const [key, value] of this.bindings) {
-      if (DANGEROUS_KEYS.has(key)) continue;
+      if (NucleusEngine.DANGEROUS_KEYS.has(key)) continue;
       // Summarize arrays to avoid huge output
       if (Array.isArray(value)) {
         result[key] = `Array[${value.length}]`;
@@ -405,6 +410,9 @@ export class NucleusEngine {
   setBinding(name: string, value: unknown): void {
     if (!name || name.length > 256 || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
       throw new Error("Invalid binding name");
+    }
+    if (NucleusEngine.DANGEROUS_KEYS.has(name)) {
+      throw new Error("Reserved binding name");
     }
     this.bindings.set(name, value);
   }

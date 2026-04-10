@@ -64,24 +64,39 @@ export function createSessionManager(): SessionManager {
       }
       llmFnMap.set(filePath, llmFn);
 
+      if (llmFnMap.size > MAX_SESSIONS) {
+        for (const key of llmFnMap.keys()) {
+          if (key !== filePath && !mgr.get(key)) {
+            llmFnMap.delete(key);
+          }
+          if (llmFnMap.size <= MAX_SESSIONS) break;
+        }
+      }
+
       const hash = hashContent(content);
-      return mgr.getOrCreate(filePath, hash, async () =>
-        createSandbox(content, {
-          ...options,
-          globals: {
-            ...options?.globals,
-            __llmQueryBridge: llmFn,
-          },
-          builtins: [
-            GREP_IMPL,
-            FUZZY_SEARCH_IMPL,
-            COUNT_TOKENS_IMPL,
-            LOCATE_LINE_IMPL,
-            LLM_QUERY_IMPL,
-            ...(options?.builtins ?? []),
-          ],
-        }),
-      );
+      try {
+        return await mgr.getOrCreate(filePath, hash, async () =>
+          createSandbox(content, {
+            ...options,
+            globals: {
+              ...options?.globals,
+              __llmQueryBridge: llmFn,
+            },
+            builtins: [
+              GREP_IMPL,
+              FUZZY_SEARCH_IMPL,
+              COUNT_TOKENS_IMPL,
+              LOCATE_LINE_IMPL,
+              LLM_QUERY_IMPL,
+              ...(options?.builtins ?? []),
+            ],
+          }),
+        );
+      } catch (err) {
+        mgr.clear(filePath);
+        llmFnMap.delete(filePath);
+        throw err;
+      }
     },
 
     get(filePath: string): Sandbox | undefined {

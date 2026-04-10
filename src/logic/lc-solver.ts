@@ -38,6 +38,19 @@ export interface SolverTools {
  */
 export type Bindings = Map<string, unknown>;
 
+const moduleQStore = new QValueStore();
+
+let lastContext: string = "";
+let lastContextLines: string[] = [];
+
+function getCachedLines(context: string): string[] {
+  if (context !== lastContext) {
+    lastContext = context;
+    lastContextLines = context.split("\n");
+  }
+  return lastContextLines;
+}
+
 /**
  * Validate a regex pattern for safety (ReDoS protection)
  */
@@ -123,7 +136,7 @@ export function solve(
   }
 }
 
-const MAX_EVAL_DEPTH = 1000;
+const MAX_EVAL_DEPTH = 200;
 
 /**
  * Evaluate an LC term
@@ -228,10 +241,10 @@ function evaluate(
         const normalized: LineResult[] = (result as unknown[]).map((item: unknown) => {
           const obj = item as Record<string, unknown>;
           return {
-            ...(obj as object),             // base fields first (preserves extra fields like match, groups)
-            line: String(obj.line ?? ""),    // sanitized overrides after spread
+            ...(obj as object),
+            line: typeof obj.line === "string" ? obj.line : obj.line != null ? String(obj.line) : "",
             lineNum: Number(obj.lineNum ?? 0),
-            score: Number(obj.score ?? 1),  // grep results lack score — default 1
+            score: Number(obj.score ?? 1),
           };
         });
         signals.push(normalized);
@@ -252,7 +265,7 @@ function evaluate(
         const obj = item as Record<string, unknown>;
         return {
           ...(obj as object),
-          line: String(obj.line ?? ""),
+          line: typeof obj.line === "string" ? obj.line : obj.line != null ? String(obj.line) : "",
           lineNum: Number(obj.lineNum ?? 0),
           score: Number(obj.score ?? 1),
         };
@@ -274,18 +287,12 @@ function evaluate(
         const obj = item as Record<string, unknown>;
         return {
           ...(obj as object),
-          line: String(obj.line ?? ""),
+          line: typeof obj.line === "string" ? obj.line : obj.line != null ? String(obj.line) : "",
           lineNum: Number(obj.lineNum ?? 0),
           score: Number(obj.score ?? 1),
         };
       });
-      // Get or create Q-value store from bindings
-      let store = bindings.get("_qstore") as QValueStore | undefined;
-      if (!store) {
-        store = new QValueStore();
-        bindings.set("_qstore", store);
-      }
-      // Auto-reward: if previous RESULTS exist, reward those lines (they were useful enough to query again)
+      const store = moduleQStore;
       const prevResults = bindings.get("RESULTS");
       if (Array.isArray(prevResults) && prevResults.length > 0) {
         const prevLineNums = prevResults
@@ -325,8 +332,7 @@ function evaluate(
         return [];
       }
       log(`[Solver] Getting lines ${term.start} to ${term.end}`);
-      const allLines = tools.context.split("\n");
-      // Convert to 0-indexed and clamp to valid range
+      const allLines = getCachedLines(tools.context);
       const startIdx = Math.max(0, Math.floor(term.start) - 1);
       const endIdx = Math.min(allLines.length, Math.floor(term.end));
       const selectedLines = allLines.slice(startIdx, endIdx);
@@ -437,17 +443,18 @@ function evaluate(
         // Handle grep result objects - extract number from line
         if (typeof val === "object" && val !== null && "line" in val) {
           const line = (val as { line: string }).line;
-          // Look for dollar amounts like "$1,234,567" or plain numbers
-          const numMatch = line.match(/\$?([\d,]+(?:\.\d+)?)/);
-          if (numMatch) {
+          const numMatches = line.matchAll(/\$?([\d,]+(?:\.\d+)?)/g);
+          let lineAcc = 0;
+          let found = false;
+          for (const numMatch of numMatches) {
             const cleaned = numMatch[1].replace(/,/g, "");
             const num = parseFloat(cleaned);
-            if (!Number.isFinite(num)) {
-              skippedCount++;
-              return acc;
+            if (Number.isFinite(num)) {
+              lineAcc += num;
+              found = true;
             }
-            return acc + num;
           }
+          if (found) return acc + lineAcc;
         }
         skippedCount++;
         return acc;
@@ -474,7 +481,7 @@ function evaluate(
     }
 
     case "reduce": {
-      // Generic reduce - (reduce collection init (lambda (acc x) ...))
+      const MAX_REDUCE_ITERATIONS = 10000;
       const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`reduce: expected array, got ${typeof collection}`);
@@ -483,10 +490,13 @@ function evaluate(
       if (term.fn.tag !== "lambda") {
         throw new Error(`reduce: fn must be a lambda`);
       }
-      log(`[Solver] Reducing ${collection.length} items`);
+      const items = collection.slice(0, MAX_REDUCE_ITERATIONS);
+      if (collection.length > MAX_REDUCE_ITERATIONS) {
+        log(`[Solver] Warning: reduce capped at ${MAX_REDUCE_ITERATIONS} of ${collection.length} items`);
+      }
+      log(`[Solver] Reducing ${items.length} items`);
       let acc = init;
-      for (const item of collection) {
-        // Evaluate lambda with acc and item bound
+      for (const item of items) {
         acc = evaluateReduceFn(term.fn, acc, item, tools, bindings, log, depth + 1);
       }
       return acc;

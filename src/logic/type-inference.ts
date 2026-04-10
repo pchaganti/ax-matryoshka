@@ -197,8 +197,65 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
       // lines returns array of strings
       return { tag: "array", element: { tag: "string" } };
 
+    case "sum":
+      return { tag: "number" };
+
+    case "count":
+      return { tag: "number" };
+
+    case "reduce":
+      return { tag: "any" };
+
+    case "coerce": {
+      switch (term.targetType) {
+        case "number":
+        case "currency":
+        case "percent":
+          return { tag: "number" };
+        case "date":
+        case "string":
+          return { tag: "string" };
+        case "boolean":
+          return { tag: "boolean" };
+        default:
+          return { tag: "any" };
+      }
+    }
+
+    case "synthesize":
+      return { tag: "function", param: { tag: "string" }, result: { tag: "any" } };
+
+    case "list_symbols":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "get_symbol_body":
+      return { tag: "string" };
+
+    case "find_references":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "callers":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "callees":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "ancestors":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "descendants":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "implementations":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "dependents":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "symbol_graph":
+      return { tag: "any" };
+
     default:
-      // Unknown terms return any
       return { tag: "any" };
   }
 }

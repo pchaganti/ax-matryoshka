@@ -587,7 +587,13 @@ export async function runRLM(
     });
 
     const engine = new FSMEngine<RLMContext>();
-    const finalCtx = await engine.run(buildRLMSpec(), fsmCtx);
+    const FSM_TIMEOUT_MS = 5 * 60 * 1000;
+    const finalCtx = await Promise.race([
+      engine.run(buildRLMSpec(), fsmCtx),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`FSM run exceeded ${FSM_TIMEOUT_MS}ms timeout`)), FSM_TIMEOUT_MS)
+      ),
+    ]);
 
     if (finalCtx.result !== null) {
       return finalCtx.result;
@@ -597,13 +603,20 @@ export async function runRLM(
     log(`\n[RLM] Max turns (${maxTurns}) reached without final answer`);
     return `Max turns (${maxTurns}) reached without final answer. Last memory state: ${JSON.stringify(sandbox.getMemory())}`;
   } finally {
-    sandbox.dispose();
-    log(`\n[RLM] Sandbox disposed`);
+    try {
+      sandbox.dispose();
+      log(`\n[RLM] Sandbox disposed`);
+    } catch (disposeErr) {
+      log(`\n[RLM] Warning: sandbox dispose failed: ${disposeErr instanceof Error ? disposeErr.message : String(disposeErr)}`);
+    }
 
-    // Clear session-specific failure memory
-    if (ragManager) {
-      ragManager.clearFailureMemory(sessionId);
-      log(`[RAG] Cleared session failure memory`);
+    try {
+      if (ragManager) {
+        ragManager.clearFailureMemory(sessionId);
+        log(`[RAG] Cleared session failure memory`);
+      }
+    } catch (cleanupErr) {
+      log(`[RAG] Warning: cleanup failed: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`);
     }
   }
 }

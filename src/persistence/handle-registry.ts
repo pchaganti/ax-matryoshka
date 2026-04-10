@@ -31,6 +31,7 @@ function buildPreview(firstItem: unknown): string {
 export class HandleRegistry {
   private db: SessionDB;
   private resultsHandle: string | null = null;
+  private static readonly MAX_HANDLES = 200;
 
   constructor(db: SessionDB) {
     this.db = db;
@@ -40,6 +41,9 @@ export class HandleRegistry {
    * Store an array of data and return a handle reference
    */
   store(data: unknown[]): string {
+    while (this.db.handleCount() >= HandleRegistry.MAX_HANDLES) {
+      this.evictOldest();
+    }
     return this.db.createHandle(data);
   }
 
@@ -149,6 +153,10 @@ export class HandleRegistry {
     const target = handles.find(h => !h.startsWith("$memo"));
     if (target) {
       this.delete(target);
+      return;
+    }
+    if (handles.length > 0) {
+      this.delete(handles[0]);
     }
   }
 }

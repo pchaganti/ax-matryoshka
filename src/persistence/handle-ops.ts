@@ -56,8 +56,9 @@ export class HandleOps {
           const value = (item as Record<string, unknown>)[field];
           if (typeof value === "number" && Number.isFinite(value)) {
             const result = acc + value;
-            if (!Number.isFinite(result)) continue;
-            acc = result;
+            if (Number.isFinite(result)) {
+              acc = result;
+            }
           }
         }
       }
@@ -81,13 +82,14 @@ export class HandleOps {
       for (const item of chunk) {
         if (typeof item === "object" && item !== null && "line" in item) {
           const line = String((item as { line: string }).line);
-          const match = line.match(/\$?([\d,]+(?:\.\d+)?)/);
-          if (match) {
-            const num = parseFloat(match[1].replace(/,/g, ""));
+          const matches = line.matchAll(/\$?([\d,]+(?:\.\d+)?)/g);
+          for (const m of matches) {
+            const num = parseFloat(m[1].replace(/,/g, ""));
             if (!isNaN(num) && Number.isFinite(num)) {
               const result = acc + num;
-              if (!Number.isFinite(result)) continue;
-              acc = result;
+              if (Number.isFinite(result)) {
+                acc = result;
+              }
             }
           }
         }
@@ -100,13 +102,18 @@ export class HandleOps {
    * Filter items by predicate, return new handle
    */
   filter(handle: string, predicate: string): string {
-    const data = this.registry.get(handle);
-    if (data === null) {
-      throw new Error(`Invalid handle: ${handle}`);
-    }
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) throw new Error(`Invalid handle: ${handle}`);
 
     const predicateFn = this.compiler.compile(predicate);
-    const filtered = data.filter((item) => predicateFn(item));
+    const filtered: unknown[] = [];
+    const CHUNK = 5000;
+    for (let offset = 0; offset < meta.count; offset += CHUNK) {
+      const chunk = this.db.getHandleDataSlice(handle, CHUNK, offset);
+      for (const item of chunk) {
+        if (predicateFn(item)) filtered.push(item);
+      }
+    }
     return this.registry.store(filtered);
   }
 
@@ -114,13 +121,18 @@ export class HandleOps {
    * Transform items, return new handle
    */
   map(handle: string, expression: string): string {
-    const data = this.registry.get(handle);
-    if (data === null) {
-      throw new Error(`Invalid handle: ${handle}`);
-    }
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) throw new Error(`Invalid handle: ${handle}`);
 
     const transformFn = this.compiler.compileTransform(expression);
-    const mapped = data.map((item) => transformFn(item));
+    const mapped: unknown[] = [];
+    const CHUNK = 5000;
+    for (let offset = 0; offset < meta.count; offset += CHUNK) {
+      const chunk = this.db.getHandleDataSlice(handle, CHUNK, offset);
+      for (const item of chunk) {
+        mapped.push(transformFn(item));
+      }
+    }
     return this.registry.store(mapped);
   }
 
@@ -136,14 +148,13 @@ export class HandleOps {
       throw new Error(`Invalid handle: ${handle}`);
     }
 
-    const sorted = [...data].sort((a, b) => {
+    const sorted = data.sort((a, b) => {
       const aVal = typeof a === "object" && a !== null ? (a as Record<string, unknown>)[field] : a;
       const bVal = typeof b === "object" && b !== null ? (b as Record<string, unknown>)[field] : b;
 
       const aMissing = aVal === undefined || aVal === null;
       const bMissing = bVal === undefined || bVal === null;
 
-      // Sort missing values to the end regardless of direction
       if (aMissing && bMissing) return 0;
       if (aMissing) return 1;
       if (bMissing) return -1;
@@ -152,6 +163,8 @@ export class HandleOps {
       if (typeof aVal === "number" && typeof bVal === "number") {
         cmp = aVal - bVal;
         if (!Number.isFinite(cmp)) cmp = 0;
+      } else if (typeof aVal === "string" && typeof bVal === "string") {
+        cmp = aVal.localeCompare(bVal);
       } else {
         cmp = String(aVal).localeCompare(String(bVal));
       }
