@@ -73,7 +73,8 @@ export function buildBM25Index(
     }
   }
 
-  const totalLength = Array.from(docLengths.values()).reduce((a, b) => a + b, 0);
+  let totalLength = 0;
+  docLengths.forEach(v => { totalLength += v; });
   const avgDocLength = lines.length > 0 ? totalLength / lines.length : 0;
 
   return {

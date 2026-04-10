@@ -36,6 +36,7 @@ export interface RerankedResult extends LineResult {
 // ── Q-Value Store (in-memory, session-scoped) ───────────────────────
 
 export class QValueStore {
+  private static readonly MAX_ENTRIES = 50_000;
   private entries = new Map<number, QEntry>(); // lineNum → QEntry
   private totalUpdates = 0;
   private totalQueries = 0;
@@ -70,6 +71,19 @@ export class QValueStore {
       rewardSqSum: (entry?.rewardSqSum ?? 0) + reward * reward,
     });
     this.totalUpdates++;
+    if (this.entries.size > QValueStore.MAX_ENTRIES) {
+      this.prune();
+    }
+  }
+
+  /** Remove lowest-value entries to cap memory */
+  private prune(): void {
+    const sorted = [...this.entries.entries()]
+      .sort((a, b) => a[1].qValue - b[1].qValue);
+    const toRemove = this.entries.size - Math.floor(QValueStore.MAX_ENTRIES * 0.8);
+    for (let i = 0; i < toRemove && i < sorted.length; i++) {
+      this.entries.delete(sorted[i][0]);
+    }
   }
 
   /** Batch update multiple lines with rewards */

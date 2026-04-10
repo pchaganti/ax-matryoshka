@@ -50,6 +50,7 @@ async function initWasm(): Promise<void> {
  */
 export class ParserRegistry {
   private parser: TreeSitterParser | null = null;
+  private wasmParser: TreeSitterParser | null = null;
   private languages: Map<string, { lang: TreeSitterLanguage; wasm: boolean }> = new Map();
   private initialized: boolean = false;
 
@@ -204,11 +205,13 @@ export class ParserRegistry {
     const loaded = await this.loadLanguage(language);
 
     if (loaded.wasm) {
-      // Use web-tree-sitter for WASM grammars
+      // Use web-tree-sitter for WASM grammars (reuse cached parser)
       await initWasm();
-      const wasmParser = new WasmParserClass();
-      wasmParser.setLanguage(loaded.lang);
-      return wasmParser.parse(content);
+      if (!this.wasmParser) {
+        this.wasmParser = new WasmParserClass();
+      }
+      this.wasmParser.setLanguage(loaded.lang);
+      return this.wasmParser.parse(content);
     }
 
     // Use native tree-sitter for CJS grammars
@@ -258,6 +261,7 @@ export class ParserRegistry {
    */
   dispose(): void {
     this.parser = null;
+    this.wasmParser = null;
     this.languages.clear();
     this.initialized = false;
   }

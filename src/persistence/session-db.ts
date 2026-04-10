@@ -255,6 +255,31 @@ export class SessionDB {
   }
 
   /**
+   * Search with FTS5 BM25 relevance ranking (server-side scoring)
+   */
+  searchByRelevance(query: string): DocumentLine[] {
+    if (!this.db) return [];
+    if (!query.trim()) return [];
+
+    const MAX_SEARCH_RESULTS = 100_000;
+    const stmt = this.db.prepare(`
+      SELECT d.lineNum, d.content
+      FROM document_lines_fts f
+      JOIN document_lines d ON d.lineNum = f.rowid
+      WHERE document_lines_fts MATCH ?
+      ORDER BY bm25(document_lines_fts)
+      LIMIT ?
+    `);
+
+    try {
+      return stmt.all(query, MAX_SEARCH_RESULTS) as DocumentLine[];
+    } catch (err) {
+      console.error("[SessionDB] FTS5 relevance query failed:", err instanceof Error ? err.message : String(err));
+      return this.searchRaw(query);
+    }
+  }
+
+  /**
    * Create a handle for storing data array
    */
   createHandle(data: unknown[]): string {
@@ -429,6 +454,26 @@ export class SessionDB {
     const stmt = this.db.prepare("SELECT handle FROM handles ORDER BY created_at LIMIT ?");
     const rows = stmt.all(MAX_HANDLES) as Array<{ handle: string }>;
     return rows.map((r) => r.handle);
+  }
+
+  /**
+   * Count handles without materializing them
+   */
+  handleCount(): number {
+    if (!this.db) return 0;
+    const stmt = this.db.prepare("SELECT COUNT(*) AS cnt FROM handles");
+    const row = stmt.get() as { cnt: number } | undefined;
+    return row?.cnt ?? 0;
+  }
+
+  /**
+   * Get metadata for all handles in one query
+   */
+  listHandleMetadata(): HandleMetadata[] {
+    if (!this.db) return [];
+    const stmt = this.db.prepare("SELECT handle, type, count, created_at FROM handles ORDER BY created_at");
+    const rows = stmt.all() as Array<{ handle: string; type: string; count: number; created_at: number }>;
+    return rows.map(r => ({ handle: r.handle, type: r.type, count: r.count, createdAt: r.created_at }));
   }
 
   /**

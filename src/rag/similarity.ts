@@ -121,6 +121,8 @@ export function keywordMatchScore(
   queryTokens: string[],
   keywords: string[]
 ): number {
+  if (queryTokens.length === 0 && keywords.length === 0) return 0;
+  // NaN/division guard: all scores validated with isFinite before return
   const MAX_QUERY_TOKENS = 200;
   const MAX_KEYWORDS = 500;
   if (queryTokens.length > MAX_QUERY_TOKENS) {
@@ -132,27 +134,35 @@ export function keywordMatchScore(
   const querySet = new Set(queryTokens);
   const keywordSet = new Set(keywords.map(k => k.toLowerCase()));
 
+  const keywordPrefixes = new Set<string>();
+  for (const kw of keywordSet) {
+    for (let len = 2; len <= Math.min(kw.length, 4); len++) {
+      keywordPrefixes.add(kw.slice(0, len));
+    }
+  }
+
   let matches = 0;
   let partialMatches = 0;
 
   for (const query of querySet) {
     if (keywordSet.has(query)) {
       matches++;
-    } else {
-      // Check for partial matches
+    } else if (keywordPrefixes.has(query.slice(0, Math.min(query.length, 4)))) {
+      let found = false;
       for (const keyword of keywordSet) {
         if (keyword.includes(query) || query.includes(keyword)) {
-          partialMatches++;
+          found = true;
           break;
         }
       }
+      if (found) partialMatches++;
     }
   }
 
   // Score: full matches count more than partial
   const totalKeywords = keywordSet.size || 1;
   const denominator = totalKeywords + queryTokens.length;
-  if (denominator === 0) return 0;
+  if (!Number.isFinite(denominator) || denominator === 0) return 0;
   const score = (matches * 2 + partialMatches) / denominator;
   return Number.isFinite(score) ? score : 0;
 }

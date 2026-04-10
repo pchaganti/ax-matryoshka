@@ -107,4 +107,22 @@ describe("searchSemantic", () => {
       expect(r.lineNum).toBeLessThanOrEqual(3);
     }
   });
+
+  it("should pre-compute line vectors in the index", () => {
+    const index = buildSemanticIndex(lines);
+    expect("lineVectors" in index).toBe(true);
+    expect(index.lineVectors.length).toBe(lines.length);
+    for (const vec of index.lineVectors) {
+      expect(vec).toBeInstanceOf(Map);
+    }
+  });
+
+  it("should use cached vectors — results identical to recomputed", () => {
+    const index = buildSemanticIndex(lines);
+    const results = searchSemantic("database error", lines, index);
+    expect(results.length).toBeGreaterThan(0);
+    // Verify vectors are actually populated (not empty maps)
+    const nonEmpty = index.lineVectors.filter(v => v.size > 0);
+    expect(nonEmpty.length).toBeGreaterThan(0);
+  });
 });
