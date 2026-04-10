@@ -27,10 +27,24 @@ export function safeEvalSynthesized(code: string): (input: string) => unknown {
     /\bReflect\b/, /\bProxy\b/, /\barguments\b/,
     /\bwindow\b/, /\bdocument\b/, /\bprototype\b/,
     /\batob\b/, /\bbtoa\b/, /\bglobal\b/, /\bself\b/,
+    /\bObject\b/, /\bArray\b/, /\bPromise\b/, /\bError\b/,
+    /\bNumber\b/, /\bString\b/, /\bBoolean\b/, /\bDate\b/,
+    /\bRegExp\b/, /\bMap\b/, /\bSet\b/, /\bJSON\b/,
+    /\bMath\b/, /\bIntl\b/, /\bSymbol\b/, /\bWeakMap\b/,
+    /\bWeakSet\b/, /\bArrayBuffer\b/, /\bDataView\b/,
+    /\bFloat32Array\b/, /\bFloat64Array\b/,
+    /\bInt8Array\b/, /\bInt16Array\b/, /\bInt32Array\b/,
+    /\bUint8Array\b/, /\bUint16Array\b/, /\bUint32Array\b/,
+    /\bSharedArrayBuffer\b/, /\bAtomics\b/, /\bBigInt\b/,
+    /\bProxy\b/, /\bWebSocket\b/, /\bXMLHttpRequest\b/,
+    /\bBuffer\b/, /\bsetTimeout\b/, /\bsetInterval\b/,
+    /\bsetImmediate\b/, /\bclearTimeout\b/, /\bclearInterval\b/,
+    /\bqueueMicrotask\b/, /\bstructuredClone\b/,
+    /\bthis\b/,
   ];
   for (const pattern of dangerous) {
     if (pattern.test(code)) {
-      throw new Error(`Synthesized code contains blocked pattern: ${pattern}`);
+      throw new Error(`Synthesized code contains blocked pattern`);
     }
   }
   // Block bracket notation with strings (dynamic property access bypass)

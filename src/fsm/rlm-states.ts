@@ -125,7 +125,19 @@ async function handleQueryLLM(ctx: RLMContext): Promise<RLMContext> {
   ctx.log(`[Turn ${ctx.turn}/${ctx.maxTurns}] Querying LLM...`);
 
   const prompt = ctx.history.map((h) => `${h.role.toUpperCase()}: ${h.content}`).join("\n\n");
-  const response = await ctx.llmClient(prompt);
+  let response: string;
+  try {
+    response = await ctx.llmClient(prompt);
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    ctx.log(`[Turn ${ctx.turn}] LLM error: ${errMsg}`);
+    ctx.history.push({
+      role: "user",
+      content: `LLM call failed: ${errMsg}. Please try again.`,
+    });
+    ctx.noCodeCount++;
+    return ctx;
+  }
 
   if (!response) {
     ctx.result = `Error: LLM returned empty response at turn ${ctx.turn}`;
@@ -356,8 +368,13 @@ function handleAnalyze(ctx: RLMContext): RLMContext {
       if (ctx.doneCount >= 3 && ctx.lastMeaningfulOutput) {
         ctx.log(`[Turn ${ctx.turn}] Detected stuck pattern. Auto-terminating.`);
         const verification = verifyAndReturnResult(ctx.lastMeaningfulOutput, ctx.constraint, ctx.log);
-        ctx.result = verification.valid ? verification.result : ctx.lastMeaningfulOutput;
-        return ctx;
+        if (verification.valid) {
+          ctx.result = verification.result;
+          return ctx;
+        }
+        ctx.log(`[Turn ${ctx.turn}] Stale output failed verification — forcing another attempt`);
+        ctx.doneCount = 0;
+        feedback += `\nWARNING: Stuck pattern detected. Try a completely different approach.\n`;
       }
       if (isRepeatedOutput) {
         feedback += `\nWARNING: Output is the same as before. Try a DIFFERENT approach:\n`;
@@ -367,13 +384,14 @@ function handleAnalyze(ctx: RLMContext): RLMContext {
       }
     } else if (!hasObjectObject) {
       ctx.lastOutputWasUnhelpful = false;
-      const computedMatch = logsText.match(/(?:total|sum|result|answer|count|average|mean)[^:]*:\s*([\d,.]+)/i);
+      const computedMatch = logsText.match(/^(?:total|sum|result|answer|count|average|mean)[^:]*:\s*([\d,.]+)\s*$/im);
       const hasRawData = logsText.match(/[\d,]{4,}|"[^"]+"\s*:/);
 
       if (computedMatch && ctx.turn > 2) {
-        const answerLine = result.logs.find(line =>
-          /(?:total|sum|result|answer|count|average|mean)[^:]*:/i.test(line)
-        );
+        const answerLine = result.logs.find(line => {
+          const trimmed = line.trim();
+          return /^(?:total|sum|result|answer|count|average|mean)[^:]*:\s*[\d,.]+\s*$/i.test(trimmed);
+        });
 
         if (answerLine) {
           ctx.log(`[Turn ${ctx.turn}] Computed answer found: ${answerLine}`);
@@ -480,7 +498,16 @@ function handleCheckFinalAnswer(ctx: RLMContext): RLMContext {
     if (ctx.noCodeCount >= 3 && ctx.lastMeaningfulOutput) {
       ctx.log(`[Turn ${ctx.turn}] Model stuck (${ctx.noCodeCount} no-code responses). Returning last output.`);
       const verification = verifyAndReturnResult(ctx.lastMeaningfulOutput, ctx.constraint, ctx.log);
-      ctx.result = verification.valid ? verification.result : ctx.lastMeaningfulOutput;
+      if (verification.valid) {
+        ctx.result = verification.result;
+        return ctx;
+      }
+      ctx.log(`[Turn ${ctx.turn}] Stale output failed verification — prompting for code`);
+      ctx.history.push({
+        role: "user",
+        content: `You have not produced working code for several turns. Write and execute Nucleus code to answer the query.`,
+      });
+      ctx.noCodeCount = 0;
       return ctx;
     }
 

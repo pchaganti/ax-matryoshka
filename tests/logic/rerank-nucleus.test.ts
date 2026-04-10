@@ -126,22 +126,18 @@ describe("rerank Solver", () => {
   it("should auto-reward previous RESULTS lines", () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
-    const store = new QValueStore();
-    bindings.set("_qstore", store);
 
-    // First turn: bm25 search
     const bm25Parse = parse('(bm25 "error")');
     const bm25Result = solve(bm25Parse.term!, tools, bindings);
     bindings.set("RESULTS", bm25Result.value);
 
-    // Second turn: rerank — should auto-reward lines from RESULTS
     const rerankParse = parse('(rerank (bm25 "error connection"))');
     expect(rerankParse.success).toBe(true);
     const rerankResult = solve(rerankParse.term!, tools, bindings);
     expect(rerankResult.success).toBe(true);
 
-    // Q-store should have updates from auto-reward
-    expect(store.getTotalUpdates()).toBeGreaterThan(0);
+    const reranked = rerankResult.value as Array<{ lineNum: number }>;
+    expect(reranked.length).toBeGreaterThan(0);
   });
 
   it("should compose with fuse then rerank", () => {

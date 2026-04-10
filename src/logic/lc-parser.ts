@@ -380,7 +380,7 @@ function parseTerm(state: ParserState, depth: number = 0): LCTerm | null {
     if (!tensor || tensor.type !== "tensor") {
       return null;
     }
-    const term = parseTerm(state);
+    const term = parseTerm(state, depth + 1);
     if (!term) return null;
     return { tag: "constrained", constraint, term };
   }
@@ -388,7 +388,7 @@ function parseTerm(state: ParserState, depth: number = 0): LCTerm | null {
   // List: (op args...)
   if (token.type === "lparen") {
     consume(state); // (
-    const list = parseList(state);
+    const list = parseList(state, depth + 1);
     const rparen = consume(state);
     if (!rparen || rparen.type !== "rparen") {
       return null;
@@ -424,7 +424,8 @@ function parseTerm(state: ParserState, depth: number = 0): LCTerm | null {
 /**
  * Parse list contents after opening paren
  */
-function parseList(state: ParserState): LCTerm | null {
+function parseList(state: ParserState, depth: number = 0): LCTerm | null {
+  if (depth > MAX_PARSE_DEPTH) return null;
   const first = peek(state);
   if (!first) return null;
 
@@ -434,29 +435,29 @@ function parseList(state: ParserState): LCTerm | null {
   }
   consume(state);
   const op = first.value;
+  const d = depth + 1;
 
   switch (op) {
     case "input":
       return { tag: "input" };
 
     case "lit": {
-      const val = parseTerm(state);
+      const val = parseTerm(state, d);
       if (!val || val.tag !== "lit") return null;
       return val;
     }
 
     case "grep": {
-      const pattern = parseTerm(state);
+      const pattern = parseTerm(state, d);
       if (!pattern || pattern.tag !== "lit" || typeof pattern.value !== "string")
         return null;
       return { tag: "grep", pattern: pattern.value };
     }
 
     case "fuzzy_search": {
-      const query = parseTerm(state);
+      const query = parseTerm(state, d);
       if (!query || query.tag !== "lit" || typeof query.value !== "string")
         return null;
-      // Optional limit
       const limitTerm = peek(state);
       let limit: number | undefined;
       if (limitTerm && limitTerm.type === "number") {
@@ -467,10 +468,9 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "bm25": {
-      const query = parseTerm(state);
+      const query = parseTerm(state, d);
       if (!query || query.tag !== "lit" || typeof query.value !== "string")
         return null;
-      // Optional limit
       const limitTerm = peek(state);
       let limit: number | undefined;
       if (limitTerm && limitTerm.type === "number") {
@@ -481,11 +481,10 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "fuse": {
-      // (fuse <coll1> <coll2> [<coll3> ...]) — requires at least 2
       const MAX_FUSE_ARGS = 10;
       const collections: LCTerm[] = [];
       while (peek(state) && peek(state)?.type !== "rparen" && collections.length < MAX_FUSE_ARGS) {
-        const coll = parseTerm(state);
+        const coll = parseTerm(state, d);
         if (!coll) break;
         collections.push(coll);
       }
@@ -494,22 +493,22 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "dampen": {
-      const collection = parseTerm(state);
+      const collection = parseTerm(state, d);
       if (!collection) return null;
-      const query = parseTerm(state);
+      const query = parseTerm(state, d);
       if (!query || query.tag !== "lit" || typeof query.value !== "string")
         return null;
       return { tag: "dampen", collection, query: query.value };
     }
 
     case "rerank": {
-      const collection = parseTerm(state);
+      const collection = parseTerm(state, d);
       if (!collection) return null;
       return { tag: "rerank", collection };
     }
 
     case "semantic": {
-      const query = parseTerm(state);
+      const query = parseTerm(state, d);
       if (!query || query.tag !== "lit" || typeof query.value !== "string")
         return null;
       const limitTerm = peek(state);
@@ -526,11 +525,11 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "lines": {
-      const startTerm = parseTerm(state);
+      const startTerm = parseTerm(state, d);
       if (!startTerm || startTerm.tag !== "lit" || typeof startTerm.value !== "number") {
         return null;
       }
-      const endTerm = parseTerm(state);
+      const endTerm = parseTerm(state, d);
       if (!endTerm || endTerm.tag !== "lit" || typeof endTerm.value !== "number") {
         return null;
       }
@@ -538,58 +537,58 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "filter": {
-      const collection = parseTerm(state);
+      const collection = parseTerm(state, d);
       if (!collection) return null;
-      const predicate = parseTerm(state);
+      const predicate = parseTerm(state, d);
       if (!predicate) return null;
       return { tag: "filter", collection, predicate };
     }
 
     case "map": {
-      const collection = parseTerm(state);
+      const collection = parseTerm(state, d);
       if (!collection) return null;
-      const transform = parseTerm(state);
+      const transform = parseTerm(state, d);
       if (!transform) return null;
       return { tag: "map", collection, transform };
     }
 
     case "reduce": {
-      const collection = parseTerm(state);
+      const collection = parseTerm(state, d);
       if (!collection) return null;
-      const init = parseTerm(state);
+      const init = parseTerm(state, d);
       if (!init) return null;
-      const fn = parseTerm(state);
+      const fn = parseTerm(state, d);
       if (!fn) return null;
       return { tag: "reduce", collection, init, fn };
     }
 
     case "sum": {
-      const collection = parseTerm(state);
+      const collection = parseTerm(state, d);
       if (!collection) return null;
       return { tag: "sum", collection };
     }
 
     case "count": {
-      const collection = parseTerm(state);
+      const collection = parseTerm(state, d);
       if (!collection) return null;
       return { tag: "count", collection };
     }
 
     case "add": {
-      const left = parseTerm(state);
+      const left = parseTerm(state, d);
       if (!left) return null;
-      const right = parseTerm(state);
+      const right = parseTerm(state, d);
       if (!right) return null;
       return { tag: "add", left, right };
     }
 
     case "match": {
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
-      const pattern = parseTerm(state);
+      const pattern = parseTerm(state, d);
       if (!pattern || pattern.tag !== "lit" || typeof pattern.value !== "string")
         return null;
-      const group = parseTerm(state);
+      const group = parseTerm(state, d);
       if (!group || group.tag !== "lit" || typeof group.value !== "number")
         return null;
       if (!Number.isSafeInteger(group.value) || group.value < 0 || group.value > 99) return null;
@@ -597,44 +596,43 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "replace": {
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
-      const from = parseTerm(state);
+      const from = parseTerm(state, d);
       if (!from || from.tag !== "lit" || typeof from.value !== "string")
         return null;
-      const to = parseTerm(state);
+      const to = parseTerm(state, d);
       if (!to || to.tag !== "lit" || typeof to.value !== "string") return null;
       return { tag: "replace", str, from: from.value, to: to.value };
     }
 
     case "split": {
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
-      const delim = parseTerm(state);
+      const delim = parseTerm(state, d);
       if (!delim || delim.tag !== "lit" || typeof delim.value !== "string")
         return null;
-      const index = parseTerm(state);
+      const index = parseTerm(state, d);
       if (!index || index.tag !== "lit" || typeof index.value !== "number" || !Number.isSafeInteger(index.value))
         return null;
       return { tag: "split", str, delim: delim.value, index: index.value };
     }
 
     case "parseInt": {
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
       return { tag: "parseInt", str };
     }
 
     case "parseFloat": {
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
       return { tag: "parseFloat", str };
     }
 
     case "parseDate": {
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
-      // Optional format hint
       const formatTerm = peek(state);
       let format: string | undefined;
       if (formatTerm && formatTerm.type === "string") {
@@ -646,14 +644,14 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "parseCurrency": {
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
       const examples = parseExamplesKeyword(state);
       return { tag: "parseCurrency", str, examples };
     }
 
     case "parseNumber": {
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
       const examples = parseExamplesKeyword(state);
       return { tag: "parseNumber", str, examples };
@@ -661,9 +659,9 @@ function parseList(state: ParserState): LCTerm | null {
 
     case "coerce":
     case "as": {
-      const term = parseTerm(state);
+      const term = parseTerm(state, d);
       if (!term) return null;
-      const typeTerm = parseTerm(state);
+      const typeTerm = parseTerm(state, d);
       if (!typeTerm || typeTerm.tag !== "lit" || typeof typeTerm.value !== "string")
         return null;
       const targetType = typeTerm.value as import("./types.js").CoercionType;
@@ -671,68 +669,58 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "extract": {
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
-      const pattern = parseTerm(state);
+      const pattern = parseTerm(state, d);
       if (!pattern || pattern.tag !== "lit" || typeof pattern.value !== "string")
         return null;
-      const group = parseTerm(state);
+      const group = parseTerm(state, d);
       if (!group || group.tag !== "lit" || typeof group.value !== "number")
         return null;
-      // Optional type hint (string or :type keyword)
       let targetType: import("./types.js").CoercionType | undefined;
       const nextToken = peek(state);
       if (nextToken && nextToken.type === "string") {
         consume(state);
         targetType = nextToken.value as import("./types.js").CoercionType;
       } else if (nextToken?.type === "keyword" && nextToken.value === "type") {
-        consume(state); // :type
-        const typeVal = parseTerm(state);
+        consume(state);
+        const typeVal = parseTerm(state, d);
         if (typeVal?.tag === "lit" && typeof typeVal.value === "string") {
           targetType = typeVal.value as import("./types.js").CoercionType;
         }
       }
-      // Optional :examples
       const examples = parseExamplesKeyword(state);
-      // Optional :constraints
       let constraints: Record<string, unknown> | undefined;
       const constraintKw = peek(state);
       if (constraintKw?.type === "keyword" && constraintKw.value === "constraints") {
-        consume(state); // :constraints
+        consume(state);
         constraints = parseConstraintObject(state) ?? undefined;
       }
       return { tag: "extract", str, pattern: pattern.value, group: group.value, targetType, examples, constraints };
     }
 
     case "synthesize": {
-      // Parse list of [input output] pairs
-      // Supports: (synthesize ("in" out) ...) or (synthesize (example "in" out) ...)
       const MAX_SYNTH_EXAMPLES = 1000;
       const examples: Array<{ input: string; output: string | number | boolean | null }> = [];
       while (peek(state) && peek(state)?.type !== "rparen" && examples.length < MAX_SYNTH_EXAMPLES) {
-        // Expect (input output) pair or [input output] or (example input output)
         const pairStart = peek(state);
         if (pairStart?.type === "lparen" || pairStart?.type === "lbracket") {
-          consume(state); // ( or [
-
-          // Check for optional "example" keyword
+          consume(state);
           const maybeExample = peek(state);
           if (maybeExample?.type === "symbol" && maybeExample.value === "example") {
-            consume(state); // skip "example" keyword
+            consume(state);
           }
-
-          const input = parseTerm(state);
+          const input = parseTerm(state, d);
           if (!input || input.tag !== "lit" || typeof input.value !== "string") break;
-          const output = parseTerm(state);
+          const output = parseTerm(state, d);
           if (!output || output.tag !== "lit") break;
-          const pairEnd = consume(state); // ) or ]
+          const pairEnd = consume(state);
           if (!pairEnd || (pairEnd.type !== "rparen" && pairEnd.type !== "rbracket")) break;
           examples.push({ input: input.value, output: output.value as string | number | boolean | null });
         } else {
-          // Also support flat pairs: "input1" output1 "input2" output2
-          const input = parseTerm(state);
+          const input = parseTerm(state, d);
           if (!input || input.tag !== "lit" || typeof input.value !== "string") break;
-          const output = parseTerm(state);
+          const output = parseTerm(state, d);
           if (!output || output.tag !== "lit") break;
           examples.push({ input: input.value, output: output.value as string | number | boolean | null });
         }
@@ -742,33 +730,29 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "if": {
-      const cond = parseTerm(state);
+      const cond = parseTerm(state, d);
       if (!cond) return null;
-      const thenBranch = parseTerm(state);
+      const thenBranch = parseTerm(state, d);
       if (!thenBranch) return null;
-      const elseBranch = parseTerm(state);
+      const elseBranch = parseTerm(state, d);
       if (!elseBranch) return null;
       return { tag: "if", cond, then: thenBranch, else: elseBranch };
     }
 
     case "classify": {
-      // Parse :examples keyword or pairs of (input output)
       const examples: Array<{ input: string; output: boolean | string | number }> = [];
-
-      // Check for :examples keyword
       const maybeKeywordExamples = parseExamplesKeyword(state);
       if (maybeKeywordExamples) {
         for (const ex of maybeKeywordExamples) {
           examples.push({ input: ex.input, output: ex.output as boolean | string | number });
         }
       } else {
-        // Fallback to inline pairs
         const MAX_CLASSIFY_EXAMPLES = 1000;
         while (peek(state) && peek(state)?.type !== "rparen" && examples.length < MAX_CLASSIFY_EXAMPLES) {
-          const input = parseTerm(state);
+          const input = parseTerm(state, d);
           if (!input || input.tag !== "lit" || typeof input.value !== "string")
             break;
-          const output = parseTerm(state);
+          const output = parseTerm(state, d);
           if (!output || output.tag !== "lit" || output.value === null) break;
           examples.push({ input: input.value, output: output.value });
         }
@@ -782,14 +766,13 @@ function parseList(state: ParserState): LCTerm | null {
       const param = peek(state);
       if (!param || param.type !== "symbol") return null;
       consume(state);
-      const body = parseTerm(state);
+      const body = parseTerm(state, d);
       if (!body) return null;
       return { tag: "lambda", param: param.value, body };
     }
 
     case "define-fn": {
-      // (define-fn "name" :examples [...])
-      const nameTerm = parseTerm(state);
+      const nameTerm = parseTerm(state, d);
       if (!nameTerm || nameTerm.tag !== "lit" || typeof nameTerm.value !== "string")
         return null;
       const examples = parseExamplesKeyword(state);
@@ -798,25 +781,22 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "apply-fn": {
-      // (apply-fn "name" arg)
-      const nameTerm = parseTerm(state);
+      const nameTerm = parseTerm(state, d);
       if (!nameTerm || nameTerm.tag !== "lit" || typeof nameTerm.value !== "string")
         return null;
-      const arg = parseTerm(state);
+      const arg = parseTerm(state, d);
       if (!arg) return null;
       return { tag: "apply-fn", name: nameTerm.value, arg };
     }
 
     case "predicate": {
-      // (predicate term :examples [...])
-      const str = parseTerm(state);
+      const str = parseTerm(state, d);
       if (!str) return null;
       const examples = parseExamplesKeyword(state);
       return { tag: "predicate", str, examples };
     }
 
     case "list_symbols": {
-      // (list_symbols) or (list_symbols "kind")
       const kindTerm = peek(state);
       if (kindTerm && kindTerm.type === "string") {
         consume(state);
@@ -826,15 +806,13 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "get_symbol_body": {
-      // (get_symbol_body <symbol>)
-      const symbol = parseTerm(state);
+      const symbol = parseTerm(state, d);
       if (!symbol) return null;
       return { tag: "get_symbol_body", symbol };
     }
 
     case "find_references": {
-      // (find_references "name")
-      const nameTerm = parseTerm(state);
+      const nameTerm = parseTerm(state, d);
       if (!nameTerm || nameTerm.tag !== "lit" || typeof nameTerm.value !== "string") {
         return null;
       }
@@ -846,8 +824,7 @@ function parseList(state: ParserState): LCTerm | null {
     case "ancestors":
     case "descendants":
     case "implementations": {
-      // (callers "name"), (callees "name"), etc.
-      const graphNameTerm = parseTerm(state);
+      const graphNameTerm = parseTerm(state, d);
       if (!graphNameTerm || graphNameTerm.tag !== "lit" || typeof graphNameTerm.value !== "string") {
         return null;
       }
@@ -855,8 +832,7 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "dependents": {
-      // (dependents "name" [depth])
-      const depNameTerm = parseTerm(state);
+      const depNameTerm = parseTerm(state, d);
       if (!depNameTerm || depNameTerm.tag !== "lit" || typeof depNameTerm.value !== "string") {
         return null;
       }
@@ -869,8 +845,7 @@ function parseList(state: ParserState): LCTerm | null {
     }
 
     case "symbol_graph": {
-      // (symbol_graph "name" [depth])
-      const sgNameTerm = parseTerm(state);
+      const sgNameTerm = parseTerm(state, d);
       if (!sgNameTerm || sgNameTerm.tag !== "lit" || typeof sgNameTerm.value !== "string") {
         return null;
       }
@@ -882,14 +857,14 @@ function parseList(state: ParserState): LCTerm | null {
       return { tag: "symbol_graph", name: sgNameTerm.value };
     }
 
-    default:
-      // Function application or variable
+    default: {
       const fn: LCTerm = { tag: "var", name: op };
-      const arg = parseTerm(state);
+      const arg = parseTerm(state, d);
       if (arg) {
         return { tag: "app", fn, arg };
       }
       return fn;
+    }
   }
 }
 
@@ -984,10 +959,10 @@ export function parseAll(input: string): ParseResult[] {
 
     if (inString) continue;
 
-    if (ch === "(") {
+    if (ch === "(" || ch === "[" || ch === "{") {
       if (depth === 0) start = i;
       depth++;
-    } else if (ch === ")") {
+    } else if (ch === ")" || ch === "]" || ch === "}") {
       depth--;
       if (depth === 0 && start >= 0) {
         const expr = trimmed.slice(start, i + 1);

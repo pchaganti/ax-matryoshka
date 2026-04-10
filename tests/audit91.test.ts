@@ -81,7 +81,7 @@ describe("Audit #91", () => {
       const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
       const matchCase = source.indexOf('case "match"', source.indexOf("function parseList"));
       expect(matchCase).toBeGreaterThan(-1);
-      const block = source.slice(matchCase, matchCase + 400);
+      const block = source.slice(matchCase, matchCase + 500);
       // Should validate group bounds (0-99 or similar)
       expect(block).toMatch(/group.*<\s*0|group.*>\s*\d{2,}|group.*>=\s*\d{2,}|isSafeInteger.*group/);
     });
