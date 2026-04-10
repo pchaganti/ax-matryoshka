@@ -14,6 +14,20 @@ export interface HandleStub {
   preview: string;
 }
 
+function buildPreview(firstItem: unknown): string {
+  if (typeof firstItem === "object" && firstItem !== null) {
+    const obj = firstItem as Record<string, unknown>;
+    const lineContent = obj.line ?? obj.content ?? obj.text;
+    if (lineContent !== undefined) {
+      const line = String(lineContent);
+      return line.length > 50 ? line.slice(0, 50) + "..." : line;
+    }
+    const keys = Object.keys(obj).slice(0, 3);
+    return keys.join(", ");
+  }
+  return String(firstItem).slice(0, 50);
+}
+
 export class HandleRegistry {
   private db: SessionDB;
   private resultsHandle: string | null = null;
@@ -45,40 +59,24 @@ export class HandleRegistry {
     const meta = this.db.getHandleMetadata(handle);
     if (!meta) return `${handle}: <invalid handle>`;
 
-    // Get preview of first item only (avoids loading all data)
     const data = this.db.getHandleDataSlice(handle, 1);
-    let preview = "";
-
-    if (data.length > 0) {
-      const firstItem = data[0];
-      if (typeof firstItem === "object" && firstItem !== null) {
-        // For objects, show abbreviated first item
-        const obj = firstItem as Record<string, unknown>;
-        // Check for common line content fields
-        const lineContent = obj.line ?? obj.content ?? obj.text;
-        if (lineContent !== undefined) {
-          const line = String(lineContent);
-          preview = line.length > 50 ? line.slice(0, 50) + "..." : line;
-        } else {
-          const keys = Object.keys(obj).slice(0, 3);
-          preview = keys.join(", ");
-        }
-      } else {
-        preview = String(firstItem).slice(0, 50);
-      }
-    }
+    const preview = data.length > 0 ? buildPreview(data[0]) : "";
 
     return `${handle}: Array(${meta.count}) [${preview}]`;
   }
 
   /**
-   * Build context string with all handle stubs for LLM
+   * Build context string with all handle stubs for LLM (batch query)
    */
   buildContext(): string {
-    const handles = this.listHandles();
-    if (handles.length === 0) return "";
+    const metas = this.db.listHandleMetadata();
+    if (metas.length === 0) return "";
 
-    const stubs = handles.map((h) => this.getStub(h));
+    const stubs = metas.map((meta) => {
+      const data = this.db.getHandleDataSlice(meta.handle, 1);
+      const preview = data.length > 0 ? buildPreview(data[0]) : "";
+      return `${meta.handle}: Array(${meta.count}) [${preview}]`;
+    });
     return "## Variable Bindings\n" + stubs.join("\n");
   }
 
@@ -140,7 +138,7 @@ export class HandleRegistry {
    * Get the number of active handles
    */
   handleCount(): number {
-    return this.db.listHandles().length;
+    return this.db.handleCount();
   }
 
   /**

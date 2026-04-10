@@ -85,6 +85,18 @@ describe("HandleOps", () => {
 
       expect(sum).toBe(0);
     });
+
+    it("sumFromLine should guard against accumulator overflow", () => {
+      const bigDigits = "9".repeat(308);
+      const data = [
+        { line: `Value: ${bigDigits}`, lineNum: 1 },
+        { line: `Value: ${bigDigits}`, lineNum: 2 },
+        { line: `Value: ${bigDigits}`, lineNum: 3 },
+      ];
+      const handle = registry.store(data);
+      const sum = ops.sumFromLine(handle);
+      expect(Number.isFinite(sum)).toBe(true);
+    });
   });
 
   describe("filter_handle", () => {

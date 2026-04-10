@@ -47,34 +47,12 @@ export class FTS5Search {
 
   /**
    * Search with relevance ranking (BM25)
+   * Caps query terms and delegates to SessionDB for server-side FTS5 scoring.
    */
   searchByRelevance(query: string): SearchResult[] {
-    // FTS5 uses bm25() for relevance ranking
-    // Since we're using the SessionDB abstraction, we'll sort by occurrence count
-    const results = this.db.searchRaw(query);
-
-    // Count occurrences of search terms in each result
     const MAX_SEARCH_TERMS = 100;
-    const queryTerms = query.toLowerCase().split(/\s+/).filter(t => t.length > 0).slice(0, MAX_SEARCH_TERMS);
-
-    // Pre-compute relevance scores to avoid recalculating per sort comparison
-    const scores = new Map<SearchResult, number>();
-    for (const r of results) {
-      const MAX_CONTENT_SCORING = 100_000;
-      const lower = r.content.length > MAX_CONTENT_SCORING ? r.content.slice(0, MAX_CONTENT_SCORING).toLowerCase() : r.content.toLowerCase();
-      const count = queryTerms.reduce((sum, term) => {
-        return sum + (lower.split(term).length - 1);
-      }, 0);
-      scores.set(r, count);
-    }
-
-    return results.sort((a, b) => {
-      const scoreB = scores.get(b) ?? 0;
-      const scoreA = scores.get(a) ?? 0;
-      if (scoreB > scoreA) return 1;
-      if (scoreB < scoreA) return -1;
-      return 0;
-    });
+    const cappedQuery = query.split(/\s+/).filter(t => t.length > 0).slice(0, MAX_SEARCH_TERMS).join(" ");
+    return this.db.searchByRelevance(cappedQuery);
   }
 
   /**

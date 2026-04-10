@@ -40,6 +40,22 @@ export interface NucleusEngineOptions {
 function createSolverTools(context: string): SolverTools {
   const lines = context.split("\n");
 
+  // Build newline offset index for O(log N) line-number lookup from byte offset
+  const newlineOffsets: number[] = [];
+  for (let i = 0; i < context.length; i++) {
+    if (context[i] === "\n") newlineOffsets.push(i);
+  }
+
+  function lineAtOffset(offset: number): number {
+    let lo = 0, hi = newlineOffsets.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (newlineOffsets[mid] < offset) lo = mid + 1;
+      else hi = mid;
+    }
+    return lo + 1; // 1-indexed line number
+  }
+
   const textStats = {
     length: context.length,
     lineCount: lines.length,
@@ -102,8 +118,7 @@ function createSolverTools(context: string): SolverTools {
       let match;
 
       while ((match = regex.exec(context)) !== null) {
-        const beforeMatch = context.slice(0, match.index);
-        const lineNum = (beforeMatch.match(/\n/g) || []).length + 1;
+        const lineNum = lineAtOffset(match.index);
         const line = lines[lineNum - 1] || "";
 
         results.push({
@@ -331,16 +346,18 @@ export class NucleusEngine {
    * Evict oldest turn bindings (_N) when exceeding the cap
    */
   private evictOldTurnBindings(): void {
-    const turnKeys = [...this.bindings.keys()]
-      .filter(k => /^_\d+$/.test(k))
-      .sort((a, b) => {
-        const aNum = parseInt(a.slice(1), 10);
-        const bNum = parseInt(b.slice(1), 10);
-        if (!Number.isFinite(aNum) || !Number.isFinite(bNum)) return 0;
-        if (aNum < bNum) return -1;
-        if (aNum > bNum) return 1;
-        return 0;
-      });
+    if (this.turnCounter <= NucleusEngine.MAX_TURN_BINDINGS) return;
+    const turnKeys: string[] = [];
+    for (const key of this.bindings.keys()) {
+      if (/^_\d+$/.test(key)) turnKeys.push(key);
+    }
+    if (turnKeys.length <= NucleusEngine.MAX_TURN_BINDINGS) return;
+    turnKeys.sort((a, b) => {
+      const aNum = parseInt(a.slice(1), 10);
+      const bNum = parseInt(b.slice(1), 10);
+      if (!Number.isFinite(aNum) || !Number.isFinite(bNum)) return 0;
+      return aNum - bNum;
+    });
     while (turnKeys.length > NucleusEngine.MAX_TURN_BINDINGS) {
       const oldest = turnKeys.shift()!;
       this.bindings.delete(oldest);

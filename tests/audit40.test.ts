@@ -74,13 +74,12 @@ describe("Audit #40", () => {
       const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
       const sumFn = source.match(/sum\(handle[\s\S]*?acc \+ value/);
       expect(sumFn).not.toBeNull();
-      // Should check isFinite or Number.isFinite before accumulating
       expect(sumFn![0]).toMatch(/isFinite/);
     });
 
     it("sumFromLine should check isFinite", () => {
       const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const sumFromLine = source.match(/sumFromLine[\s\S]*?return acc \+ num/);
+      const sumFromLine = source.match(/sumFromLine[\s\S]*?acc \+ num/);
       expect(sumFromLine).not.toBeNull();
       expect(sumFromLine![0]).toMatch(/isFinite/);
     });

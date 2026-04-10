@@ -245,6 +245,43 @@ function main() {
     });
   });
 
+  describe("large symbol sets", () => {
+    it("should handle thousands of symbols without excessive regex size", () => {
+      const symbolCount = 2000;
+      const symbols: Symbol[] = [];
+      const lines: string[] = [];
+      for (let i = 0; i < symbolCount; i++) {
+        const name = `fn${i}`;
+        lines.push(`function ${name}() { return ${i}; }`);
+        symbols.push(makeSymbol(name, "function", i + 1, i + 1));
+      }
+      lines.push("function caller() { return fn0() + fn1(); }");
+      symbols.push(makeSymbol("caller", "function", symbolCount + 1, symbolCount + 1));
+      const code = lines.join("\n");
+
+      const edges = analyzer.analyze(symbols, code);
+      expect(edges).toContainEqual({ source: "caller", target: "fn0", relation: "calls" });
+      expect(edges).toContainEqual({ source: "caller", target: "fn1", relation: "calls" });
+    });
+
+    it("should fall back to per-name scan when symbols exceed batch limit", () => {
+      const symbolCount = 2000;
+      const symbols: Symbol[] = [];
+      const lines: string[] = [];
+      for (let i = 0; i < symbolCount; i++) {
+        const name = `func_${i}_with_long_name`;
+        lines.push(`function ${name}() { return ${i}; }`);
+        symbols.push(makeSymbol(name, "function", i + 1, i + 1));
+      }
+      lines.push("function caller() { return func_0_with_long_name(); }");
+      symbols.push(makeSymbol("caller", "function", symbolCount + 1, symbolCount + 1));
+      const code = lines.join("\n");
+
+      const edges = analyzer.analyze(symbols, code);
+      expect(edges).toContainEqual({ source: "caller", target: "func_0_with_long_name", relation: "calls" });
+    });
+  });
+
   describe("no false positives from comments or strings", () => {
     it("should still detect calls even in string/comment-heavy code", () => {
       // This is a known limitation — we do simple word-boundary matching

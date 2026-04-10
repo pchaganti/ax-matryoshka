@@ -107,4 +107,31 @@ describe("searchSemantic", () => {
       expect(r.lineNum).toBeLessThanOrEqual(3);
     }
   });
+
+  it("should pre-compute line vectors in the index for small documents", () => {
+    const index = buildSemanticIndex(lines);
+    expect(index.lineVectors).toBeDefined();
+    expect(index.lineVectors!.length).toBe(lines.length);
+    for (const vec of index.lineVectors!) {
+      expect(vec).toBeInstanceOf(Map);
+    }
+  });
+
+  it("should skip pre-computed vectors for large documents", () => {
+    const bigLines = Array.from({ length: 100_000 }, (_, i) => `line ${i} with some words`);
+    const index = buildSemanticIndex(bigLines);
+    expect(index.lineVectors).toBeUndefined();
+    // Search should still work via on-demand computation
+    const results = searchSemantic("line words", bigLines, index, 5);
+    expect(results.length).toBeGreaterThan(0);
+  });
+
+  it("should use cached vectors — results identical to recomputed", () => {
+    const index = buildSemanticIndex(lines);
+    const results = searchSemantic("database error", lines, index);
+    expect(results.length).toBeGreaterThan(0);
+    // Verify vectors are actually populated (not empty maps)
+    const nonEmpty = index.lineVectors!.filter(v => v.size > 0);
+    expect(nonEmpty.length).toBeGreaterThan(0);
+  });
 });

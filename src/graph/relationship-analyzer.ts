@@ -54,28 +54,60 @@ export class RelationshipAnalyzer {
     }
 
     // Pass 2: Detect call relationships within function/method bodies
-    for (const sym of symbols) {
-      if (sym.kind !== "function" && sym.kind !== "method") continue;
+    // Pre-compile symbol name regexes for O(1) lookup per line
+    const funcSymbols = symbols.filter(
+      (sym) => sym.kind === "function" || sym.kind === "method"
+    );
+    if (funcSymbols.length === 0 || symbolNames.size === 0) return edges;
 
-      // Get the body lines (excluding the declaration line itself for non-recursive calls)
-      const bodyStart = sym.startLine; // 1-indexed
-      const bodyEnd = sym.endLine;     // 1-indexed
+    const escapedNames = [...symbolNames]
+      .filter((n) => n.length > 0)
+      .map((n) => escapeRegex(n));
+    if (escapedNames.length === 0) return edges;
+
+    const MAX_ALTERNATION = 500;
+    const useBatchRegex = escapedNames.length <= MAX_ALTERNATION;
+
+    const CALL_PATTERN = useBatchRegex
+      ? new RegExp(
+          `(?:\\b(${escapedNames.join("|")})\\s*\\(|this\\.(${escapedNames.join("|")})\\s*\\()`,
+          "g"
+        )
+      : null;
+
+    const callPatterns = useBatchRegex
+      ? null
+      : new Map<string, RegExp>(
+          escapedNames.map((n) => [n, new RegExp(`(?:\\b${n}\\s*\\(|this\\.${n}\\s*\\()`)])
+        );
+
+    for (const sym of funcSymbols) {
+      const bodyStart = sym.startLine;
+      const bodyEnd = sym.endLine;
+
+      const seenTargets = new Set<string>();
 
       for (let lineIdx = bodyStart - 1; lineIdx < bodyEnd && lineIdx < lines.length; lineIdx++) {
         const line = lines[lineIdx];
 
-        for (const targetName of symbolNames) {
-          // Skip if target is the same symbol and this is the declaration line
-          if (targetName === sym.name && lineIdx === bodyStart - 1) continue;
-
-          // Word-boundary match for the target name
-          const regex = new RegExp(`\\b${escapeRegex(targetName)}\\b`);
-          if (regex.test(line)) {
-            // Check it looks like a call (followed by `(`) or a reference via `this.name(`
-            const callRegex = new RegExp(
-              `(?:\\b${escapeRegex(targetName)}\\s*\\(|this\\.${escapeRegex(targetName)}\\s*\\()`
-            );
-            if (callRegex.test(line)) {
+        if (useBatchRegex && CALL_PATTERN) {
+          CALL_PATTERN.lastIndex = 0;
+          let match: RegExpExecArray | null;
+          while ((match = CALL_PATTERN.exec(line)) !== null) {
+            const targetName = match[1] || match[2];
+            if (!targetName) continue;
+            if (targetName === sym.name && lineIdx === bodyStart - 1) continue;
+            if (!seenTargets.has(targetName)) {
+              seenTargets.add(targetName);
+              addEdge(sym.name, targetName, "calls");
+            }
+          }
+        } else if (callPatterns) {
+          for (const [targetName, pattern] of callPatterns) {
+            if (targetName === sym.name && lineIdx === bodyStart - 1) continue;
+            if (seenTargets.has(targetName)) continue;
+            if (pattern.test(line)) {
+              seenTargets.add(targetName);
               addEdge(sym.name, targetName, "calls");
             }
           }

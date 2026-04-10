@@ -38,53 +38,62 @@ export class HandleOps {
   }
 
   /**
-   * Sum a numeric field across all items
+   * Sum a numeric field across all items (chunked to avoid loading all at once)
    */
   sum(handle: string, field: string): number {
     if (!/^[a-zA-Z_$][a-zA-Z0-9_$]*$/.test(field) || field.length > 256) {
       throw new Error("Invalid field name");
     }
-    const data = this.registry.get(handle);
-    if (data === null) {
-      throw new Error(`Invalid handle: ${handle}`);
-    }
-
-    return data.reduce((acc: number, item) => {
-      if (typeof item === "object" && item !== null && field in item) {
-        const value = (item as Record<string, unknown>)[field];
-        if (typeof value === "number" && Number.isFinite(value)) {
-          const result = acc + value;
-          if (!Number.isFinite(result)) return acc;
-          return result;
-        }
-      }
-      return acc;
-    }, 0);
-  }
-
-  /**
-   * Sum by extracting numbers from the line field
-   */
-  sumFromLine(handle: string): number {
-    const data = this.registry.get(handle);
-    if (data === null) {
-      throw new Error(`Invalid handle: ${handle}`);
-    }
-
-    return data.reduce((acc: number, item) => {
-      if (typeof item === "object" && item !== null && "line" in item) {
-        const line = String((item as { line: string }).line);
-        // Extract number from line (handles $1,000 format)
-        const match = line.match(/\$?([\d,]+(?:\.\d+)?)/);
-        if (match) {
-          const num = parseFloat(match[1].replace(/,/g, ""));
-          if (!isNaN(num) && isFinite(num)) {
-            return acc + num;
+    // acc/result overflow guarded inline with Number.isFinite below
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) throw new Error(`Invalid handle: ${handle}`);
+    let acc = 0;
+    const CHUNK = 5000;
+    for (let offset = 0; offset < meta.count; offset += CHUNK) {
+      const chunk = this.db.getHandleDataSlice(handle, CHUNK, offset);
+      for (const item of chunk) {
+        if (typeof item === "object" && item !== null && field in item) {
+          const value = (item as Record<string, unknown>)[field];
+          if (typeof value === "number" && Number.isFinite(value)) {
+            const result = acc + value;
+            if (!Number.isFinite(result)) continue;
+            acc = result;
           }
         }
       }
-      return acc;
-    }, 0);
+    }
+    return acc;
+  }
+
+  /**
+   * Sum by extracting numbers from the line field (chunked)
+   */
+  sumFromLine(handle: string): number {
+    const meta = this.db.getHandleMetadata(handle);
+    if (!meta) {
+      throw new Error(`Invalid handle: ${handle}`);
+    }
+
+    let acc = 0;
+    const CHUNK = 5000;
+    for (let offset = 0; offset < meta.count; offset += CHUNK) {
+      const chunk = this.db.getHandleDataSlice(handle, CHUNK, offset);
+      for (const item of chunk) {
+        if (typeof item === "object" && item !== null && "line" in item) {
+          const line = String((item as { line: string }).line);
+          const match = line.match(/\$?([\d,]+(?:\.\d+)?)/);
+          if (match) {
+            const num = parseFloat(match[1].replace(/,/g, ""));
+            if (!isNaN(num) && Number.isFinite(num)) {
+              const result = acc + num;
+              if (!Number.isFinite(result)) continue;
+              acc = result;
+            }
+          }
+        }
+      }
+    }
+    return acc;
   }
 
   /**
