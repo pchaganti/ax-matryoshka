@@ -8,7 +8,6 @@
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import GraphConstructor from "graphology";
-import { bfsFromNode } from "graphology-traversal";
 import type { AbstractGraph } from "graphology-types";
 import type { Symbol } from "../treesitter/types.js";
 
@@ -165,30 +164,39 @@ export class SymbolGraph {
     return result;
   }
 
-  /** Subgraph around a symbol within a given depth (both directions) */
+  /**
+   * Subgraph around a symbol within a given depth, treating the call/type
+   * graph as undirected for traversal.
+   *
+   * At each hop we expand via BOTH outgoing and incoming edges, so nodes
+   * reachable via a mixed path (A → B ← C) are included. Two independent
+   * BFS walks — one purely forward, one purely reverse — would miss such
+   * nodes, which is a surprising result when the docstring promises
+   * "both directions".
+   */
   neighborhood(name: string, depth: number): Neighborhood {
     if (!this.graph.hasNode(name)) return { nodes: [], edges: [] };
 
-    const nodeSet = new Set<string>();
+    const nodeSet = new Set<string>([name]);
+    const queue: Array<{ node: string; d: number }> = [{ node: name, d: 0 }];
 
-    // BFS outward (both directions) up to depth
-    bfsFromNode(this.graph, name, (node, _attrs, d) => {
-      if (d > depth) return true; // stop
-      nodeSet.add(node);
-      return false;
-    });
-
-    // Also walk incoming edges (bfsFromNode follows outgoing by default)
-    const reverseQueue: Array<{ node: string; d: number }> = [{ node: name, d: 0 }];
-    const reverseVisited = new Set<string>([name]);
-    while (reverseQueue.length > 0) {
-      const { node, d } = reverseQueue.shift()!;
+    while (queue.length > 0) {
+      const { node, d } = queue.shift()!;
       if (d >= depth) continue;
+
+      // Outgoing neighbors
+      this.graph.forEachOutEdge(node, (_edge, _attrs, _src, target) => {
+        if (!nodeSet.has(target)) {
+          nodeSet.add(target);
+          queue.push({ node: target, d: d + 1 });
+        }
+      });
+
+      // Incoming neighbors — same hop distance in an undirected sense
       this.graph.forEachInEdge(node, (_edge, _attrs, source) => {
-        if (!reverseVisited.has(source)) {
-          reverseVisited.add(source);
+        if (!nodeSet.has(source)) {
           nodeSet.add(source);
-          reverseQueue.push({ node: source, d: d + 1 });
+          queue.push({ node: source, d: d + 1 });
         }
       });
     }

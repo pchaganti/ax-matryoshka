@@ -15,6 +15,9 @@
  *    HandleRegistry.store's own guard; delete the dead check
  * 6. MEDIUM handle-session.ts — expand() returns totalTokens=0 when sliced is
  *    empty but total > 0 (e.g., offset past end)
+ * 7. MEDIUM symbol-graph.ts — neighborhood() only walks pure-out or pure-in
+ *    paths from the root; misses mixed paths (out→in, in→out). Comment says
+ *    "both directions" but implementation doesn't match.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -23,6 +26,8 @@ import type { LCTerm } from "../src/logic/types.js";
 import { solve, type SolverTools } from "../src/logic/lc-solver.js";
 import { HandleSession } from "../src/engine/handle-session.js";
 import { SessionDB } from "../src/persistence/session-db.js";
+import { SymbolGraph } from "../src/graph/symbol-graph.js";
+import type { Symbol } from "../src/treesitter/types.js";
 
 describe("Audit #96 — Chiasmus review round 2", () => {
   // =========================================================================
@@ -368,6 +373,78 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(info.handleCount).toBeLessThan(250);
 
       session.close();
+    });
+  });
+
+  // =========================================================================
+  // #7 MEDIUM — neighborhood() must handle mixed in/out paths
+  // =========================================================================
+  describe("#7 — SymbolGraph.neighborhood treats depth as undirected", () => {
+    function mkSymbol(name: string, kind: "function" | "class" = "function"): Symbol {
+      return {
+        name,
+        kind,
+        startLine: 1,
+        endLine: 2,
+        startCol: 0,
+        endCol: 0,
+      };
+    }
+
+    it("finds a node reachable only via a mixed out→in path", () => {
+      // Graph: A → B ← C
+      // neighborhood(A, 2) should include C — it's 2 undirected hops away
+      // (A→B, then B←C). The old implementation only walked pure-outgoing
+      // or pure-incoming BFS from A, so it missed C entirely.
+      const graph = new SymbolGraph();
+      graph.addSymbol(mkSymbol("A"));
+      graph.addSymbol(mkSymbol("B"));
+      graph.addSymbol(mkSymbol("C"));
+      graph.addEdge("A", "B", "calls");
+      graph.addEdge("C", "B", "calls");
+
+      const n = graph.neighborhood("A", 2);
+      const nodeNames = n.nodes.map((s) => s.name).sort();
+      expect(nodeNames).toEqual(["A", "B", "C"]);
+    });
+
+    it("finds a chain through alternating directions", () => {
+      // Graph: A → B ← C → D
+      // neighborhood(A, 3) should include D — 3 undirected hops via
+      // A→B←C→D. Old impl stopped at B.
+      const graph = new SymbolGraph();
+      for (const name of ["A", "B", "C", "D"]) graph.addSymbol(mkSymbol(name));
+      graph.addEdge("A", "B", "calls");
+      graph.addEdge("C", "B", "calls");
+      graph.addEdge("C", "D", "calls");
+
+      const n = graph.neighborhood("A", 3);
+      const nodeNames = n.nodes.map((s) => s.name).sort();
+      expect(nodeNames).toEqual(["A", "B", "C", "D"]);
+    });
+
+    it("respects the depth limit (doesn't grab the whole graph)", () => {
+      // Graph: A → B → C → D  (chain)
+      // neighborhood(A, 2) should only reach {A, B, C}, not D.
+      const graph = new SymbolGraph();
+      for (const name of ["A", "B", "C", "D"]) graph.addSymbol(mkSymbol(name));
+      graph.addEdge("A", "B", "calls");
+      graph.addEdge("B", "C", "calls");
+      graph.addEdge("C", "D", "calls");
+
+      const n = graph.neighborhood("A", 2);
+      const nodeNames = n.nodes.map((s) => s.name).sort();
+      expect(nodeNames).toEqual(["A", "B", "C"]);
+    });
+
+    it("returns only the root for depth 0", () => {
+      const graph = new SymbolGraph();
+      graph.addSymbol(mkSymbol("A"));
+      graph.addSymbol(mkSymbol("B"));
+      graph.addEdge("A", "B", "calls");
+
+      const n = graph.neighborhood("A", 0);
+      expect(n.nodes.map((s) => s.name)).toEqual(["A"]);
     });
   });
 });
