@@ -56,6 +56,20 @@ export class FTS5Search {
   }
 
   /**
+   * HTML-escape user content so it's safe to wrap with highlight markup.
+   * Must be applied BEFORE inserting the (sanitized) wrapper tags, or
+   * any HTML in the original document leaks into the output verbatim.
+   */
+  private escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  /**
    * Search with highlighted matches
    */
   searchWithHighlights(
@@ -77,9 +91,17 @@ export class FTS5Search {
 
     const MAX_HIGHLIGHT_LENGTH = 100_000;
     return results.map((result) => {
-      let highlighted = result.content.length > MAX_HIGHLIGHT_LENGTH ? result.content.slice(0, MAX_HIGHLIGHT_LENGTH) : result.content;
+      // Escape the document content first so any HTML in the source
+      // becomes inert text. The highlight wrapper tags are applied AFTER
+      // escaping and remain the only real HTML in the output.
+      const truncated = result.content.length > MAX_HIGHLIGHT_LENGTH
+        ? result.content.slice(0, MAX_HIGHLIGHT_LENGTH)
+        : result.content;
+      let highlighted = this.escapeHtml(truncated);
       for (const term of terms) {
-        const regex = new RegExp(`(${this.escapeRegex(term)})`, "gi");
+        // Escape the term the same way so it matches the escaped content.
+        const escapedTerm = this.escapeHtml(term);
+        const regex = new RegExp(`(${this.escapeRegex(escapedTerm)})`, "gi");
         highlighted = highlighted.replace(regex, `${openTag}$1${closeTag}`);
         if (highlighted.length > MAX_HIGHLIGHT_LENGTH) {
           highlighted = highlighted.slice(0, MAX_HIGHLIGHT_LENGTH);
@@ -99,10 +121,15 @@ export class FTS5Search {
 
     const MAX_SNIPPET_LENGTH = 100_000;
     return results.map((result) => {
-      // For single-line documents, snippet is the content with highlight
-      let snippet = result.content.length > MAX_SNIPPET_LENGTH ? result.content.slice(0, MAX_SNIPPET_LENGTH) : result.content;
+      // Escape the document content before wrapping matches with <mark>,
+      // same reasoning as searchWithHighlights.
+      const truncated = result.content.length > MAX_SNIPPET_LENGTH
+        ? result.content.slice(0, MAX_SNIPPET_LENGTH)
+        : result.content;
+      let snippet = this.escapeHtml(truncated);
       for (const term of terms) {
-        const regex = new RegExp(`(${this.escapeRegex(term)})`, "gi");
+        const escapedTerm = this.escapeHtml(term);
+        const regex = new RegExp(`(${this.escapeRegex(escapedTerm)})`, "gi");
         snippet = snippet.replace(regex, "<mark>$1</mark>");
         if (snippet.length > MAX_SNIPPET_LENGTH) {
           snippet = snippet.slice(0, MAX_SNIPPET_LENGTH);

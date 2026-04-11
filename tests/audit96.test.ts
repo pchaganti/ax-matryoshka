@@ -18,6 +18,13 @@
  * 7. MEDIUM symbol-graph.ts — neighborhood() only walks pure-out or pure-in
  *    paths from the root; misses mixed paths (out→in, in→out). Comment says
  *    "both directions" but implementation doesn't match.
+ * 8. MEDIUM parser-registry.ts — shared-parser state across languages (no test,
+ *    refactor-only; regression covered by existing tree-sitter suite)
+ * 9. MEDIUM sandbox.ts — grep does O(N×L) prefix scan for line numbers (no
+ *    test, pure optimization; regression covered by sandbox suite)
+ * 10. LOW fts5-search.ts — searchWithHighlights passes raw content through to
+ *     the highlighted field, allowing HTML in the document to leak into the
+ *     output unescaped
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -28,6 +35,7 @@ import { HandleSession } from "../src/engine/handle-session.js";
 import { SessionDB } from "../src/persistence/session-db.js";
 import { SymbolGraph } from "../src/graph/symbol-graph.js";
 import type { Symbol } from "../src/treesitter/types.js";
+import { FTS5Search } from "../src/persistence/fts5-search.js";
 
 describe("Audit #96 — Chiasmus review round 2", () => {
   // =========================================================================
@@ -445,6 +453,75 @@ describe("Audit #96 — Chiasmus review round 2", () => {
 
       const n = graph.neighborhood("A", 0);
       expect(n.nodes.map((s) => s.name)).toEqual(["A"]);
+    });
+  });
+
+  // =========================================================================
+  // #10 LOW — FTS5 search highlighted/snippet must escape HTML in content
+  // =========================================================================
+  describe("#10 — FTS5 searchWithHighlights escapes content HTML", () => {
+    function setupSearch() {
+      const db = new SessionDB();
+      // Store a document with embedded HTML — simulates user content
+      // the document analyzer might pick up.
+      db.loadDocument(
+        [
+          "harmless line with no html",
+          '<script>alert("xss")</script> here is an alert word',
+          "another &amp; pre-escaped line",
+        ].join("\n"),
+      );
+      const search = new FTS5Search(db);
+      return { db, search };
+    }
+
+    it("highlighted output escapes < > & from original content", () => {
+      const { db, search } = setupSearch();
+      const results = search.searchWithHighlights("alert");
+      expect(results.length).toBeGreaterThan(0);
+
+      const scriptLine = results.find((r) => r.content.includes("script"));
+      expect(scriptLine).toBeDefined();
+      const highlighted = scriptLine!.highlighted;
+
+      // No unescaped <script> in output — it must become &lt;script&gt;
+      expect(highlighted).not.toMatch(/<script/i);
+      expect(highlighted).toMatch(/&lt;script&gt;/i);
+
+      // The highlight wrapper itself IS real HTML
+      expect(highlighted).toMatch(/<mark>alert<\/mark>/i);
+
+      db.close();
+    });
+
+    it("snippet output escapes < > & from original content", () => {
+      const { db, search } = setupSearch();
+      const results = search.searchWithSnippets("alert");
+      expect(results.length).toBeGreaterThan(0);
+
+      const scriptLine = results.find((r) => r.content.includes("script"));
+      expect(scriptLine).toBeDefined();
+      const snippet = scriptLine!.snippet;
+
+      expect(snippet).not.toMatch(/<script/i);
+      expect(snippet).toMatch(/&lt;script&gt;/i);
+      expect(snippet).toMatch(/<mark>alert<\/mark>/i);
+
+      db.close();
+    });
+
+    it("pre-existing &amp; in content is re-encoded to &amp;amp;", () => {
+      // Escape must be idempotent-hostile: if we see `&amp;` in the input,
+      // we must NOT leave it alone (that would double-decode on render).
+      // Instead, every `&` becomes `&amp;` so the literal source text
+      // round-trips through an HTML renderer unchanged.
+      const { db, search } = setupSearch();
+      const results = search.searchWithHighlights("pre");
+      const ampLine = results.find((r) => r.content.includes("&amp;"));
+      expect(ampLine).toBeDefined();
+      expect(ampLine!.highlighted).toMatch(/&amp;amp;/);
+
+      db.close();
     });
   });
 });
