@@ -6,17 +6,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #53", () => {
-  // =========================================================================
-  // #1 HIGH — base.ts: FINAL_VAR missing dangerous name validation
-  // =========================================================================
-  describe("#1 — base adapter FINAL_VAR should validate variable names", () => {
-    it("should check variable name against dangerous names", () => {
-      const source = readFileSync("src/adapters/base.ts", "utf-8");
-      const varBlock = source.match(/FINAL_VAR[\s\S]*?varMatch\[1\]/);
-      expect(varBlock).not.toBeNull();
-      expect(varBlock![0]).toMatch(/__proto__|DANGEROUS|prototype|constructor/i);
-    });
-  });
+  // #1 removed: FINAL_VAR parser deleted from base adapter (legacy marker).
 
   // =========================================================================
   // #2 HIGH — lc-interpreter.ts: parseInt missing isFinite guard

@@ -6,19 +6,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #59", () => {
-  // =========================================================================
-  // #1 HIGH — rlm.ts FINAL_VAR missing dangerous variable name validation
-  // =========================================================================
-  describe("#1 — rlm extractFinalAnswer should block dangerous var names", () => {
-    it("should validate FINAL_VAR names against dangerous list", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const fnStart = source.indexOf("extractFinalAnswer(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 500);
-      // Should have dangerous name check near FINAL_VAR
-      expect(block).toMatch(/DANGEROUS|__proto__|blocklist/i);
-    });
-  });
+  // #1 removed: rlm.ts extractFinalAnswer helper deleted (legacy deprecated duplicate).
 
   // =========================================================================
   // #2 HIGH — grammar-config addCustomGrammar prototype pollution

@@ -17,21 +17,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #94", () => {
-  // =========================================================================
-  // #1 HIGH — base.ts DANGEROUS_VAR_NAMES incomplete
-  // =========================================================================
-  describe("#1 — base.ts DANGEROUS_VAR_NAMES should match nucleus.ts", () => {
-    it("should include hasOwnProperty/toString/valueOf in blocklist", () => {
-      const source = readFileSync("src/adapters/base.ts", "utf-8");
-      const dangerousLine = source.indexOf("DANGEROUS_VAR_NAMES");
-      expect(dangerousLine).toBeGreaterThan(-1);
-      const block = source.slice(dangerousLine, dangerousLine + 500);
-      // Should include all the same properties as nucleus.ts
-      expect(block).toMatch(/hasOwnProperty/);
-      expect(block).toMatch(/toString/);
-      expect(block).toMatch(/valueOf/);
-    });
-  });
+  // #1 removed: DANGEROUS_VAR_NAMES deleted with FINAL_VAR marker.
 
   // =========================================================================
   // #2 MEDIUM — reduce no iteration cap

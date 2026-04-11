@@ -72,27 +72,8 @@ describe("Audit #67", () => {
     });
   });
 
-  // =========================================================================
-  // #6 MEDIUM — rlm.ts toLocaleString on NaN/Infinity value
-  // =========================================================================
-  describe("#6 — result formatting should guard toLocaleString", () => {
-    it("should check isFinite before toLocaleString", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      // Find the toLocaleString usage with value (not the contextLength one)
-      const valueLocale = source.indexOf("value.toLocaleString");
-      if (valueLocale === -1) {
-        // If refactored to not use toLocaleString on value, that's also fine
-        // Just check there's an isFinite guard near value formatting
-        const valueStart = source.indexOf("parsed[foundKey]");
-        expect(valueStart).toBeGreaterThan(-1);
-        const block = source.slice(valueStart, valueStart + 300);
-        expect(block).toMatch(/isFinite|isSafeInteger/);
-      } else {
-        const block = source.slice(valueLocale - 100, valueLocale + 50);
-        expect(block).toMatch(/isFinite|isSafeInteger/);
-      }
-    });
-  });
+  // #6 removed: rlm.ts extractFinalAnswer helper deleted. Adapter-level result
+  // formatting is tested in adapter-specific suites.
 
   // =========================================================================
   // #7 MEDIUM — knowledge-base.ts computeSimilarity unbounded char Set

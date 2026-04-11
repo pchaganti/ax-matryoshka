@@ -6,7 +6,7 @@
  * writing regex patterns manually.
  */
 
-import type { ModelAdapter, FinalVarMarker, RAGHints } from "./types.js";
+import type { ModelAdapter, RAGHints } from "./types.js";
 import { createQwenAdapter } from "./qwen.js";
 import { analyzeError, formatErrorFeedback } from "../feedback/error-analyzer.js";
 

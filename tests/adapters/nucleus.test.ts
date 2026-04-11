@@ -113,11 +113,7 @@ describe("Nucleus Adapter", () => {
       expect(adapter.extractFinalAnswer(response)).toBe("Found 3 items");
     });
 
-    it("should extract FINAL_VAR marker", () => {
-      const response = "FINAL_VAR(results)";
-      const result = adapter.extractFinalAnswer(response);
-      expect(result).toEqual({ type: "var", name: "results" });
-    });
+    // FINAL_VAR marker test removed: legacy marker deleted with the JS-sandbox retirement.
 
     it("should return null for no final answer", () => {
       expect(adapter.extractFinalAnswer("No answer here")).toBeNull();

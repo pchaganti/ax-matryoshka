@@ -146,11 +146,7 @@ describe("Base Adapter", () => {
       expect(adapter.extractFinalAnswer(response)).toBe("The answer is 42");
     });
 
-    it("should extract FINAL_VAR marker", () => {
-      const response = "FINAL_VAR(memory)";
-      const result = adapter.extractFinalAnswer(response);
-      expect(result).toEqual({ type: "var", name: "memory" });
-    });
+    // FINAL_VAR marker test removed: legacy marker deleted with the JS-sandbox retirement.
 
     it("should extract JSON answer with totalSales field", () => {
       const response = '```json\n{"totalSales": "$13,000"}\n```';

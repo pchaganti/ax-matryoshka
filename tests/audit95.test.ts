@@ -17,28 +17,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #95", () => {
-  // =========================================================================
-  // #1 HIGH — DANGEROUS_VAR_NAMES missing eval/Function
-  // =========================================================================
-  describe("#1 — DANGEROUS_VAR_NAMES should include eval and Function", () => {
-    it("nucleus.ts should block eval/Function in FINAL_VAR", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const varNames = source.indexOf("DANGEROUS_VAR_NAMES");
-      expect(varNames).toBeGreaterThan(-1);
-      const block = source.slice(varNames, varNames + 500);
-      expect(block).toMatch(/eval/);
-      expect(block).toMatch(/Function/);
-    });
-
-    it("base.ts should block eval/Function in FINAL_VAR", () => {
-      const source = readFileSync("src/adapters/base.ts", "utf-8");
-      const varNames = source.indexOf("DANGEROUS_VAR_NAMES");
-      expect(varNames).toBeGreaterThan(-1);
-      const block = source.slice(varNames, varNames + 500);
-      expect(block).toMatch(/eval/);
-      expect(block).toMatch(/Function/);
-    });
-  });
+  // #1 removed: DANGEROUS_VAR_NAMES deleted with FINAL_VAR marker.
 
   // =========================================================================
   // #2 MEDIUM — searchWithHighlights highlighted string unbounded

@@ -467,21 +467,7 @@ function handleCheckFinalAnswer(ctx: RLMContext): RLMContext {
     const finalAnswer = ctx.adapter.extractFinalAnswer(ctx.response);
     if (finalAnswer !== null) {
       ctx.log(`[Turn ${ctx.turn}] Final answer found after code execution`);
-      let resultToReturn: unknown;
-      if (typeof finalAnswer === "object" && finalAnswer.type === "var") {
-        ctx.log(`[Turn ${ctx.turn}] Returning variable: ${finalAnswer.name}`);
-        const solverValue = ctx.solverBindings?.get(finalAnswer.name) ?? ctx.solverBindings?.get("RESULTS");
-        if (solverValue !== undefined) {
-          resultToReturn = solverValue;
-        } else {
-          const mem = ctx.sandbox.getMemory();
-          resultToReturn = (mem.length === 0 && ctx.lastMeaningfulOutput) ? ctx.lastMeaningfulOutput : mem;
-        }
-      } else {
-        resultToReturn = finalAnswer;
-      }
-
-      const verification = verifyAndReturnResult(resultToReturn, ctx.constraint, ctx.log);
+      const verification = verifyAndReturnResult(finalAnswer, ctx.constraint, ctx.log);
       if (verification.valid) {
         ctx.result = verification.result;
       } else {
@@ -528,15 +514,7 @@ function handleCheckFinalAnswer(ctx: RLMContext): RLMContext {
       }
 
       ctx.log(`[Turn ${ctx.turn}] Final answer received`);
-      let resultToReturn: unknown;
-      if (typeof finalAnswer === "object" && finalAnswer.type === "var") {
-        const solverValue = ctx.solverBindings?.get(finalAnswer.name) ?? ctx.solverBindings?.get("RESULTS");
-        resultToReturn = solverValue !== undefined ? solverValue : ctx.sandbox.getMemory();
-      } else {
-        resultToReturn = finalAnswer;
-      }
-
-      const verification = verifyAndReturnResult(resultToReturn, ctx.constraint, ctx.log);
+      const verification = verifyAndReturnResult(finalAnswer, ctx.constraint, ctx.log);
       if (verification.valid) {
         ctx.result = verification.result;
       } else {

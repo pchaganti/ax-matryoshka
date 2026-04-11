@@ -93,19 +93,7 @@ describe("Audit #58", () => {
     });
   });
 
-  // =========================================================================
-  // #8 MEDIUM — nucleus.ts DANGEROUS_VAR_NAMES incomplete
-  // =========================================================================
-  describe("#8 — nucleus DANGEROUS_VAR_NAMES should include toString/valueOf", () => {
-    it("should block hasOwnProperty, toString, valueOf", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const dangerousBlock = source.match(/DANGEROUS_VAR_NAMES[\s\S]*?FINAL_VAR/);
-      expect(dangerousBlock).not.toBeNull();
-      expect(dangerousBlock![0]).toMatch(/hasOwnProperty/);
-      expect(dangerousBlock![0]).toMatch(/toString/);
-      expect(dangerousBlock![0]).toMatch(/valueOf/);
-    });
-  });
+  // #8 removed: DANGEROUS_VAR_NAMES deleted with FINAL_VAR marker.
 
   // =========================================================================
   // #9 MEDIUM — lc-interpreter lines operation no max return limit

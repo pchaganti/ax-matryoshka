@@ -1,10 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import {
-  runRLM,
-  buildSystemPrompt,
-  extractCode,
-  extractFinalAnswer,
-} from "../src/rlm.js";
+import { runRLM } from "../src/rlm.js";
 
 // Mock the LLM for controlled testing
 const mockLLM = vi.fn();
@@ -14,151 +9,11 @@ describe("RLM Executor", () => {
     mockLLM.mockReset();
   });
 
-  describe("buildSystemPrompt", () => {
-    it("should include context length", () => {
-      const prompt = buildSystemPrompt(50000, "");
-      expect(prompt).toContain("50,000");
-    });
-
-    it("should include tool interfaces", () => {
-      const interfaces = "function text_stats(): Stats";
-      const prompt = buildSystemPrompt(1000, interfaces);
-      expect(prompt).toContain("text_stats");
-    });
-
-    it("should include memory usage instructions", () => {
-      const prompt = buildSystemPrompt(1000, "");
-      expect(prompt).toContain("memory");
-      expect(prompt).toContain("console.log");
-    });
-
-    it("should include FINAL termination instructions", () => {
-      const prompt = buildSystemPrompt(1000, "");
-      expect(prompt).toContain("<<<FINAL>>>");
-      expect(prompt).toContain("<<<END>>>");
-      expect(prompt).toContain("FINAL_VAR");
-    });
-
-    it("should guide model to use tools for exploration", () => {
-      const prompt = buildSystemPrompt(1000000, "");
-      // Prompt should guide model to use tools like grep, text_stats rather than raw iteration
-      expect(prompt.toLowerCase()).toMatch(/grep|text_stats|fuzzy_search/i);
-      expect(prompt.toLowerCase()).toContain("blind");
-    });
-
-  });
-
-  describe("extractCode", () => {
-    it("should extract TypeScript code blocks", () => {
-      const response = "Some text\n```typescript\nconst x = 1;\n```\nMore text";
-      const code = extractCode(response);
-      expect(code).toBe("const x = 1;");
-    });
-
-    it("should return null if no code block", () => {
-      const response = "Just plain text";
-      const code = extractCode(response);
-      expect(code).toBeNull();
-    });
-
-    it("should handle multiple code blocks (take first)", () => {
-      const response = "```typescript\nfirst\n```\n```typescript\nsecond\n```";
-      const code = extractCode(response);
-      expect(code).toBe("first");
-    });
-
-    it("should handle js/javascript blocks too", () => {
-      const response = "```javascript\nconst y = 2;\n```";
-      const code = extractCode(response);
-      expect(code).toBe("const y = 2;");
-    });
-
-    it("should handle ts blocks", () => {
-      const response = "```ts\nconst z = 3;\n```";
-      const code = extractCode(response);
-      expect(code).toBe("const z = 3;");
-    });
-
-    it("should handle js blocks", () => {
-      const response = "```js\nconst w = 4;\n```";
-      const code = extractCode(response);
-      expect(code).toBe("const w = 4;");
-    });
-  });
-
-  describe("extractFinalAnswer", () => {
-    it("should extract <<<FINAL>>> delimited answer", () => {
-      const response =
-        "Some reasoning here\n<<<FINAL>>>\nThe answer is 42\n<<<END>>>";
-      const answer = extractFinalAnswer(response);
-      expect(answer).toBe("The answer is 42");
-    });
-
-    it("should extract FINAL_VAR(variableName)", () => {
-      const response = "FINAL_VAR(memory)";
-      const answer = extractFinalAnswer(response);
-      expect(answer).toEqual({ type: "var", name: "memory" });
-    });
-
-    it("should return null if no final marker", () => {
-      const response = "Still working...";
-      const answer = extractFinalAnswer(response);
-      expect(answer).toBeNull();
-    });
-
-    it("should handle multiline answers", () => {
-      const response = "<<<FINAL>>>\nLine 1\nLine 2\nLine 3\n<<<END>>>";
-      const answer = extractFinalAnswer(response);
-      expect(answer).toContain("Line 1");
-      expect(answer).toContain("Line 2");
-    });
-
-    it("should handle quotes in answer without breaking", () => {
-      const response =
-        '<<<FINAL>>>\nHe said "hello" and she said "goodbye".\n<<<END>>>';
-      const answer = extractFinalAnswer(response);
-      expect(answer).toContain('"hello"');
-      expect(answer).toContain('"goodbye"');
-    });
-
-    it("should handle JSON in answer", () => {
-      const response =
-        '<<<FINAL>>>\n{"key": "value", "nested": {"a": 1}}\n<<<END>>>';
-      const answer = extractFinalAnswer(response);
-      const parsed = JSON.parse(answer as string);
-      expect(parsed.key).toBe("value");
-    });
-
-    it("should trim whitespace from answer", () => {
-      const response = "<<<FINAL>>>\n   \n  The answer  \n   \n<<<END>>>";
-      const answer = extractFinalAnswer(response);
-      expect(answer).toBe("The answer");
-    });
-
-    it("should extract answer from JSON with totalSales (camelCase)", () => {
-      const response = '```json\n{\n  "totalSales": "$13,000.00"\n}\n```';
-      const answer = extractFinalAnswer(response);
-      expect(answer).not.toBeNull();
-      const parsed = JSON.parse(answer as string);
-      expect(parsed.totalSales).toBe("$13,000.00");
-    });
-
-    it("should extract answer from JSON with total_sales (snake_case)", () => {
-      const response = '```json\n{\n  "total_sales": 13000\n}\n```';
-      const answer = extractFinalAnswer(response);
-      expect(answer).not.toBeNull();
-      const parsed = JSON.parse(answer as string);
-      expect(parsed.total_sales).toBe(13000);
-    });
-
-    it("should extract answer from JSON with result field", () => {
-      const response = '```json\n{\n  "result": "Found 5 items"\n}\n```';
-      const answer = extractFinalAnswer(response);
-      expect(answer).not.toBeNull();
-      const parsed = JSON.parse(answer as string);
-      expect(parsed.result).toBe("Found 5 items");
-    });
-  });
+  // Tests for buildSystemPrompt / extractCode / extractFinalAnswer removed:
+  // those were deprecated helpers in rlm.ts that duplicated adapter methods.
+  // Adapters are now exclusively responsible for prompt building and response
+  // parsing — tested per-adapter in tests/adapters.test.ts and
+  // tests/adapters/nucleus.test.ts.
 
   describe("runRLM", () => {
     // NOTE: All tests now use LC syntax since RLM only accepts Lambda Calculus terms
@@ -289,22 +144,9 @@ describe("RLM Executor", () => {
       expect(elapsed).toBeLessThan(1000);
     });
 
-    // SKIP: Memory manipulation is not supported in LC-only execution
-    // The LC system uses grep/classify, not direct memory access
-    it.skip("should resolve FINAL_VAR from sandbox", async () => {
-      mockLLM
-        .mockResolvedValueOnce(
-          '```typescript\nmemory.push({key: "value"});\n```'
-        )
-        .mockResolvedValueOnce("FINAL_VAR(memory)");
-
-      const result = await runRLM("test query", "./test-fixtures/small.txt", {
-        llmClient: mockLLM,
-        maxTurns: 5,
-      });
-
-      expect(result).toEqual([{ key: "value" }]);
-    });
+    // FINAL_VAR resolution test removed: legacy marker deleted along with the
+    // JS-sandbox memory buffer. Nucleus adapter returns answers via <<<FINAL>>>
+    // delimiters only.
 
     // NOTE: Now uses LC syntax
     it("should accumulate history across turns", async () => {
