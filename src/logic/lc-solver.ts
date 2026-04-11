@@ -30,6 +30,15 @@ export interface SolverTools {
   semantic: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
   text_stats: () => { length: number; lineCount: number; sample: { start: string; middle: string; end: string } };
   context: string;
+  /**
+   * Pre-split document lines, owned by the tools instance.
+   *
+   * Keeping this on the tools (not in a module-level cache) means each
+   * session is self-contained: two concurrent SolverTools for different
+   * documents cannot clobber each other's line array, and disposing a
+   * session lets the line array be garbage-collected.
+   */
+  lines: string[];
 }
 
 /**
@@ -39,17 +48,6 @@ export interface SolverTools {
 export type Bindings = Map<string, unknown>;
 
 const moduleQStore = new QValueStore();
-
-let lastContext: string = "";
-let lastContextLines: string[] = [];
-
-function getCachedLines(context: string): string[] {
-  if (context !== lastContext) {
-    lastContext = context;
-    lastContextLines = context.split("\n");
-  }
-  return lastContextLines;
-}
 
 /**
  * Validate a regex pattern for safety (ReDoS protection)
@@ -332,7 +330,7 @@ function evaluate(
         return [];
       }
       log(`[Solver] Getting lines ${term.start} to ${term.end}`);
-      const allLines = getCachedLines(tools.context);
+      const allLines = tools.lines;
       const startIdx = Math.max(0, Math.floor(term.start) - 1);
       const endIdx = Math.min(allLines.length, Math.floor(term.end));
       const selectedLines = allLines.slice(startIdx, endIdx);

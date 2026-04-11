@@ -7,6 +7,8 @@
  *    (filter match case-sensitive, but grep+extract case-insensitive)
  * 2. MEDIUM lc-solver.ts — (sum RESULTS) silently sums ALL numbers per grep line
  *    (should take the first numeric token only)
+ * 3. MEDIUM lc-solver.ts — module-level lastContext/lastContextLines cache leaks
+ *    across SolverTools instances; move lines onto SolverTools itself
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
@@ -101,6 +103,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
           sample: { start: "", middle: "", end: "" },
         }),
         context: lines.join("\n"),
+        lines,
       };
     }
 
@@ -150,6 +153,55 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       const result = stringEngine.execute("(sum (lines 1 2))");
       expect(result.success).toBe(true);
       expect(result.value).toBe(3500.5);
+    });
+  });
+
+  // =========================================================================
+  // #3 MEDIUM — (lines N M) reads from SolverTools, not a module-level cache
+  // =========================================================================
+  describe("#3 — (lines) uses SolverTools.lines, no cross-session leak", () => {
+    function makeTools(context: string, lines: string[]): SolverTools {
+      return {
+        grep: () => [],
+        fuzzy_search: () => [],
+        bm25: () => [],
+        semantic: () => [],
+        text_stats: () => ({
+          length: context.length,
+          lineCount: lines.length,
+          sample: { start: "", middle: "", end: "" },
+        }),
+        context,
+        lines,
+      };
+    }
+
+    it("(lines 1 2) respects tools.lines even when it diverges from context", () => {
+      // Intentionally construct a tools object where `context` would, if
+      // re-split, produce a DIFFERENT array than `lines`. The solver must
+      // trust `tools.lines` rather than falling back to a cached reparse of
+      // `tools.context` (which is exactly what the old module-level cache did).
+      const tools = makeTools("aaa\nbbb\nccc", ["XXX", "YYY", "ZZZ"]);
+      const term: LCTerm = { tag: "lines", start: 1, end: 2 };
+      const result = solve(term, tools);
+      expect(result.success).toBe(true);
+      expect(result.value).toEqual(["XXX", "YYY"]);
+    });
+
+    it("two tools instances do not leak state between each other", () => {
+      // Call A with one tools, then B with another. If A's call cached data
+      // at module scope, B's call could accidentally see it.
+      const toolsA = makeTools("line 1\nline 2", ["alpha", "beta"]);
+      const toolsB = makeTools("line 3\nline 4", ["gamma", "delta"]);
+      const term: LCTerm = { tag: "lines", start: 1, end: 2 };
+
+      const resultA1 = solve(term, toolsA);
+      const resultB = solve(term, toolsB);
+      const resultA2 = solve(term, toolsA);
+
+      expect(resultA1.value).toEqual(["alpha", "beta"]);
+      expect(resultB.value).toEqual(["gamma", "delta"]);
+      expect(resultA2.value).toEqual(["alpha", "beta"]);
     });
   });
 });

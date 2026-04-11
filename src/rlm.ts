@@ -84,6 +84,7 @@ function createSolverTools(context: string): SolverTools {
 
   return {
     context,
+    lines,
 
     grep: (pattern: string) => {
       const MAX_GREP_MATCHES = 10000;
