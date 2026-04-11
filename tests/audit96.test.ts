@@ -13,6 +13,8 @@
  *    compute a token-savings estimate, defeating the point of handle storage
  * 5. MEDIUM handle-session.ts — redundant eviction guard in execute() duplicates
  *    HandleRegistry.store's own guard; delete the dead check
+ * 6. MEDIUM handle-session.ts — expand() returns totalTokens=0 when sliced is
+ *    empty but total > 0 (e.g., offset past end)
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -277,6 +279,65 @@ describe("Audit #96 — Chiasmus review round 2", () => {
         result.tokenMetadata!.stubTokens,
       );
       expect(result.tokenMetadata!.savingsPercent).toBeGreaterThan(50);
+
+      session.close();
+    });
+  });
+
+  // =========================================================================
+  // #6 MEDIUM — expand() reports totalTokens > 0 when offset is past end
+  // =========================================================================
+  describe("#6 — expand() reports non-zero totalTokens when slice is empty", () => {
+    it("offset past end returns empty slice but still reports true total size", () => {
+      const session = new HandleSession();
+      session.loadContent("alpha\nbeta\ngamma\ndelta\nepsilon");
+      const grep = session.execute('(grep "a")');
+      expect(grep.success).toBe(true);
+      expect(grep.handle).toBeDefined();
+
+      // Grab the real total from metadata first
+      const fullExpand = session.expand(grep.handle!);
+      expect(fullExpand.success).toBe(true);
+      expect(fullExpand.total).toBeGreaterThan(0);
+      expect(fullExpand.tokenMetadata!.totalTokens).toBeGreaterThan(0);
+
+      // Now expand with offset past the end of the data
+      const beyond = session.expand(grep.handle!, {
+        offset: fullExpand.total! + 100,
+        limit: 10,
+      });
+      expect(beyond.success).toBe(true);
+      expect(beyond.data!.length).toBe(0);
+      // total should still reflect the handle's real count
+      expect(beyond.total).toBe(fullExpand.total);
+      // BUG: before the fix, totalTokens was 0 because the computation
+      // divided by sliced.length which was 0. The LLM would then conclude
+      // "the handle is empty" and make bad decisions.
+      expect(beyond.tokenMetadata!.totalTokens).toBeGreaterThan(0);
+      expect(beyond.tokenMetadata!.totalTokens).toBe(
+        fullExpand.tokenMetadata!.totalTokens,
+      );
+
+      session.close();
+    });
+
+    it("limit=0 returns empty slice but still reports true total size", () => {
+      const session = new HandleSession();
+      session.loadContent("alpha\nbeta\ngamma");
+      const grep = session.execute('(grep "a")');
+      expect(grep.success).toBe(true);
+
+      const full = session.expand(grep.handle!);
+      const empty = session.expand(grep.handle!, { limit: 0 });
+      expect(empty.success).toBe(true);
+      expect(empty.data!.length).toBe(0);
+      expect(empty.total).toBeGreaterThan(0);
+      // Before the fix: returnedTokens for JSON.stringify([]) = "[]" = 2
+      // chars ≈ 1 token. The empty-slice fallback clamped totalTokens to 1
+      // regardless of how much data was actually stored.
+      expect(empty.tokenMetadata!.totalTokens).toBe(
+        full.tokenMetadata!.totalTokens,
+      );
 
       session.close();
     });

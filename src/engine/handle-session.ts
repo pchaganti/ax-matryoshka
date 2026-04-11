@@ -446,10 +446,24 @@ export class HandleSession {
     // Compute token metadata for expanded data
     const returnedSize = JSON.stringify(sliced).length;
     const returnedTokens = estimateTokens(returnedSize);
-    // Estimate total tokens proportionally
-    const totalTokens = total > 0 && sliced.length > 0
-      ? Math.ceil((returnedTokens / sliced.length) * total)
-      : returnedTokens;
+    // Estimate total tokens. If we have a non-empty slice, extrapolate
+    // proportionally. If the slice is empty (offset past end, limit=0)
+    // but the handle itself has data, ask the DB for the authoritative
+    // size — otherwise the LLM would see totalTokens=0 and wrongly
+    // conclude the handle is empty.
+    let totalTokens: number;
+    if (total > 0 && sliced.length > 0) {
+      totalTokens = Math.ceil((returnedTokens / sliced.length) * total);
+    } else if (total > 0) {
+      // getHandleDataByteSize sums row lengths; add JSON array syntax
+      // overhead (`[` + `]` + `,` between items) to match what the
+      // extrapolation path would have produced.
+      const dbSize = this.db.getHandleDataByteSize(handle);
+      const arrayOverhead = 2 + Math.max(0, total - 1);
+      totalTokens = estimateTokens(dbSize + arrayOverhead);
+    } else {
+      totalTokens = returnedTokens;
+    }
 
     return {
       success: true,
