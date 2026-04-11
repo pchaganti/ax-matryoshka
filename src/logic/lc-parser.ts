@@ -62,7 +62,14 @@ function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
 
-  while (i < input.length && tokens.length < MAX_TOKENS) {
+  while (i < input.length) {
+    if (tokens.length >= MAX_TOKENS) {
+      // Never silently drop the tail of the input — a truncated token
+      // stream would otherwise produce a "successful" parse of a prefix
+      // or a misleading syntax error that gives no hint about the real
+      // cause. Throw so parse() surfaces an explicit size-limit error.
+      throw new Error(`Input too large: exceeded ${MAX_TOKENS} tokens`);
+    }
     const ch = input[i];
 
     // Skip whitespace
@@ -933,11 +940,19 @@ export function parseAll(input: string): ParseResult[] {
   const trimmed = input.trim();
   if (!trimmed) return results;
 
-  // Find top-level S-expressions by tracking parenthesis depth
+  // Track `()`, `[]`, `{}` as independent depth stacks so that a stray
+  // close bracket of one kind doesn't accidentally land at "depth 0"
+  // mid-expression and emit a truncated slice. Stray closes without a
+  // matching open are ignored (clamped at zero) — the inner parse() call
+  // will report the malformed input via its own error path.
   let start = -1;
-  let depth = 0;
+  let parenDepth = 0;
+  let bracketDepth = 0;
+  let braceDepth = 0;
   let inString = false;
   let escaped = false;
+
+  const allZero = () => parenDepth === 0 && bracketDepth === 0 && braceDepth === 0;
 
   for (let i = 0; i < trimmed.length; i++) {
     const ch = trimmed[i];
@@ -960,11 +975,17 @@ export function parseAll(input: string): ParseResult[] {
     if (inString) continue;
 
     if (ch === "(" || ch === "[" || ch === "{") {
-      if (depth === 0) start = i;
-      depth++;
+      if (allZero()) start = i;
+      if (ch === "(") parenDepth++;
+      else if (ch === "[") bracketDepth++;
+      else braceDepth++;
     } else if (ch === ")" || ch === "]" || ch === "}") {
-      depth--;
-      if (depth === 0 && start >= 0) {
+      if (ch === ")" && parenDepth > 0) parenDepth--;
+      else if (ch === "]" && bracketDepth > 0) bracketDepth--;
+      else if (ch === "}" && braceDepth > 0) braceDepth--;
+      else continue; // stray close — ignore
+
+      if (allZero() && start >= 0) {
         const expr = trimmed.slice(start, i + 1);
         results.push(parse(expr));
         start = -1;

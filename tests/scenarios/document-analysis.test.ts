@@ -93,8 +93,7 @@ Found 2 payment service errors.
 describe("Sensor Readings Analysis", () => {
   const sensorFile = join(FIXTURES_DIR, "sensor-readings.txt");
 
-  // Skipped: Requires complex synthesis workflow that doesn't work well with mock LLM
-  it.skip("should calculate total power consumption", async () => {
+  it("should calculate total power consumption", async () => {
     const llm = createScriptedLLM([
       `(grep "POWER_KWH")`,
       `<<<FINAL>>>
@@ -130,8 +129,7 @@ Found 1 CRITICAL alert: Cold storage temperature rose to -15.2°C during power f
     expect(String(result)).toMatch(/1|one|critical/i);
   });
 
-  // TODO: Debug why this specific test reaches max turns
-  it.skip("should calculate average AQI", async () => {
+  it("should calculate average AQI", async () => {
     const llm = createScriptedLLM([
       `(grep "AQI_READING")`,
       `<<<FINAL>>>
@@ -190,8 +188,7 @@ The most expensive item is the Peloton Bike+ at $2,495.00.
     expect(String(result)).toMatch(/peloton|2,?495/i);
   });
 
-  // Skipped: Requires complex synthesis workflow
-  it.skip("should calculate total inventory value for a category", async () => {
+  it("should calculate total inventory value for a category", async () => {
     const llm = createScriptedLLM([
       `(grep "ELEC-PHONE")`,
       `<<<FINAL>>>

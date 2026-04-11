@@ -88,16 +88,7 @@ describe("Audit #32", () => {
   // =============================================================
 
   describe("Round 2: Sandbox", () => {
-    // Issue: Declaration scripts run without timeout
-    describe("#5 — declaration scripts should have timeout", () => {
-      it("should pass timeout to declScript.runInContext", () => {
-        const source = readFileSync("src/sandbox.ts", "utf-8");
-        const declSection = source.match(/declScript\.runInContext\(vmContext[^)]*\)/);
-        expect(declSection).not.toBeNull();
-        // Should have timeout option
-        expect(declSection![0]).toMatch(/timeout/);
-      });
-    });
+    // #5 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
     // Issue: verifier.ts new Function deny-list is fragile
     describe("#6 — verifier should use allowlist, not deny-list for invariants", () => {
@@ -161,17 +152,7 @@ describe("Audit #32", () => {
       });
     });
 
-    // Issue: FINAL_VAR returns empty sandbox memory instead of solver bindings
-    describe("#10 — FINAL_VAR should check solver bindings", () => {
-      it("should look up variable in solver bindings when FINAL_VAR is used", () => {
-        const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
-        // Find the FINAL_VAR handling section
-        const finalVar = source.match(/finalAnswer\.type === "var"[\s\S]*?resultToReturn\s*=.*$/m);
-        expect(finalVar).not.toBeNull();
-        // Should reference solverBindings or solverResult, not just sandbox.getMemory()
-        expect(finalVar![0]).toMatch(/solverBinding|solverResult|solver/i);
-      });
-    });
+    // #10 removed: FINAL_VAR handling deleted — FSM no longer has the var-marker branch.
   });
 
   // =============================================================

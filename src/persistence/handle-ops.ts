@@ -82,9 +82,13 @@ export class HandleOps {
       for (const item of chunk) {
         if (typeof item === "object" && item !== null && "line" in item) {
           const line = String((item as { line: string }).line);
-          const matches = line.matchAll(/\$?([\d,]+(?:\.\d+)?)/g);
-          for (const m of matches) {
-            const num = parseFloat(m[1].replace(/,/g, ""));
+          // Extract the FIRST numeric token only (preferring $-prefixed values).
+          // Summing all numbers per line silently conflates unrelated values —
+          // see lc-solver.ts sum case for the matching behavior.
+          const dollarMatch = line.match(/\$([\d,]+(?:\.\d+)?)/);
+          const firstMatch = dollarMatch ?? line.match(/([\d,]+(?:\.\d+)?)/);
+          if (firstMatch) {
+            const num = parseFloat(firstMatch[1].replace(/,/g, ""));
             if (!isNaN(num) && Number.isFinite(num)) {
               const result = acc + num;
               if (Number.isFinite(result)) {

@@ -76,14 +76,7 @@ describe("Audit #36", () => {
   // =============================================================
 
   describe("Round 2: Medium", () => {
-    // #6 — unbounded persistent log growth in sandbox
-    describe("#6 — sandbox logs should have a cap", () => {
-      it("should limit persistent logs array size", () => {
-        const source = readFileSync("src/sandbox.ts", "utf-8");
-        // Should have a MAX_LOGS or truncation mechanism
-        expect(source).toMatch(/MAX_LOGS|logs\.length\s*>|logs\.splice|logs\.shift/);
-      });
-    });
+    // #6 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
     // #7 — expand() negative offset/limit
     describe("#7 — expand should validate offset and limit", () => {

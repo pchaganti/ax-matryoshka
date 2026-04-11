@@ -1,6 +1,6 @@
 {
   "name": "matryoshka-rlm",
-  "version": "0.2.22",
+  "version": "0.2.23",
   "type": "module",
   "description": "Recursive Language Model - Process documents larger than LLM context windows",
   "main": "dist/lib.js",
@@ -56,7 +56,8 @@
     "test:coverage": "vitest run --coverage",
     "mcp": "tsx src/mcp-server.ts",
     "repl": "tsx src/repl/lattice-repl.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.tests.json"
   },
   "keywords": [
     "llm",

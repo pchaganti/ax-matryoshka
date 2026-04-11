@@ -11,7 +11,7 @@
  * - (parseInt (match input "\\d+" 0)) - parse number
  */
 
-import type { ModelAdapter, FinalVarMarker, RAGHints } from "./types.js";
+import type { ModelAdapter, RAGHints } from "./types.js";
 
 /**
  * Build the system prompt for Nucleus LC output
@@ -313,7 +313,7 @@ function extractCode(response: string): string | null {
  */
 function extractFinalAnswer(
   response: string | undefined | null
-): string | FinalVarMarker | null {
+): string | null {
   if (!response) return null;
 
   // Look for FINAL markers with various bracket styles (<<<, >>>, or mixed)
@@ -338,13 +338,6 @@ function extractFinalAnswer(
     if (!content.match(/^\s*\(/)) {
       return content;
     }
-  }
-
-  // Also check for FINAL_VAR pattern
-  const DANGEROUS_VAR_NAMES = /^(__proto__|constructor|prototype|eval|Function|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|hasOwnProperty|toString|valueOf|toLocaleString|isPrototypeOf|propertyIsEnumerable)$/i;
-  const varMatch = response.match(/FINAL_VAR\((\w+)\)/);
-  if (varMatch && !DANGEROUS_VAR_NAMES.test(varMatch[1])) {
-    return { type: "var", name: varMatch[1] };
   }
 
   return null;

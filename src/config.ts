@@ -1,5 +1,6 @@
 import { readFile } from "fs/promises";
 import { resolve } from "path";
+import { hasTraversalSegment } from "./utils/path-safety.js";
 
 /**
  * Configuration file types
@@ -128,8 +129,9 @@ function coerceConfigTypes(obj: unknown, depth: number = 0): unknown {
 export async function loadConfig(configPath?: string): Promise<Config> {
   const path = configPath || resolve(process.cwd(), "config.json");
 
-  // Validate custom config path — block path traversal sequences
-  if (configPath && configPath.includes("..")) {
+  // Validate custom config path — block path traversal sequences (segment-aware
+  // so legitimate filenames like `local..config.json` are allowed)
+  if (configPath && hasTraversalSegment(configPath)) {
     throw new Error("Config path traversal (..) is not allowed");
   }
 

@@ -3,10 +3,13 @@
  */
 import { describe, it, expect } from "vitest";
 
-// === Issue #1: Regex case sensitivity inconsistency ===
-// lc-interpreter.ts:230 uses no flags, lc-solver.ts:395 uses "i" flag
+// === Issue #1: Regex case consistency ===
+// match/extract must be case-insensitive across lc-interpreter and lc-solver,
+// matching grep's "gmi" behavior. Chiasmus review round 2 reversed the prior
+// (case-sensitive) policy because `(grep "error")` found "Error" but
+// `(filter RESULTS (lambda x (match x "error" 0)))` then dropped it.
 describe("Audit15 #1: regex case consistency", () => {
-  it("lc-interpreter match should be case-sensitive (no flags)", async () => {
+  it("lc-interpreter match should be case-insensitive (matches grep)", async () => {
     const { evaluate } = await import("../src/logic/lc-interpreter.js");
     const tools: any = {
       grep: () => [],
@@ -14,13 +17,13 @@ describe("Audit15 #1: regex case consistency", () => {
       text_stats: () => ({ length: 0, lineCount: 0, sample: { start: "", middle: "", end: "" } }),
       context: "",
     };
-    // Match "ABC" against /abc/ — should NOT match without i flag
+    // Match "ABC" against /abc/i — should match
     const term: any = { tag: "match", str: { tag: "lit", value: "ABC" }, pattern: "abc", group: 0 };
     const result = evaluate(term, tools, new Map(), () => {}, 0);
-    expect(result).toBe(null);
+    expect(result).toBe("ABC");
   });
 
-  it("lc-solver match should also be case-sensitive", async () => {
+  it("lc-solver match should also be case-insensitive", async () => {
     const { solve } = await import("../src/logic/lc-solver.js");
     const tools: any = {
       grep: () => [],
@@ -30,8 +33,8 @@ describe("Audit15 #1: regex case consistency", () => {
     };
     const term: any = { tag: "match", str: { tag: "lit", value: "ABC" }, pattern: "abc", group: 0 };
     const result = solve(term, tools);
-    // Should NOT match — solver currently uses "i" flag which is the bug
-    expect(result.value).toBe(null);
+    // Should match — solver uses "i" flag for consistency with grep
+    expect(result.value).toBe("ABC");
   });
 });
 

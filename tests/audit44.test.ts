@@ -91,17 +91,7 @@ describe("Audit #44", () => {
     });
   });
 
-  // =========================================================================
-  // #8 MEDIUM — nucleus.ts: FINAL_VAR name not validated
-  // =========================================================================
-  describe("#8 — nucleus adapter FINAL_VAR should validate variable name", () => {
-    it("should reject dangerous names like __proto__ or constructor", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const finalVarBlock = source.match(/FINAL_VAR[\s\S]*?return.*type.*var/);
-      expect(finalVarBlock).not.toBeNull();
-      expect(finalVarBlock![0]).toMatch(/__proto__|constructor|prototype/);
-    });
-  });
+  // #8 removed: FINAL_VAR parser deleted from the nucleus adapter (legacy marker).
 
   // =========================================================================
   // #9 MEDIUM — predicate-compiler: comma operator not blocked

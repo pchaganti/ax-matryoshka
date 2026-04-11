@@ -7,7 +7,7 @@
  * - May benefit from explicit role definition
  */
 
-import type { ModelAdapter, FinalVarMarker, RAGHints } from "./types.js";
+import type { ModelAdapter, RAGHints } from "./types.js";
 import {
   baseExtractCode,
   baseExtractFinalAnswer,
@@ -31,7 +31,6 @@ You are a JavaScript runtime that executes code to analyze documents. You cannot
 # Context
 - Document loaded in global variable \`context\` (${formattedLength} characters)
 - You receive execution results after each code block you write
-- Memory persists between turns via the \`memory\` array
 
 # Available Tools
 All tools are pre-loaded globals. Do NOT use import/require.
@@ -42,7 +41,6 @@ ${toolInterfaces}
 1. Output ONLY JavaScript code blocks - no explanations or chat
 2. Use console.log() to see results (stringify objects: JSON.stringify(obj, null, 2))
 3. Never guess or make up data - all answers must come from code execution
-4. Store findings in memory: memory.push({ key: "label", value: data })
 
 # Code Block Format
 \`\`\`javascript
@@ -60,9 +58,6 @@ console.log("done");
 <<<FINAL>>>
 Your answer with specific values from your code output
 <<<END>>>
-
-Or to return structured data:
-FINAL_VAR(memory)
 
 ${hints?.hintsText || ""}${hints?.selfCorrectionText || ""}
 # Task
@@ -84,7 +79,7 @@ function extractCode(response: string): string | null {
  */
 function extractFinalAnswer(
   response: string | undefined | null
-): string | FinalVarMarker | null {
+): string | null {
   if (!response) return null;
 
   // DeepSeek follows instructions well, base extraction should work

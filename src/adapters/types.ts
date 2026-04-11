@@ -7,14 +7,6 @@
  */
 
 /**
- * Marker for returning a variable by name (e.g., FINAL_VAR(memory))
- */
-export interface FinalVarMarker {
-  type: "var";
-  name: string;
-}
-
-/**
  * RAG hints to inject into prompts for few-shot learning
  */
 export interface RAGHints {
@@ -49,9 +41,9 @@ export interface ModelAdapter {
   /**
    * Extract final answer from model response
    * @param response - Raw model response
-   * @returns Final answer string, FinalVarMarker, or null if no answer found
+   * @returns Final answer string, or null if no answer found
    */
-  extractFinalAnswer(response: string | undefined | null): string | FinalVarMarker | null;
+  extractFinalAnswer(response: string | undefined | null): string | null;
 
   /**
    * Get feedback message when model provides no code block

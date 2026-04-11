@@ -44,18 +44,7 @@ describe("Audit #38", () => {
     });
   });
 
-  // =========================================================================
-  // #4 HIGH — DECL_TIMEOUT can be negative
-  // =========================================================================
-  describe("#4 — sandbox DECL_TIMEOUT should enforce minimum", () => {
-    it("should use Math.max to enforce minimum timeout", () => {
-      const source = readFileSync("src/sandbox.ts", "utf-8");
-      const declTimeout = source.match(/DECL_TIMEOUT\s*=.*?;/);
-      expect(declTimeout).not.toBeNull();
-      // Should enforce a minimum: Math.max(100, ...) or similar
-      expect(declTimeout![0]).toMatch(/Math\.max\(\d+/);
-    });
-  });
+  // #4 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
   // =========================================================================
   // #5 HIGH — expand() defaults to unlimited

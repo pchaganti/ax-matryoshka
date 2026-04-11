@@ -8,7 +8,7 @@
  * 5. MEDIUM session-db.ts — unbounded symbol query results without LIMIT
  * 6. MEDIUM checkpoint.ts — handle format not validated on restore
  * 7. MEDIUM rlm.ts — sessionId not validated
- * 8. MEDIUM rlm.ts — turnTimeoutMs has no upper bound
+ * 8. MEDIUM rlm.ts — turnTimeoutMs has no upper bound (option later removed)
  * 9. MEDIUM rag/manager.ts — pitfalls content unbounded
  * 10. MEDIUM synthesis-integrator.ts — dangerousPatterns missing `delete`
  */
@@ -116,18 +116,9 @@ describe("Audit #84", () => {
     });
   });
 
-  // =========================================================================
-  // #8 MEDIUM — rlm.ts turnTimeoutMs no upper bound
-  // =========================================================================
-  describe("#8 — turnTimeoutMs should have upper bound", () => {
-    it("should cap turnTimeoutMs at a maximum value", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const timeoutLine = source.indexOf("MAX_TIMEOUT");
-      expect(timeoutLine).toBeGreaterThan(-1);
-      const block = source.slice(timeoutLine, timeoutLine + 300);
-      expect(block).toMatch(/turnTimeoutMs|rawTurnTimeoutMs/);
-    });
-  });
+  // #8 removed: turnTimeoutMs option was dead in the RLM path (runRLM
+  // created but never executed the sandbox that consumed it) and has
+  // been removed from RLMOptions entirely.
 
   // =========================================================================
   // #9 MEDIUM — rag/manager.ts pitfalls content unbounded

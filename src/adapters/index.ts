@@ -15,7 +15,7 @@ import { createQwenBarlimanAdapter } from "./qwen-barliman.js";
 import { createNucleusAdapter } from "./nucleus.js";
 
 // Re-export types
-export type { ModelAdapter, FinalVarMarker, AdapterFactory } from "./types.js";
+export type { ModelAdapter, AdapterFactory } from "./types.js";
 
 /**
  * Registry of adapter factories keyed by adapter name

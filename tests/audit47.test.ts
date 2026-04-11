@@ -81,9 +81,15 @@ describe("Audit #47", () => {
   // #7 MEDIUM — handle-session no limit on handle creation
   // =========================================================================
   describe("#7 — handle-session should limit number of handles", () => {
-    it("should check handle count before storing new handles", () => {
-      const source = readFileSync("src/engine/handle-session.ts", "utf-8");
-      const storeSection = source.match(/Array\.isArray\(result\.value\)[\s\S]*?registry\.store/);
+    it("should enforce a handle count limit via HandleRegistry.store", () => {
+      // The invariant lives in HandleRegistry now — handle-session.ts used
+      // to duplicate the guard in execute() but that was dead code (the
+      // outer `count > MAX_HANDLES` check never fired because store()'s
+      // internal `count >= MAX_HANDLES` loop kept the count bounded first).
+      // Chiasmus review round 2 issue #5 deleted the dead guard; the real
+      // enforcement must stay in HandleRegistry.
+      const source = readFileSync("src/persistence/handle-registry.ts", "utf-8");
+      const storeSection = source.match(/store\(data[\s\S]*?createHandle/);
       expect(storeSection).not.toBeNull();
       expect(storeSection![0]).toMatch(/MAX_HANDLES|handle.*limit|evict|count/i);
     });

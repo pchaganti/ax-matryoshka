@@ -115,19 +115,7 @@ describe("Audit #91", () => {
     });
   });
 
-  // =========================================================================
-  // #8 LOW — nucleus.ts redundant .toLowerCase() on /i regex
-  // =========================================================================
-  describe("#8 — nucleus extractFinalAnswer should not redundantly lowercase", () => {
-    it("should not call toLowerCase when regex already has /i flag", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const dangerousLine = source.indexOf("DANGEROUS_VAR_NAMES", source.indexOf("extractFinalAnswer"));
-      expect(dangerousLine).toBeGreaterThan(-1);
-      const block = source.slice(dangerousLine, dangerousLine + 400);
-      // Should NOT have .toLowerCase() when DANGEROUS_VAR_NAMES regex has /i flag
-      expect(block).not.toMatch(/\.toLowerCase\(\)/);
-    });
-  });
+  // #8 removed: DANGEROUS_VAR_NAMES deleted with FINAL_VAR marker.
 
   // =========================================================================
   // #9 MEDIUM — handle-ops.ts sum() missing field validation

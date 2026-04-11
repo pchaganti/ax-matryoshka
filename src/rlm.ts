@@ -7,11 +7,9 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { createSandboxWithSynthesis, type SandboxWithSynthesis } from "./synthesis/sandbox-tools.js";
-import { SynthesisCoordinator } from "./synthesis/coordinator.js";
 import { createToolRegistry, getToolInterfaces } from "./tools.js";
 import type { LLMQueryFn } from "./llm/types.js";
-import type { ModelAdapter, FinalVarMarker, RAGHints } from "./adapters/types.js";
+import type { ModelAdapter, RAGHints } from "./adapters/types.js";
 import { createNucleusAdapter } from "./adapters/nucleus.js";
 import type { SynthesisConstraint } from "./constraints/types.js";
 // verifyResult is now used in fsm/rlm-states.ts
@@ -84,6 +82,7 @@ function createSolverTools(context: string): SolverTools {
 
   return {
     context,
+    lines,
 
     grep: (pattern: string) => {
       const MAX_GREP_MATCHES = 10000;
@@ -164,9 +163,6 @@ function createSolverTools(context: string): SolverTools {
     text_stats: () => ({ ...textStats }),
   };
 }
-
-// Re-export types for backwards compatibility
-export type { FinalVarMarker } from "./adapters/types.js";
 
 /**
  * Generate classifier guidance from grep output
@@ -264,8 +260,6 @@ export interface RLMOptions {
   /** Model adapter for prompt/response handling. Uses base adapter if not specified. */
   adapter?: ModelAdapter;
   maxTurns?: number;
-  turnTimeoutMs?: number;
-  maxSubCalls?: number;
   verbose?: boolean;
   /** Output constraint for verification (Barliman-style constraint-first synthesis) */
   constraint?: SynthesisConstraint;
@@ -273,165 +267,6 @@ export interface RLMOptions {
   ragEnabled?: boolean;
   /** Session ID for tracking failures (default: auto-generated) */
   sessionId?: string;
-}
-
-/**
- * Build the system prompt for the RLM
- * @deprecated Use adapter.buildSystemPrompt() instead
- * @param contextLength - Length of the document in characters
- * @param toolInterfaces - TypeScript interface definitions for available tools
- */
-export function buildSystemPrompt(
-  contextLength: number,
-  toolInterfaces: string
-): string {
-  if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
-  const formattedLength = contextLength.toLocaleString();
-
-  return `You are a headless JavaScript runtime. You have NO EYES. You cannot read the document directly.
-The document is loaded in the global variable \`context\` (length: ${formattedLength}).
-
-To "see" the data, you MUST write JavaScript code, execute it, and read the \`console.log\` output in the next turn.
-
-## GLOBAL CONSTANTS & TOOLS
-// All tools are pre-loaded. DO NOT use 'import' or 'require'.
-${toolInterfaces}
-
-## STRICT EXECUTION RULES
-1. **NO CHAT.** do not write any text outside of code blocks.
-2. **NO GUESSING.** If you answer without seeing a \`console.log\` proving it, you will be terminated.
-3. **NO IMPORTS.** Standard JS objects (Math, JSON, RegExp) are available. File system (fs) is BANNED.
-4. **MEMORY.** Use the global \`memory\` array to store findings between turns.
-   Example: \`memory.push({ key: "sales_Q1", value: 500 })\`
-
-## HOW TO THINK
-Because you cannot chat, write your plan in comments inside the code block.
-Example:
-\`\`\`javascript
-// Step 1: Search for data
-const hits = grep("keyword");  // Returns array of {match, line, lineNum}
-console.log(JSON.stringify(hits, null, 2));
-
-// Step 2: Process results - use hit.line to get full line content
-for (const hit of hits) {
-    console.log(hit.line);  // hit.line is the full text of the matching line
-}
-\`\`\`
-
-## CRITICAL RULES
-- **ALWAYS use JSON.stringify()** when logging objects or arrays. Plain console.log shows [object Object].
-- **NEVER make up data.** If a search returns empty, try different terms or use locate_line() to scan sections.
-- **Use the actual document.** The data is in \`context\`. Do not invent fake examples.
-- **fuzzy_search takes ONE word only.** For "sales|revenue" use grep() instead, or call fuzzy_search("sales") then fuzzy_search("revenue") separately.
-
-## FORMAT & TERMINATION
-You must output exactly ONE JavaScript code block.
-
-When you have PROVEN the answer via code execution, write your answer between the FINAL tags:
-\`\`\`javascript
-console.log("done");
-\`\`\`
-<<<FINAL>>>
-Write your actual computed answer here with specific numbers from your code output.
-<<<END>>>
-
-OR, to return the raw data structure you built:
-FINAL_VAR(memory)
-
-## BEGIN SESSION
-Goal: Extract the requested information from \`context\`.
-Reminder: You are blind. Write code to see.
-`;
-}
-
-/**
- * Extract code from LLM response
- * @deprecated Use adapter.extractCode() instead
- */
-export function extractCode(response: string): string | null {
-  // Match typescript, ts, javascript, or js code blocks
-  // Use indexOf-based approach to avoid ReDoS with [\s\S]*? on unclosed fences
-  const openPattern = /```(?:typescript|ts|javascript|js)\n/;
-  const openMatch = response.match(openPattern);
-  if (!openMatch || openMatch.index === undefined) return null;
-
-  const codeStart = openMatch.index + openMatch[0].length;
-  const closeIdx = response.indexOf("```", codeStart);
-  if (closeIdx === -1) return null;
-
-  const code = response.slice(codeStart, closeIdx).trim();
-  return code || null;
-}
-
-/**
- * Extract final answer from LLM response
- * @deprecated Use adapter.extractFinalAnswer() instead
- */
-export function extractFinalAnswer(
-  response: string | undefined | null
-): string | FinalVarMarker | null {
-  if (!response) {
-    return null;
-  }
-
-  // Check for FINAL_VAR(variableName)
-  const DANGEROUS_VAR_NAMES = /^(__proto__|constructor|prototype|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|hasOwnProperty|toString|valueOf|toLocaleString|isPrototypeOf|propertyIsEnumerable)$/i;
-  const varMatch = response.match(/FINAL_VAR\((\w+)\)/);
-  if (varMatch && !DANGEROUS_VAR_NAMES.test(varMatch[1])) {
-    return { type: "var", name: varMatch[1] };
-  }
-
-  // Check for <<<FINAL>>>...<<<END>>> delimiters
-  const finalMatch = response.match(/<<<FINAL>>>([\s\S]*?)<<<END>>>/);
-  if (finalMatch) {
-    return finalMatch[1].trim();
-  }
-
-  // Check for JSON code block with common answer fields (model trying to provide final answer)
-  const jsonMatch = response.match(/```json\s*([\s\S]*?)```/);
-  if (jsonMatch) {
-    try {
-      const parsed = JSON.parse(jsonMatch[1]);
-      // Check for common answer field names — ensure string return
-      if (parsed.summary) return typeof parsed.summary === "string" ? parsed.summary : String(parsed.summary);
-      if (parsed.response) return typeof parsed.response === "string" ? parsed.response : String(parsed.response);
-      if (parsed.answer) return typeof parsed.answer === "string" ? parsed.answer : String(parsed.answer);
-      // Check for any field that looks like a final value (case-insensitive)
-      const valueFields = ['total', 'result', 'value', 'totalsales', 'total_sales', 'count', 'sum', 'answer', 'totals'];
-      const MAX_JSON_KEYS = 1000;
-      const keys = Object.keys(parsed);
-      if (keys.length > MAX_JSON_KEYS) return null;
-      const foundKey = keys.find(k => valueFields.includes(k.toLowerCase().replace(/_/g, '')));
-
-      if (foundKey !== undefined) {
-        const value = parsed[foundKey];
-        if (parsed.notes) {
-          return `${parsed.notes}\n\nResult: ${typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString() : value}`;
-        }
-        return JSON.stringify(parsed, null, 2);
-      }
-    } catch {
-      // Not valid JSON, ignore
-    }
-  }
-
-  return null;
-}
-
-/**
- * Try to parse a numeric value from a string result
- */
-function parseNumericResult(result: unknown): number | null {
-  if (typeof result === "number") return Number.isFinite(result) ? result : null;
-  if (typeof result === "string") {
-    // Handle strings like "Total: 13000000" or "13,000,000"
-    const match = result.match(/[\d,]+(?:\.\d+)?/);
-    if (match) {
-      const parsed = parseFloat(match[0].replace(/,/g, ""));
-      if (!isNaN(parsed) && Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return null;
 }
 
 // verifyAndReturnResult has moved to fsm/rlm-states.ts
@@ -448,8 +283,6 @@ export async function runRLM(
     llmClient,
     adapter = createNucleusAdapter(),
     maxTurns: rawMaxTurns = 10,
-    turnTimeoutMs: rawTurnTimeoutMs = 30000,
-    maxSubCalls: rawMaxSubCalls = 10,
     verbose = false,
     constraint,
     ragEnabled = true,
@@ -463,10 +296,7 @@ export async function runRLM(
   const sessionId = safeSessionId;
 
   // Validate numeric config parameters
-  const MAX_TIMEOUT = 300_000; // 5 minutes
   const maxTurns = Number.isFinite(rawMaxTurns) && rawMaxTurns >= 1 ? Math.floor(rawMaxTurns) : 10;
-  const turnTimeoutMs = Number.isFinite(rawTurnTimeoutMs) && rawTurnTimeoutMs >= 100 && rawTurnTimeoutMs <= MAX_TIMEOUT ? Math.floor(rawTurnTimeoutMs) : 30000;
-  const maxSubCalls = Number.isFinite(rawMaxSubCalls) && rawMaxSubCalls >= 1 ? Math.floor(rawMaxSubCalls) : 10;
 
   const log = (msg: string) => {
     if (verbose) console.log(msg);
@@ -526,21 +356,6 @@ export async function runRLM(
     log(`  4. If synthesis fails, LLM gets feedback and refines constraints`);
   }
 
-  // Create synthesis coordinator and sandbox with synthesis tools
-  const coordinator = new SynthesisCoordinator();
-  const sandbox: SandboxWithSynthesis = await createSandboxWithSynthesis(
-    documentContent,
-    llmClient,
-    coordinator,
-    {
-      maxSubCalls,
-      timeoutMs: turnTimeoutMs,
-      verbose,
-    }
-  );
-
-  log(`[RLM] Sandbox created with synthesis tools (maxSubCalls: ${maxSubCalls}, timeout: ${turnTimeoutMs}ms)`);
-
   // Create solver tools for document operations
   const solverTools = createSolverTools(documentContent);
 
@@ -576,7 +391,6 @@ export async function runRLM(
       adapter,
       llmClient,
       solverTools,
-      sandbox,
       systemPrompt,
       userMessage,
       constraint,
@@ -588,12 +402,24 @@ export async function runRLM(
 
     const engine = new FSMEngine<RLMContext>();
     const FSM_TIMEOUT_MS = 5 * 60 * 1000;
+    // The timer must be stored so we can clear it when the FSM wins the
+    // race — otherwise the setTimeout holds the Node event loop alive for
+    // FSM_TIMEOUT_MS after a successful run (CLI hangs, long-lived
+    // processes leak a pending timer per call).
+    let timeoutHandle: NodeJS.Timeout | undefined;
     const finalCtx = await Promise.race([
       engine.run(buildRLMSpec(), fsmCtx),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`FSM run exceeded ${FSM_TIMEOUT_MS}ms timeout`)), FSM_TIMEOUT_MS)
-      ),
-    ]);
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(`FSM run exceeded ${FSM_TIMEOUT_MS}ms timeout`)),
+          FSM_TIMEOUT_MS
+        );
+      }),
+    ]).finally(() => {
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
+    });
 
     if (finalCtx.result !== null) {
       return finalCtx.result;
@@ -601,15 +427,8 @@ export async function runRLM(
 
     // Max turns reached without final answer
     log(`\n[RLM] Max turns (${maxTurns}) reached without final answer`);
-    return `Max turns (${maxTurns}) reached without final answer. Last memory state: ${JSON.stringify(sandbox.getMemory())}`;
+    return `Max turns (${maxTurns}) reached without final answer.`;
   } finally {
-    try {
-      sandbox.dispose();
-      log(`\n[RLM] Sandbox disposed`);
-    } catch (disposeErr) {
-      log(`\n[RLM] Warning: sandbox dispose failed: ${disposeErr instanceof Error ? disposeErr.message : String(disposeErr)}`);
-    }
-
     try {
       if (ragManager) {
         ragManager.clearFailureMemory(sessionId);

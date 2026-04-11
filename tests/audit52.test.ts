@@ -80,29 +80,9 @@ describe("Audit #52", () => {
     });
   });
 
-  // =========================================================================
-  // #7 MEDIUM — sandbox.ts: locate_line negative index not clamped
-  // =========================================================================
-  describe("#7 — sandbox locate_line should clamp negative indices", () => {
-    it("should use Math.max to clamp negative index results", () => {
-      const source = readFileSync("src/sandbox.ts", "utf-8");
-      const locateFn = source.match(/function locate_line[\s\S]*?let startIdx[\s\S]*?totalLines \+ start/);
-      expect(locateFn).not.toBeNull();
-      expect(locateFn![0]).toMatch(/Math\.max\(0/);
-    });
-  });
+  // #7 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
-  // =========================================================================
-  // #8 MEDIUM — nucleus.ts: DANGEROUS_VAR_NAMES is case-sensitive
-  // =========================================================================
-  describe("#8 — nucleus DANGEROUS_VAR_NAMES should be case-insensitive", () => {
-    it("should use case-insensitive check or toLowerCase", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const varCheck = source.match(/DANGEROUS_VAR_NAMES[\s\S]*?varMatch\[1\]/);
-      expect(varCheck).not.toBeNull();
-      expect(varCheck![0]).toMatch(/toLowerCase|(?:\/i\b)|case.insensitive/i);
-    });
-  });
+  // #8 removed: DANGEROUS_VAR_NAMES blocklist deleted with FINAL_VAR marker.
 
   // =========================================================================
   // #9 MEDIUM — parser-registry.ts: parseDocument no content size limit

@@ -93,30 +93,9 @@ describe("Audit26 #2: knowledge base eviction score", () => {
   });
 });
 
-// === Issue #3: extractFinalAnswer returns non-string JSON fields ===
-describe("Audit26 #3: rlm extractFinalAnswer type safety", () => {
-  it("should return string even when JSON field is a number", async () => {
-    const mod = await import("../src/rlm.js");
-    // JSON with a numeric "answer" field
-    const response = '```json\n{"answer": 42}\n```';
-    const result = mod.extractFinalAnswer(response);
-    // Should be a string, not a number
-    expect(result).not.toBeNull();
-    if (result !== null && typeof result !== "object") {
-      expect(typeof result).toBe("string");
-    }
-  });
-
-  it("should return string even when JSON field is an object", async () => {
-    const mod = await import("../src/rlm.js");
-    const response = '```json\n{"summary": {"total": 100}}\n```';
-    const result = mod.extractFinalAnswer(response);
-    expect(result).not.toBeNull();
-    if (result !== null && typeof result !== "object") {
-      expect(typeof result).toBe("string");
-    }
-  });
-});
+// #3 removed: tested the deprecated rlm.extractFinalAnswer helper (gone with the
+// FINAL_VAR / JS-sandbox purge). Adapter extractFinalAnswer methods are still
+// tested per-adapter in tests/adapters.test.ts.
 
 // === Issue #4: Handle creation silently loses data ===
 describe("Audit26 #4: session-db handle serialization tracking", () => {

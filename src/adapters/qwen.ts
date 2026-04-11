@@ -7,12 +7,10 @@
  * - Benefit from explicit structure in prompts
  */
 
-import type { ModelAdapter, FinalVarMarker, RAGHints } from "./types.js";
+import type { ModelAdapter, RAGHints } from "./types.js";
 import {
   baseExtractCode,
   baseExtractFinalAnswer,
-  baseGetNoCodeFeedback,
-  baseGetErrorFeedback,
 } from "./base.js";
 
 /**
@@ -115,7 +113,7 @@ function extractCode(response: string): string | null {
  */
 function extractFinalAnswer(
   response: string | undefined | null
-): string | FinalVarMarker | null {
+): string | null {
   if (!response) return null;
 
   // First try base extraction

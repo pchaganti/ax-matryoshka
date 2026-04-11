@@ -55,34 +55,9 @@ The document has been analyzed successfully.
       expect(mockLLM.mock.calls[1][0]).toMatch(/error|no valid command|parse/i);
     });
 
-    // SKIP: Memory buffer is not supported in LC execution
-    // LC terms are compiled to JS and don't have access to memory arrays
-    it.skip("should use memory buffer for complex queries", async () => {
-      const mockLLM = vi
-        .fn()
-        .mockResolvedValueOnce(`\`\`\`typescript
-// Find color mentions
-const colors = fuzzy_search("blue");
-memory.push({ color: "blue", count: colors.length });
-\`\`\``)
-        .mockResolvedValueOnce(`\`\`\`typescript
-const reds = fuzzy_search("red");
-memory.push({ color: "red", count: reds.length });
-\`\`\``)
-        .mockResolvedValueOnce(`FINAL_VAR(memory)`);
-
-      const result = await runRLM(
-        "Count color mentions",
-        "./test-fixtures/colors.txt",
-        {
-          llmClient: mockLLM,
-          maxTurns: 10,
-        }
-      );
-
-      expect(Array.isArray(result)).toBe(true);
-      expect((result as unknown[]).length).toBe(2);
-    });
+    // Memory-buffer / FINAL_VAR(memory) test removed: the JS-sandbox memory path
+    // was retired. The nucleus adapter returns final answers through
+    // <<<FINAL>>>...<<<END>>> delimiters only.
 
     it("should respect maxTurns limit", async () => {
       const mockLLM = vi
@@ -172,7 +147,6 @@ describe.skipIf(!hasRealLLM)("E2E Integration (Real LLM)", () => {
         {
           llmClient,
           maxTurns: 10,
-          turnTimeoutMs: 60000,
         }
       );
 
@@ -193,7 +167,6 @@ describe.skipIf(!hasRealLLM)("E2E Integration (Real LLM)", () => {
         {
           llmClient,
           maxTurns: 10,
-          turnTimeoutMs: 60000,
         }
       );
 
@@ -213,7 +186,6 @@ describe.skipIf(!hasRealLLM)("E2E Integration (Real LLM)", () => {
         {
           llmClient,
           maxTurns: 10,
-          turnTimeoutMs: 60000,
         }
       );
 

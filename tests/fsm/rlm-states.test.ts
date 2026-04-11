@@ -6,6 +6,7 @@ import type { SolverTools } from "../../src/logic/lc-solver.js";
 
 function makeMockAdapter(overrides?: Partial<ModelAdapter>): ModelAdapter {
   return {
+    name: "mock",
     buildSystemPrompt: () => "system prompt",
     extractCode: (response: string) => {
       // Extract S-expression from response
@@ -43,14 +44,9 @@ function makeMockTools(content: string): SolverTools {
       sample: { start: "", middle: "", end: "" },
     }),
     context: content,
+    lines,
   };
 }
-
-const mockSandbox = {
-  getMemory: () => [],
-  execute: async () => ({ result: null, logs: [] }),
-  dispose: () => {},
-} as any;
 
 describe("RLM FSM States", () => {
   describe("basic query → answer flow", () => {
@@ -68,7 +64,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What is the total revenue?",
         maxTurns: 5,
@@ -99,7 +94,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What is the value?",
         maxTurns: 5,
@@ -132,7 +126,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What is the data?",
         maxTurns: 10,
@@ -156,7 +149,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => '(grep "data")',
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What?",
         maxTurns: 3,
@@ -186,7 +178,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What?",
         maxTurns: 5,
@@ -224,7 +215,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What?",
         maxTurns: 5,

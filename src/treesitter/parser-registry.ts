@@ -49,8 +49,15 @@ async function initWasm(): Promise<void> {
  * ParserRegistry manages Tree-sitter parsers
  */
 export class ParserRegistry {
-  private parser: TreeSitterParser | null = null;
-  private wasmParser: TreeSitterParser | null = null;
+  // One parser instance per language, keyed by language name. Sharing a
+  // single parser and calling `setLanguage` on every `parseDocument` works
+  // today because JavaScript is single-threaded and the setLanguage+parse
+  // pair is synchronous — but any future `await` inserted between them
+  // would open a race where a concurrent call could overwrite the language
+  // setting mid-parse. Per-language parsers eliminate the risk entirely
+  // and avoid the setLanguage overhead on repeat calls.
+  private parsers: Map<string, TreeSitterParser> = new Map();
+  private wasmParsers: Map<string, TreeSitterParser> = new Map();
   private languages: Map<string, { lang: TreeSitterLanguage; wasm: boolean }> = new Map();
   private initialized: boolean = false;
 
@@ -60,7 +67,6 @@ export class ParserRegistry {
   async init(): Promise<void> {
     if (this.initialized) return;
 
-    this.parser = new Parser();
     this.initialized = true;
   }
 
@@ -177,7 +183,7 @@ export class ParserRegistry {
   private static readonly MAX_PARSE_CONTENT_LENGTH = 10_000_000; // 10MB
 
   async parseDocument(content: string, ext: string): Promise<TreeSitterTree | null> {
-    if (!this.initialized || !this.parser) {
+    if (!this.initialized) {
       throw new Error("ParserRegistry not initialized. Call init() first.");
     }
 
@@ -205,18 +211,26 @@ export class ParserRegistry {
     const loaded = await this.loadLanguage(language);
 
     if (loaded.wasm) {
-      // Use web-tree-sitter for WASM grammars (reuse cached parser)
+      // Use web-tree-sitter. One parser per language; created once, never
+      // re-set, so no race between setLanguage and parse.
       await initWasm();
-      if (!this.wasmParser) {
-        this.wasmParser = new WasmParserClass();
+      let parser = this.wasmParsers.get(language);
+      if (!parser) {
+        parser = new WasmParserClass();
+        parser.setLanguage(loaded.lang);
+        this.wasmParsers.set(language, parser);
       }
-      this.wasmParser.setLanguage(loaded.lang);
-      return this.wasmParser.parse(content);
+      return parser.parse(content);
     }
 
-    // Use native tree-sitter for CJS grammars
-    this.parser.setLanguage(loaded.lang);
-    return this.parser.parse(content);
+    // Native tree-sitter. Same per-language pattern.
+    let parser = this.parsers.get(language);
+    if (!parser) {
+      parser = new Parser();
+      parser.setLanguage(loaded.lang);
+      this.parsers.set(language, parser);
+    }
+    return parser.parse(content);
   }
 
   /**
@@ -260,8 +274,8 @@ export class ParserRegistry {
    * Dispose of all resources
    */
   dispose(): void {
-    this.parser = null;
-    this.wasmParser = null;
+    this.parsers.clear();
+    this.wasmParsers.clear();
     this.languages.clear();
     this.initialized = false;
   }

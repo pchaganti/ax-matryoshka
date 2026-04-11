@@ -134,18 +134,8 @@ describe("Audit #65", () => {
     });
   });
 
-  // =========================================================================
-  // #9 MEDIUM — rlm extractFinalAnswer Object.keys unbounded
-  // =========================================================================
-  describe("#9 — extractFinalAnswer should cap parsed JSON keys", () => {
-    it("should limit Object.keys before find()", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const keysStart = source.indexOf("const keys = Object.keys(parsed)");
-      expect(keysStart).toBeGreaterThan(-1);
-      const block = source.slice(keysStart, keysStart + 200);
-      expect(block).toMatch(/keys\.length\s*>|MAX_KEYS|keys\.slice/i);
-    });
-  });
+  // #9 removed: rlm.ts extractFinalAnswer helper deleted (adapter methods now handle
+  // all JSON parsing; adapter-level caps are covered by audit92).
 
   // =========================================================================
   // #10 MEDIUM — language-map buildExtensionMap no typeof on ext element

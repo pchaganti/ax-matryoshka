@@ -349,21 +349,24 @@ export class HandleSession {
       };
     }
 
-    // If result is an array, store in handle registry
-    const MAX_HANDLES = 200;
+    // If result is an array, store in handle registry. HandleRegistry.store()
+    // already bounds the handle count via its own MAX_HANDLES guard — no
+    // need to duplicate that check here.
     if (Array.isArray(result.value)) {
-      // Evict oldest handle if over limit
-      if (this.registry.handleCount() > MAX_HANDLES) {
-        this.registry.evictOldest();
-      }
       const handle = this.registry.store(result.value);
       this.registry.setResults(handle);
 
       // Get the stub for LLM context
       const stub = this.registry.getStub(handle);
 
-      // Compute token metadata
-      const fullDataSize = JSON.stringify(result.value).length;
+      // Compute token metadata. The data is already serialized into SQLite
+      // by `registry.store` above, so ask the DB for the byte total rather
+      // than re-stringifying the whole array on the JS side — re-serializing
+      // a 10MB result just to measure its length defeats the point of
+      // handle storage. SQLite's SUM(length(data)) gives the authoritative
+      // size minus JSON bracket/comma overhead, which is close enough for
+      // a token-cost estimate.
+      const fullDataSize = this.db.getHandleDataByteSize(handle);
       const stubSize = stub.length;
       const estimatedFullTokens = estimateTokens(fullDataSize);
       const stubTokens = estimateTokens(stubSize);
@@ -443,10 +446,24 @@ export class HandleSession {
     // Compute token metadata for expanded data
     const returnedSize = JSON.stringify(sliced).length;
     const returnedTokens = estimateTokens(returnedSize);
-    // Estimate total tokens proportionally
-    const totalTokens = total > 0 && sliced.length > 0
-      ? Math.ceil((returnedTokens / sliced.length) * total)
-      : returnedTokens;
+    // Estimate total tokens. If we have a non-empty slice, extrapolate
+    // proportionally. If the slice is empty (offset past end, limit=0)
+    // but the handle itself has data, ask the DB for the authoritative
+    // size — otherwise the LLM would see totalTokens=0 and wrongly
+    // conclude the handle is empty.
+    let totalTokens: number;
+    if (total > 0 && sliced.length > 0) {
+      totalTokens = Math.ceil((returnedTokens / sliced.length) * total);
+    } else if (total > 0) {
+      // getHandleDataByteSize sums row lengths; add JSON array syntax
+      // overhead (`[` + `]` + `,` between items) to match what the
+      // extrapolation path would have produced.
+      const dbSize = this.db.getHandleDataByteSize(handle);
+      const arrayOverhead = 2 + Math.max(0, total - 1);
+      totalTokens = estimateTokens(dbSize + arrayOverhead);
+    } else {
+      totalTokens = returnedTokens;
+    }
 
     return {
       success: true,

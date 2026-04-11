@@ -79,10 +79,9 @@ describe("Audit24 #4: qwen adapter extractCode ReDoS safety", () => {
 
 // === Issue #5: rlm.ts history.splice(2,2) removes 2 entries instead of 1 ===
 describe("Audit24 #5: rlm history pruning", () => {
-  it("should export runRLM and related functions", async () => {
+  it("should export runRLM", async () => {
     const mod = await import("../src/rlm.js");
     expect(mod.runRLM).toBeDefined();
-    expect(mod.extractCode).toBeDefined();
   });
 });
 
@@ -133,13 +132,9 @@ describe("Audit24 #6: evolutionary synthesizer regex escaping in generated code"
 });
 
 // === Issue #7: rlm.ts truncate() with small max ===
-describe("Audit24 #7: rlm truncate small max edge case", () => {
-  it("extractCode should handle normal cases correctly", async () => {
-    const mod = await import("../src/rlm.js");
-    const result = mod.extractCode("```javascript\nx=1;\n```");
-    expect(result).toBe("x=1;");
-  });
-});
+// Removed: tested the deprecated extractCode helper in rlm.ts (gone with the
+// FINAL_VAR / JS-sandbox prompt purge). Production code now calls
+// adapter.extractCode() exclusively.
 
 // === Issue #8: pipe.ts async readline concurrent execution ===
 describe("Audit24 #8: pipe adapter", () => {

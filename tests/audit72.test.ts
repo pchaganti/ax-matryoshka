@@ -128,16 +128,6 @@ describe("Audit #72", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — rlm.ts buildSystemPrompt contextLength not validated
-  // =========================================================================
-  describe("#10 — buildSystemPrompt should validate contextLength is finite", () => {
-    it("should check isFinite on contextLength", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const fnStart = source.indexOf("function buildSystemPrompt(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isFinite\(contextLength\)|Number\.isFinite\(contextLength\)/);
-    });
-  });
+  // #10 removed: rlm.ts buildSystemPrompt helper deleted. The adapter-level
+  // isFinite check is covered by audit76/77.
 });

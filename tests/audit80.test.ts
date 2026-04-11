@@ -1,7 +1,8 @@
 /**
  * Audit #80 — 10 security issues
  *
- * 1. HIGH   rlm.ts — maxTurns/turnTimeoutMs/maxSubCalls not validated
+ * 1. HIGH   rlm.ts — maxTurns not validated (turnTimeoutMs / maxSubCalls
+ *           options later removed entirely as dead-code)
  * 2. MEDIUM rag/manager.ts — example.code backtick breakout in formatExampleAsHint
  * 3. MEDIUM rag/manager.ts — failure.error not truncated in self-correction
  * 4. MEDIUM synthesis-integrator.ts — JSON.stringify without try-catch
@@ -18,7 +19,7 @@ import { readFileSync } from "fs";
 
 describe("Audit #80", () => {
   // =========================================================================
-  // #1 HIGH — rlm.ts maxTurns/turnTimeoutMs/maxSubCalls not validated
+  // #1 HIGH — rlm.ts maxTurns not validated
   // =========================================================================
   describe("#1 — rlm should validate numeric config parameters", () => {
     it("should validate maxTurns with isFinite or bounds check", () => {

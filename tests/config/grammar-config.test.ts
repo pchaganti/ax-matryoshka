@@ -154,25 +154,8 @@ describe("New Language Support", () => {
     registry.dispose();
   });
 
-  // Note: tree-sitter-yaml exports a different format that's not compatible
-  // with native tree-sitter bindings. It works with web-tree-sitter (WASM).
-  // Skip for now until we have a compatible version.
-  it.skip("should support YAML parsing with installed package", async () => {
-    const { ParserRegistry } = await import("../../src/treesitter/parser-registry.js");
-    const registry = new ParserRegistry();
-    await registry.init();
-
-    const yamlCode = `
-name: test
-version: 1.0.0
-dependencies:
-  - foo
-  - bar`;
-
-    const tree = await registry.parseDocument(yamlCode, ".yaml");
-    expect(tree).not.toBeNull();
-    expect(tree!.rootNode.type).toBe("stream");
-
-    registry.dispose();
-  });
+  // YAML parsing test removed: tree-sitter-yaml (currently npm v0.5.0) is
+  // not installed and its native-binding format is incompatible with the
+  // other tree-sitter grammars this project uses. YAML support is not on
+  // the roadmap. A future PR adding the dependency can add a fresh test.
 });

@@ -12,14 +12,13 @@
  * The LLM outputs LC intent, and this solver executes it.
  */
 
-import type { LCTerm, CoercionType, SynthesisExample } from "./types.js";
+import type { LCTerm, CoercionType } from "./types.js";
 import { fuseRRF, type LineResult } from "./rrf.js";
 import { applyGravityDampening, type DampenableResult } from "./dampening.js";
 import { QValueStore, rerank as rerankFn } from "./qvalue.js";
 import { resolveConstraints } from "./constraint-resolver.js";
-import { run, Rel, eq, conde, exist, failo, type Var, type Substitution } from "../minikanren/index.js";
 import { synthesizeExtractor, compileToFunction, prettyPrint, type Example } from "../synthesis/evalo/index.js";
-import { synthesizeFromExamples, deriveFunction } from "./relational-solver.js";
+import { synthesizeFromExamples } from "./relational-solver.js";
 import { SynthesisIntegrator } from "./synthesis-integrator.js";
 
 // Type for sandbox tools interface
@@ -30,6 +29,15 @@ export interface SolverTools {
   semantic: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
   text_stats: () => { length: number; lineCount: number; sample: { start: string; middle: string; end: string } };
   context: string;
+  /**
+   * Pre-split document lines, owned by the tools instance.
+   *
+   * Keeping this on the tools (not in a module-level cache) means each
+   * session is self-contained: two concurrent SolverTools for different
+   * documents cannot clobber each other's line array, and disposing a
+   * session lets the line array be garbage-collected.
+   */
+  lines: string[];
 }
 
 /**
@@ -39,17 +47,6 @@ export interface SolverTools {
 export type Bindings = Map<string, unknown>;
 
 const moduleQStore = new QValueStore();
-
-let lastContext: string = "";
-let lastContextLines: string[] = [];
-
-function getCachedLines(context: string): string[] {
-  if (context !== lastContext) {
-    lastContext = context;
-    lastContextLines = context.split("\n");
-  }
-  return lastContextLines;
-}
 
 /**
  * Validate a regex pattern for safety (ReDoS protection)
@@ -332,7 +329,7 @@ function evaluate(
         return [];
       }
       log(`[Solver] Getting lines ${term.start} to ${term.end}`);
-      const allLines = getCachedLines(tools.context);
+      const allLines = tools.lines;
       const startIdx = Math.max(0, Math.floor(term.start) - 1);
       const endIdx = Math.min(allLines.length, Math.floor(term.end));
       const selectedLines = allLines.slice(startIdx, endIdx);
@@ -440,21 +437,23 @@ function evaluate(
           }
           return acc + num;
         }
-        // Handle grep result objects - extract number from line
+        // Handle grep result objects - extract first number from line.
+        // Prefer a $-prefixed value (e.g. "Sales: $1,500") if present, else
+        // fall back to the first numeric token. Summing ALL numbers per line
+        // silently conflates unrelated values (e.g. "Error 500: timeout 30s"
+        // would contribute 530 instead of 500), which is a data-corruption
+        // footgun for log and report analysis.
         if (typeof val === "object" && val !== null && "line" in val) {
           const line = (val as { line: string }).line;
-          const numMatches = line.matchAll(/\$?([\d,]+(?:\.\d+)?)/g);
-          let lineAcc = 0;
-          let found = false;
-          for (const numMatch of numMatches) {
-            const cleaned = numMatch[1].replace(/,/g, "");
+          const dollarMatch = line.match(/\$([\d,]+(?:\.\d+)?)/);
+          const firstMatch = dollarMatch ?? line.match(/([\d,]+(?:\.\d+)?)/);
+          if (firstMatch) {
+            const cleaned = firstMatch[1].replace(/,/g, "");
             const num = parseFloat(cleaned);
             if (Number.isFinite(num)) {
-              lineAcc += num;
-              found = true;
+              return acc + num;
             }
           }
-          if (found) return acc + lineAcc;
         }
         skippedCount++;
         return acc;
@@ -514,7 +513,7 @@ function evaluate(
       log(`[Solver] True examples: ${trueExamples.length}, False examples: ${falseExamples.length}`);
 
       // Use miniKanren to find distinguishing pattern
-      const pattern = findDistinguishingPattern(trueExamples, falseExamples, log);
+      const pattern = findDistinguishingPattern(trueExamples, falseExamples);
 
       if (!pattern) {
         log(`[Solver] Could not find distinguishing pattern`);
@@ -544,7 +543,8 @@ function evaluate(
       if (!matchValidation.valid) {
         throw new Error(`match: ${matchValidation.error}`);
       }
-      const regex = new RegExp(term.pattern);
+      // Case-insensitive for consistency with grep and extract
+      const regex = new RegExp(term.pattern, "i");
       const result = str.match(regex);
       if (!result) return null;
       if (term.group >= result.length) {
@@ -1075,7 +1075,8 @@ function evaluatePredicate(
     const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, depth + 1));
     const patternValidation = validateRegex(body.pattern);
     if (!patternValidation.valid) return false;
-    const regex = new RegExp(body.pattern);
+    // Case-insensitive for consistency with grep and extract
+    const regex = new RegExp(body.pattern, "i");
     const result = str.match(regex);
     return result !== null && body.group < result.length && result[body.group] !== undefined;
   }
@@ -1181,7 +1182,8 @@ function evaluateWithBinding(
         throw new Error(`match: ${matchVal.error}`);
       }
       if (!Number.isInteger(body.group) || body.group < 0) return null;
-      const regex = new RegExp(body.pattern);
+      // Case-insensitive for consistency with grep and extract
+      const regex = new RegExp(body.pattern, "i");
       const result = str.match(regex);
       return result ? (result[body.group] ?? null) : null;
     }
@@ -1380,8 +1382,7 @@ function evaluateWithBinding(
  */
 function findDistinguishingPattern(
   trueExamples: string[],
-  falseExamples: string[],
-  log: (msg: string) => void
+  falseExamples: string[]
 ): string | null {
   // Common patterns to try
   const candidatePatterns = [
@@ -1422,7 +1423,12 @@ function findDistinguishingPattern(
   for (const word of trueWords) {
     if (word.length > 3 && !falseWords.has(word)) {
       // Escape regex metacharacters so the word is safe for new RegExp()
-      return word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const escaped = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      // Route through validateRegex for consistency with every other
+      // regex-compilation site in this file — catches length caps and
+      // any future validator rules without requiring a separate audit.
+      if (!validateRegex(escaped).valid) continue;
+      return escaped;
     }
   }
 

@@ -5,7 +5,7 @@
  * Other adapters can spread this and override specific methods.
  */
 
-import type { ModelAdapter, FinalVarMarker, RAGHints } from "./types.js";
+import type { ModelAdapter, RAGHints } from "./types.js";
 
 /**
  * Build the default system prompt for the RLM
@@ -31,8 +31,6 @@ ${toolInterfaces}
 1. **NO CHAT.** do not write any text outside of code blocks.
 2. **NO GUESSING.** If you answer without seeing a \`console.log\` proving it, you will be terminated.
 3. **NO IMPORTS.** Standard JS objects (Math, JSON, RegExp) are available. File system (fs) is BANNED.
-4. **MEMORY.** Use the global \`memory\` array to store findings between turns.
-   Example: \`memory.push({ key: "sales_Q1", value: 500 })\`
 
 ## HOW TO THINK
 Because you cannot chat, write your plan in comments inside the code block.
@@ -65,9 +63,6 @@ console.log("done");
 Write your actual computed answer here with specific numbers from your code output.
 <<<END>>>
 
-OR, to return the raw data structure you built:
-FINAL_VAR(memory)
-
 ${hints?.hintsText || ""}${hints?.selfCorrectionText || ""}
 ## BEGIN SESSION
 Goal: Extract the requested information from \`context\`.
@@ -97,16 +92,9 @@ function extractCode(response: string): string | null {
  */
 function extractFinalAnswer(
   response: string | undefined | null
-): string | FinalVarMarker | null {
+): string | null {
   if (!response) {
     return null;
-  }
-
-  // Check for FINAL_VAR(variableName)
-  const DANGEROUS_VAR_NAMES = /^(__proto__|constructor|prototype|eval|Function|__defineGetter__|__defineSetter__|__lookupGetter__|__lookupSetter__|hasOwnProperty|toString|valueOf|toLocaleString|isPrototypeOf|propertyIsEnumerable)$/i;
-  const varMatch = response.match(/FINAL_VAR\((\w+)\)/);
-  if (varMatch && !DANGEROUS_VAR_NAMES.test(varMatch[1])) {
-    return { type: "var", name: varMatch[1] };
   }
 
   // Check for <<<FINAL>>>...<<<END>>> delimiters

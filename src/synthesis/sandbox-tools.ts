@@ -35,7 +35,6 @@ type LLMQueryFn = (prompt: string, options?: LLMQueryOptions) => Promise<string>
 
 export interface SandboxWithSynthesis {
   execute(code: string, timeoutMs?: number): Promise<SandboxResult>;
-  getMemory(): unknown[];
   dispose(): void;
   getCoordinator(): SynthesisCoordinator;
 }
@@ -294,7 +293,6 @@ export async function createSandboxWithSynthesis(
 
   return {
     execute: sandbox.execute.bind(sandbox),
-    getMemory: sandbox.getMemory.bind(sandbox),
     dispose: sandbox.dispose.bind(sandbox),
     getCoordinator: () => coordinator,
   };
