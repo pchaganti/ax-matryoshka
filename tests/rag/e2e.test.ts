@@ -120,54 +120,12 @@ console.log("done");
   });
 
   describe("[object Object] detection", () => {
-    // SKIP: [object Object] detection is specific to JavaScript execution
-    // LC execution compiles to JS with proper JSON output formatting
-    it.skip("should provide feedback when output shows [object Object]", async () => {
-      const feedbackSeen: string[] = [];
-
-      let turnCount = 0;
-      const mockLLM = async (prompt: string) => {
-        turnCount++;
-
-        // Check for feedback about [object Object]
-        if (prompt.includes("[object Object]")) {
-          feedbackSeen.push(prompt);
-        }
-
-        if (turnCount === 1) {
-          // First turn: log objects without stringify (common mistake)
-          return `\`\`\`javascript
-const hits = grep("SALES");
-console.log(hits);
-\`\`\``;
-        }
-
-        if (turnCount === 2) {
-          // Should have received feedback about [object Object]
-          // Now use JSON.stringify correctly
-          return `\`\`\`javascript
-console.log(JSON.stringify(hits, null, 2));
-\`\`\``;
-        }
-
-        return `\`\`\`javascript
-console.log("Total: 5000000");
-\`\`\`
-<<<FINAL>>>
-Total: $5,000,000
-<<<END>>>`;
-      };
-
-      await runRLM("sum sales", testFile, {
-        llmClient: mockLLM,
-        maxTurns: 5,
-        ragEnabled: false,  // Disable to isolate this test
-      });
-
-      // Verify feedback was given about [object Object]
-      expect(feedbackSeen.length).toBeGreaterThan(0);
-      expect(feedbackSeen[0]).toContain("JSON.stringify");
-    });
+    // [object Object] feedback-generation test removed: the bug class only
+    // exists when the LLM emits plain JS `console.log(obj)` in a code
+    // block and the sandbox runs it. The nucleus adapter parses
+    // S-expressions and LC results JSON-serialize cleanly. The related
+    // "should not accept final answer" test below still guards the
+    // terminate-after-garbage path and remains valid.
 
     it("should not accept final answer immediately after [object Object] output", async () => {
       let turnCount = 0;
