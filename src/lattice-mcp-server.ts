@@ -35,11 +35,14 @@ import { HandleSession } from "./engine/handle-session.js";
 import { getVersion } from "./version.js";
 import { hasTraversalSegment } from "./utils/path-safety.js";
 
-// Sub-LLM bridge — populated in main() once the server has connected and we
-// know whether the client supports `sampling/createMessage`. When set, every
-// new HandleSession created by lattice_load / lattice_memo will receive this
-// callback and `(llm_query ...)` inside a lattice_query will be routed back
-// to the MCP client's LLM via the standard sampling protocol.
+// Sub-LLM bridge — installed in main() before `server.connect()` so that the
+// first HandleSession (which may be created before the MCP initialize
+// handshake completes) still gets it. The bridge itself is lazy: every call
+// re-reads `server.getClientCapabilities()` at invocation time. If the
+// client didn't advertise `sampling`, the bridge throws a clear error that
+// propagates up through the solver's llm_query path. If it did, the call
+// is forwarded to `server.createMessage(...)` and the sub-LLM response is
+// returned as a plain string.
 let samplingBridge: ((prompt: string) => Promise<string>) | null = null;
 
 // Default cap for sub-LLM responses. The MCP sampling protocol requires a
@@ -777,34 +780,49 @@ async function main() {
   });
 
   const transport = new StdioServerTransport();
+  // Install the sampling bridge BEFORE awaiting `server.connect()`.
+  //
+  // Subtle race: `server.connect(transport)` returns after the transport
+  // handshake, but `_clientCapabilities` is populated only when the
+  // server's `_oninitialize()` handler runs in response to the client's
+  // first `initialize` request — which happens *after* connect() returns,
+  // on a subsequent event-loop tick. So reading `getClientCapabilities()`
+  // synchronously after `connect()` always returns undefined (the bridge
+  // never gets installed under that design). The lazy-check pattern here
+  // sidesteps that race entirely: we always install the bridge, and each
+  // call re-reads capabilities at invocation time. By the time the first
+  // tool call arrives the client has already initialized, so the lazy
+  // check sees the right capabilities.
+  samplingBridge = async (prompt: string): Promise<string> => {
+    const caps = server.getClientCapabilities();
+    if (!caps?.sampling) {
+      throw new Error(
+        "llm_query is not available: the connected MCP client did not " +
+        "advertise `sampling` capability. Clients that support sampling " +
+        "(e.g. Claude Desktop, Claude Code) will route the sub-LLM call " +
+        "back to their own model; other clients must pre-compute the " +
+        "result or disable the primitive."
+      );
+    }
+    const result = await server.createMessage({
+      messages: [{ role: "user", content: { type: "text", text: prompt } }],
+      maxTokens: SAMPLING_MAX_TOKENS,
+      // `none` keeps the sub-LLM isolated from the parent conversation —
+      // the paper's sub-RLM model spins up a fresh context per sub-call.
+      includeContext: "none",
+    });
+    // CreateMessageResult.content is a single block for the no-tools path.
+    if (result.content?.type === "text") {
+      return result.content.text;
+    }
+    // Image / audio content blocks are not useful for string interpolation;
+    // return a visible placeholder so the solver doesn't crash.
+    return `[sub-LLM returned non-text content: ${result.content?.type ?? "unknown"}]`;
+  };
+
   await server.connect(transport);
 
-  // Wire the sampling bridge once the client has completed the handshake.
-  // Only install it if the client advertised `sampling` support — otherwise
-  // `(llm_query ...)` inside lattice_query should fail loudly rather than
-  // hitting a protocol error when we call server.createMessage.
-  const clientCaps = server.getClientCapabilities();
-  if (clientCaps?.sampling) {
-    samplingBridge = async (prompt: string): Promise<string> => {
-      const result = await server.createMessage({
-        messages: [{ role: "user", content: { type: "text", text: prompt } }],
-        maxTokens: SAMPLING_MAX_TOKENS,
-        // `none` keeps the sub-LLM isolated from the parent conversation —
-        // the paper's sub-RLM model spins up a fresh context per sub-call.
-        includeContext: "none",
-      });
-      // CreateMessageResult.content is a single block for the no-tools path.
-      if (result.content?.type === "text") {
-        return result.content.text;
-      }
-      // Image / audio content blocks are not useful for string interpolation;
-      // return a visible placeholder so the solver doesn't crash.
-      return `[sub-LLM returned non-text content: ${result.content?.type ?? "unknown"}]`;
-    };
-    console.error("[Lattice] Sampling bridge enabled — (llm_query ...) will delegate to client LLM");
-  } else {
-    console.error("[Lattice] Client did not advertise sampling support — (llm_query ...) will be unavailable");
-  }
+  console.error("[Lattice] Sampling bridge installed — (llm_query ...) will route via MCP sampling when client supports it");
 
   console.error("[Lattice] MCP server started (handle-based mode)");
   console.error(`[Lattice] Session timeout: ${SESSION_TIMEOUT_MS / 1000}s`);

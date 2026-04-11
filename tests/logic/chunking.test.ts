@@ -219,6 +219,29 @@ describe("chunk_by_regex solver", () => {
     const result = await solve(parsed.term!, tools, new Map());
     expect(result.success).toBe(false);
   });
+
+  it("does not interleave capture groups into the output", async () => {
+    // JavaScript's String.prototype.split(regex) has a subtle behavior:
+    // any capturing group in the pattern is interleaved into the result
+    // array. For chunking, that means a pattern like `(\n)` would
+    // produce odd chunks containing the matched delimiter. We want the
+    // delimiter dropped — chunks should be only the content between
+    // matches, matching the user's intuition.
+    const tools = makeTools("alpha\nbeta\ngamma");
+    const parsed = parse('(chunk_by_regex "(\\n)")');
+    const result = await solve(parsed.term!, tools, new Map());
+    expect(result.success).toBe(true);
+    // Should be exactly ["alpha", "beta", "gamma"] — no newline captures.
+    expect(result.value).toEqual(["alpha", "beta", "gamma"]);
+  });
+
+  it("drops captured delimiters even with alternation", async () => {
+    const tools = makeTools("one;two|three;four");
+    const parsed = parse('(chunk_by_regex "(;|\\\\|)")');
+    const result = await solve(parsed.term!, tools, new Map());
+    expect(result.success).toBe(true);
+    expect(result.value).toEqual(["one", "two", "three", "four"]);
+  });
 });
 
 describe("chunking composition — map over chunks", () => {

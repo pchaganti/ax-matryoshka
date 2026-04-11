@@ -403,28 +403,62 @@ async function evaluate(
       // produced by adjacent delimiters are dropped — the paper's OOLONG
       // pattern wants "substantive" chunks to feed to sub-LLMs, not empty
       // strings between `\n\n\n\n` sequences.
+      //
+      // We deliberately DO NOT use `String.prototype.split(regex)` here:
+      // when the user's pattern contains capturing groups, `split`
+      // interleaves the captured text into the output array, producing
+      // surprising chunks that include delimiter characters. Instead we
+      // manually walk matches via matchAll() and extract the text
+      // between them, which treats captures as a no-op.
       const pat = term.pattern;
       if (typeof pat !== "string" || pat.length === 0) {
         throw new Error("chunk_by_regex: pattern must be a non-empty string");
       }
-      // Route through the shared regex validator so a bad pattern errors
-      // cleanly rather than throwing from deep inside String.prototype.split.
       const validation = validateRegex(pat);
       if (!validation.valid) {
         throw new Error(`chunk_by_regex: invalid pattern "${pat}" — ${validation.error}`);
       }
-      const regex = new RegExp(pat);
+      // Force the global flag so matchAll() can iterate all matches.
+      // new RegExp(pat, "g") is safe even when the user's pattern
+      // already implies global — JS accepts duplicate-meaning flags
+      // via the string form as long as each character appears once.
+      const regex = new RegExp(pat, "g");
       const ctx = tools.context;
       if (ctx.length === 0) return [];
       const MAX_CHUNKS = 100_000;
-      const rawChunks = ctx.split(regex);
+
       const chunks: string[] = [];
-      for (const c of rawChunks) {
-        if (c.length > 0) chunks.push(c);
+      let cursor = 0;
+      let matches = 0;
+      // Cap match iteration independently so a pathological regex that
+      // matches millions of zero-width positions (which would be blocked
+      // by the infinite-loop guard below anyway) doesn't burn CPU
+      // building an intermediate array via [...matchAll()].
+      const MAX_MATCH_ITERATIONS = MAX_CHUNKS + 1;
+      for (const m of ctx.matchAll(regex)) {
+        if (matches++ >= MAX_MATCH_ITERATIONS) break;
+        const start = m.index ?? cursor;
+        // Slice content between the previous match end and this match.
+        if (start > cursor) {
+          chunks.push(ctx.slice(cursor, start));
+        }
+        // Advance past this match. Zero-width matches would loop
+        // forever otherwise, so we force forward progress by at least
+        // one char.
+        const matchLen = m[0].length;
+        cursor = start + (matchLen === 0 ? 1 : matchLen);
         if (chunks.length >= MAX_CHUNKS) break;
       }
-      log(`[Solver] chunk_by_regex(/${pat}/): produced ${chunks.length} chunks from ${rawChunks.length} raw pieces`);
-      return chunks;
+      // Trailing content after the last match.
+      if (cursor < ctx.length && chunks.length < MAX_CHUNKS) {
+        chunks.push(ctx.slice(cursor));
+      }
+
+      // Drop empty chunks from adjacent delimiters (e.g. "\n\n\n\n"
+      // matched by "\n\n" yields one empty middle piece).
+      const nonEmpty = chunks.filter((c) => c.length > 0);
+      log(`[Solver] chunk_by_regex(/${pat}/): produced ${nonEmpty.length} chunks from ${matches} matches`);
+      return nonEmpty;
     }
 
     // ==========================

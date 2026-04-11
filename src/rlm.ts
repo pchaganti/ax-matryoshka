@@ -471,7 +471,9 @@ export async function runRLMFromContent(
   // llmQuery code path falls back to the flat `llmClient(framedPrompt)`
   // call built inside `createSolverTools`, terminating the recursion
   // with a single round-trip.
-  const subRLMSpawner = llmClient && _subRLMDepth < effectiveMaxDepth
+  // `llmClient` is a required field on RLMOptions so we don't need a
+  // null-check here — the depth guard alone decides whether to recurse.
+  const subRLMSpawner = _subRLMDepth < effectiveMaxDepth
     ? async (interpolatedPrompt: string): Promise<string> => {
         const childMaxTurns = Math.max(1, Math.floor(maxTurns / 2));
         const childDepth = _subRLMDepth + 1;
@@ -501,7 +503,17 @@ export async function runRLMFromContent(
             _subRLMDepth: childDepth,
           }
         );
-        return typeof childResult === "string" ? childResult : JSON.stringify(childResult);
+        // runRLMFromContent normally returns a string (the final answer
+        // or a "Max turns reached" message), but the signature is
+        // Promise<unknown>, so be defensive about non-string values and
+        // the possibility of JSON.stringify throwing on circular refs.
+        if (typeof childResult === "string") return childResult;
+        if (childResult === null || childResult === undefined) return "";
+        try {
+          return JSON.stringify(childResult);
+        } catch {
+          return String(childResult);
+        }
       }
     : undefined;
 
