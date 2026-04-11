@@ -135,9 +135,9 @@ export async function solve(
   }
 
   // Top-level `(llm_query …)` dispatch. This sits above the constraint
-  // resolver and the sync evaluator because `evaluate()` is currently
+  // resolver and the sync evaluator because `await evaluate()` is currently
   // sync and cannot make sub-LLM calls directly. The follow-up Chunk 4
-  // of this refactor makes `evaluate()` async and moves this handling
+  // of this refactor makes `await evaluate()` async and moves this handling
   // inline into the switch so that nested use (inside `map` / `filter`
   // lambdas) works — at which point this top-level branch becomes
   // redundant and can be removed.
@@ -161,8 +161,8 @@ export async function solve(
         const resolved = resolveConstraints(b.value);
         // Nested bindings still use the sync evaluator — `llm_query`
         // inside a binding expression is rejected with "top level only"
-        // until Chunk 4 makes evaluate() async.
-        const val = evaluate(resolved.term, tools, bindings, log, 0);
+        // until Chunk 4 makes await evaluate() async.
+        const val = await evaluate(resolved.term, tools, bindings, log, 0);
         let serialized: string;
         try {
           serialized =
@@ -234,13 +234,13 @@ const MAX_EVAL_DEPTH = 200;
  * Evaluate an LC term
  * Impure operations execute directly, pure operations use miniKanren
  */
-function evaluate(
+async function evaluate(
   term: LCTerm,
   tools: SolverTools,
   bindings: Bindings,
   log: (msg: string) => void,
   depth: number = 0
-): unknown {
+): Promise<unknown> {
   if (depth > MAX_EVAL_DEPTH) {
     throw new Error("Maximum evaluation depth exceeded (possible infinite recursion)");
   }
@@ -324,7 +324,7 @@ function evaluate(
       // Evaluate all collection sub-expressions
       const signals: LineResult[][] = [];
       for (const coll of term.collections) {
-        const result = evaluate(coll, tools, bindings, log, depth + 1);
+        const result = await evaluate(coll, tools, bindings, log, depth + 1);
         if (!Array.isArray(result)) {
           throw new Error(`fuse: expected array argument, got ${typeof result}`);
         }
@@ -348,7 +348,7 @@ function evaluate(
     }
 
     case "dampen": {
-      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`dampen: expected array, got ${typeof collection}`);
       }
@@ -370,7 +370,7 @@ function evaluate(
     }
 
     case "rerank": {
-      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`rerank: expected array, got ${typeof collection}`);
       }
@@ -439,7 +439,7 @@ function evaluate(
 
     case "filter": {
       // Evaluate the collection first (may be grep, fuzzy_search, etc.)
-      const collection = evaluate(term.collection, tools, bindings, log, depth + 1) as Array<{ line: string; lineNum: number }>;
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1) as Array<{ line: string; lineNum: number }>;
       if (!Array.isArray(collection)) {
         throw new Error(`filter: expected array, got ${typeof collection}`);
       }
@@ -464,7 +464,7 @@ function evaluate(
           ? (item as { line: string }).line
           : String(item ?? "");
 
-        const matches = evaluatePredicate(predBody, predLambda.param, itemValue, tools, bindings, log, depth + 1);
+        const matches = await evaluatePredicate(predBody, predLambda.param, itemValue, tools, bindings, log, depth + 1);
         if (matches) {
           results.push(item);
         }
@@ -475,7 +475,7 @@ function evaluate(
     }
 
     case "map": {
-      const collection = evaluate(term.collection, tools, bindings, log, depth + 1) as Array<{ line: string; lineNum: number }>;
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1) as Array<{ line: string; lineNum: number }>;
       if (!Array.isArray(collection)) {
         throw new Error(`map: expected array, got ${typeof collection}`);
       }
@@ -494,7 +494,7 @@ function evaluate(
           ? (item as { line: string }).line
           : String(item ?? "");
 
-        const value = evaluateTransform(
+        const value = await evaluateTransform(
           transformLambda.body,
           transformLambda.param,
           itemValue,
@@ -511,7 +511,7 @@ function evaluate(
 
     case "sum": {
       // Sum numeric values in array - works with any numeric array
-      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`sum: expected array, got ${typeof collection}`);
       }
@@ -566,7 +566,7 @@ function evaluate(
 
     case "count": {
       // Count items in array
-      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`count: expected array, got ${typeof collection}`);
       }
@@ -576,11 +576,11 @@ function evaluate(
 
     case "reduce": {
       const MAX_REDUCE_ITERATIONS = 10000;
-      const collection = evaluate(term.collection, tools, bindings, log, depth + 1);
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1);
       if (!Array.isArray(collection)) {
         throw new Error(`reduce: expected array, got ${typeof collection}`);
       }
-      const init = evaluate(term.init, tools, bindings, log, depth + 1);
+      const init = await evaluate(term.init, tools, bindings, log, depth + 1);
       if (term.fn.tag !== "lambda") {
         throw new Error(`reduce: fn must be a lambda`);
       }
@@ -591,7 +591,7 @@ function evaluate(
       log(`[Solver] Reducing ${items.length} items`);
       let acc = init;
       for (const item of items) {
-        acc = evaluateReduceFn(term.fn, acc, item, tools, bindings, log, depth + 1);
+        acc = await evaluateReduceFn(term.fn, acc, item, tools, bindings, log, depth + 1);
       }
       return acc;
     }
@@ -629,7 +629,7 @@ function evaluate(
     // ==========================
 
     case "match": {
-      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`match: expected string, got ${typeof str}`);
       }
@@ -650,7 +650,7 @@ function evaluate(
     }
 
     case "replace": {
-      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`replace: expected string, got ${typeof str}`);
       }
@@ -667,7 +667,7 @@ function evaluate(
     }
 
     case "split": {
-      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`split: expected string, got ${typeof str}`);
       }
@@ -680,7 +680,7 @@ function evaluate(
     }
 
     case "parseInt": {
-      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1);
       const strForInt = String(str);
       if (strForInt.length > 200) return null;
       const intResult = parseInt(strForInt, 10);
@@ -688,7 +688,7 @@ function evaluate(
     }
 
     case "parseFloat": {
-      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1);
       const strForFloat = String(str);
       if (strForFloat.length > 200) return null;
       const floatResult = parseFloat(strForFloat);
@@ -696,7 +696,7 @@ function evaluate(
     }
 
     case "parseDate": {
-      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1);
       log(`[Lattice] Parsing date from: "${str}"`);
 
       // If examples are provided, prefer synthesis for consistency
@@ -721,7 +721,7 @@ function evaluate(
     }
 
     case "parseCurrency": {
-      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1);
       log(`[Lattice] Parsing currency from: "${str}"`);
 
       // If examples are provided, prefer synthesis for consistency
@@ -746,7 +746,7 @@ function evaluate(
     }
 
     case "parseNumber": {
-      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1);
       log(`[Lattice] Parsing number from: "${str}"`);
 
       // If examples are provided, prefer synthesis for consistency
@@ -771,7 +771,7 @@ function evaluate(
     }
 
     case "coerce": {
-      const value = evaluate(term.term, tools, bindings, log, depth + 1);
+      const value = await evaluate(term.term, tools, bindings, log, depth + 1);
       log(`[Lattice] Coercing "${value}" to ${term.targetType}`);
       const coerced = coerceValue(value, term.targetType);
       log(`[Lattice] Coerced result: ${coerced}`);
@@ -779,7 +779,7 @@ function evaluate(
     }
 
     case "extract": {
-      const str = evaluate(term.str, tools, bindings, log, depth + 1) as string;
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") {
         throw new Error(`extract: expected string, got ${typeof str}`);
       }
@@ -883,8 +883,8 @@ function evaluate(
     }
 
     case "add": {
-      const left = evaluate(term.left, tools, bindings, log, depth + 1);
-      const right = evaluate(term.right, tools, bindings, log, depth + 1);
+      const left = await evaluate(term.left, tools, bindings, log, depth + 1);
+      const right = await evaluate(term.right, tools, bindings, log, depth + 1);
       if (typeof left !== "number" || typeof right !== "number") {
         throw new Error(`add: expected numbers, got ${typeof left} and ${typeof right}`);
       }
@@ -896,11 +896,11 @@ function evaluate(
     }
 
     case "if": {
-      const cond = evaluate(term.cond, tools, bindings, log, depth + 1);
+      const cond = await evaluate(term.cond, tools, bindings, log, depth + 1);
       if (cond) {
-        return evaluate(term.then, tools, bindings, log, depth + 1);
+        return await evaluate(term.then, tools, bindings, log, depth + 1);
       } else {
-        return evaluate(term.else, tools, bindings, log, depth + 1);
+        return await evaluate(term.else, tools, bindings, log, depth + 1);
       }
     }
 
@@ -909,19 +909,19 @@ function evaluate(
       return { _type: "closure", param: term.param, body: term.body };
 
     case "app": {
-      const fn = evaluate(term.fn, tools, bindings, log, depth + 1);
+      const fn = await evaluate(term.fn, tools, bindings, log, depth + 1);
       if (!fn || typeof fn !== "object" || (fn as { _type?: string })._type !== "closure") {
         throw new Error(`app: expected closure, got ${typeof fn}`);
       }
       const closure = fn as { _type: "closure"; param: string; body: LCTerm };
-      const arg = evaluate(term.arg, tools, bindings, log, depth + 1);
+      const arg = await evaluate(term.arg, tools, bindings, log, depth + 1);
       // Substitute arg for param in body and evaluate
       // For simplicity, we evaluate directly here
-      return evaluateWithBinding(closure.body, closure.param, arg, tools, bindings, log, depth + 1);
+      return await evaluateWithBinding(closure.body, closure.param, arg, tools, bindings, log, depth + 1);
     }
 
     case "constrained":
-      return evaluate(term.term, tools, bindings, log, depth + 1);
+      return await evaluate(term.term, tools, bindings, log, depth + 1);
 
     case "define-fn": {
       // Synthesize a function from examples and return it for storage
@@ -957,14 +957,14 @@ function evaluate(
       if (storedFn._type !== "synthesized-fn" || typeof storedFn.fn !== "function") {
         throw new Error(`apply-fn: function "${term.name}" not found or invalid in bindings`);
       }
-      const arg = evaluate(term.arg, tools, bindings, log, depth + 1);
+      const arg = await evaluate(term.arg, tools, bindings, log, depth + 1);
       log(`[Lattice] Applying function "${term.name}" to "${arg}"`);
       return (storedFn.fn as (input: string) => unknown)(String(arg));
     }
 
     case "predicate": {
       // Synthesize a predicate from examples
-      const str = evaluate(term.str, tools, bindings, log, depth + 1);
+      const str = await evaluate(term.str, tools, bindings, log, depth + 1);
       if (term.examples && term.examples.length > 0) {
         log(`[Lattice] Synthesizing predicate from ${term.examples.length} examples`);
         const result = synthesisIntegrator.synthesizeOnFailure({
@@ -1014,7 +1014,7 @@ function evaluate(
         throw new Error("get_symbol_body: No symbol database available. Load a code file first.");
       }
 
-      const symbolRef = evaluate(term.symbol, tools, bindings, log, depth + 1);
+      const symbolRef = await evaluate(term.symbol, tools, bindings, log, depth + 1);
       let symbol: import("../treesitter/types.js").Symbol | null = null;
 
       // Handle different input types
@@ -1146,16 +1146,46 @@ function evaluate(
       return neighborhood;
     }
 
-    case "llm_query":
-      // `llm_query` is only reachable at the top level of a query via
-      // `solveAsync` (the FSM path). If the sync solver encounters one
-      // it means it was nested inside another term — the POC doesn't
-      // support that because `solve()` is sync. Fail loudly so the LLM
-      // sees a clear error and can restructure into a top-level call.
-      throw new Error(
-        "llm_query must be used at the top level of a query, not nested inside another term. " +
-        "Emit it as its own term and reference the previous result via a binding."
-      );
+    case "llm_query": {
+      // Now that evaluate() is async (Chunk 4), `llm_query` works in
+      // any nested position — inside map/filter/reduce lambdas —
+      // because the surrounding evaluator can now `await` its result.
+      // The top-level fast-path in `solve()` still handles the common
+      // case without descending into the switch; this branch fires
+      // when `llm_query` appears inside a containing term like:
+      //   (map RESULTS (lambda x (llm_query "classify {item}" (item x))))
+      if (!tools.llmQuery) {
+        throw new Error(
+          "llm_query is not available in this execution context. " +
+          "The RLM loop provides it; direct NucleusEngine / lattice-mcp " +
+          "sessions do not."
+        );
+      }
+      let interpolated = term.prompt;
+      const MAX_INTERP_LEN = 500_000;
+      for (const b of term.bindings) {
+        const val = await evaluate(b.value, tools, bindings, log, depth + 1);
+        let serialized: string;
+        try {
+          serialized =
+            typeof val === "string" ? val : JSON.stringify(val, null, 2);
+        } catch {
+          serialized = String(val);
+        }
+        if (serialized.length > MAX_INTERP_LEN) {
+          serialized =
+            serialized.slice(0, MAX_INTERP_LEN) +
+            `\n…[truncated ${serialized.length - MAX_INTERP_LEN} chars]`;
+        }
+        const escapedName = b.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        interpolated = interpolated.replace(
+          new RegExp(`\\{${escapedName}\\}`, "g"),
+          serialized.replace(/\$/g, "$$$$")
+        );
+      }
+      log(`[Solver] llm_query (nested) prompt length: ${interpolated.length} chars`);
+      return await tools.llmQuery(interpolated);
+    }
 
     default:
       throw new Error(`Unknown term tag: ${(term as LCTerm).tag}`);
@@ -1166,7 +1196,7 @@ function evaluate(
  * Evaluate a predicate term with a bound variable
  * Returns true if the predicate matches
  */
-function evaluatePredicate(
+async function evaluatePredicate(
   body: LCTerm,
   param: string,
   value: string,
@@ -1174,11 +1204,19 @@ function evaluatePredicate(
   bindings: Bindings,
   log: (msg: string) => void,
   depth: number = 0
-): boolean {
+): Promise<boolean> {
   // Simple pattern: (match var "pattern" 0)
   if (body.tag === "match") {
     if (!Number.isInteger(body.group) || body.group < 0) return false;
-    const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, depth + 1));
+    // Use evaluateWithBinding (not evaluate) for the non-var fast path
+    // so the predicate's lambda parameter remains in scope. Without
+    // this, a nested term like (llm_query "…" (item x)) would look up
+    // `x` against the outer bindings and fail. Discovered when the
+    // filter-with-llm_query test from llm-query-nested.test.ts broke
+    // after the async refactor removed the top-level-only restriction.
+    const str = body.str.tag === "var" && body.str.name === param
+      ? value
+      : String(await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
     const patternValidation = validateRegex(body.pattern);
     if (!patternValidation.valid) return false;
     // Case-insensitive for consistency with grep and extract
@@ -1198,14 +1236,14 @@ function evaluatePredicate(
   }
 
   // For complex predicates, evaluate and check truthiness
-  const result = evaluateWithBinding(body, param, value, tools, bindings, log, depth + 1);
+  const result = await evaluateWithBinding(body, param, value, tools, bindings, log, depth + 1);
   return Boolean(result);
 }
 
 /**
  * Evaluate a transform term with a bound variable
  */
-function evaluateTransform(
+async function evaluateTransform(
   body: LCTerm,
   param: string,
   value: string,
@@ -1213,14 +1251,14 @@ function evaluateTransform(
   bindings: Bindings,
   log: (msg: string) => void,
   depth: number = 0
-): unknown {
-  return evaluateWithBinding(body, param, value, tools, bindings, log, depth + 1);
+): Promise<unknown> {
+  return await evaluateWithBinding(body, param, value, tools, bindings, log, depth + 1);
 }
 
 /**
  * Evaluate reduce function with two bindings (acc, item)
  */
-function evaluateReduceFn(
+async function evaluateReduceFn(
   fn: LCTerm & { tag: "lambda" },
   acc: unknown,
   item: unknown,
@@ -1228,7 +1266,7 @@ function evaluateReduceFn(
   bindings: Bindings,
   log: (msg: string) => void,
   depth: number = 0
-): unknown {
+): Promise<unknown> {
   // For now, assume a simple two-parameter lambda pattern
   // The lambda body references the accumulator and current item
   const body = fn.body;
@@ -1242,7 +1280,7 @@ function evaluateReduceFn(
     const newBindings = new Map(bindings);
     newBindings.set(param, acc);
     newBindings.set(itemParam, item);
-    return evaluate(innerBody, tools, newBindings, log, depth + 1);
+    return await evaluate(innerBody, tools, newBindings, log, depth + 1);
   }
 
   // Single param - bind it to the item, use existing bindings for acc
@@ -1252,13 +1290,13 @@ function evaluateReduceFn(
   if (param !== "acc") {
     newBindings.set("acc", acc);
   }
-  return evaluate(body, tools, newBindings, log, depth + 1);
+  return await evaluate(body, tools, newBindings, log, depth + 1);
 }
 
 /**
  * Evaluate a term with a variable binding
  */
-function evaluateWithBinding(
+async function evaluateWithBinding(
   body: LCTerm,
   param: string,
   value: unknown,
@@ -1266,7 +1304,7 @@ function evaluateWithBinding(
   bindings: Bindings,
   log: (msg: string) => void,
   depth: number = 0
-): unknown {
+): Promise<unknown> {
   if (depth > MAX_EVAL_DEPTH) {
     throw new Error("evaluateWithBinding: maximum recursion depth exceeded");
   }
@@ -1274,7 +1312,7 @@ function evaluateWithBinding(
   switch (body.tag) {
     case "var":
       if (body.name === param) return value;
-      return evaluate(body, tools, bindings, log, depth + 1);
+      return await evaluate(body, tools, bindings, log, depth + 1);
 
     case "lit":
       return body.value;
@@ -1282,7 +1320,7 @@ function evaluateWithBinding(
     case "match": {
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
-        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
+        : String(await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
       const matchVal = validateRegex(body.pattern);
       if (!matchVal.valid) {
         throw new Error(`match: ${matchVal.error}`);
@@ -1297,7 +1335,7 @@ function evaluateWithBinding(
     case "replace": {
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
-        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
+        : String(await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
       const replaceVal = validateRegex(body.from);
       if (!replaceVal.valid) {
         throw new Error(`replace: ${replaceVal.error}`);
@@ -1311,7 +1349,7 @@ function evaluateWithBinding(
       if (!body.delim || body.delim.length === 0 || body.delim.length > 1000) return null;
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
-        : String(evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
+        : String(await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
       const MAX_EVAL_SPLIT_PARTS = 10_000;
       const parts = str.split(body.delim);
       if (parts.length > MAX_EVAL_SPLIT_PARTS) return null;
@@ -1319,7 +1357,7 @@ function evaluateWithBinding(
     }
 
     case "parseInt": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
+      const str = await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strForInt = String(str);
       if (strForInt.length > 200) return null;
       const intResult = parseInt(strForInt, 10);
@@ -1327,7 +1365,7 @@ function evaluateWithBinding(
     }
 
     case "parseFloat": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
+      const str = await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strForFloat = String(str);
       if (strForFloat.length > 200) return null;
       const floatResult = parseFloat(strForFloat);
@@ -1335,8 +1373,8 @@ function evaluateWithBinding(
     }
 
     case "add": {
-      const left = evaluateWithBinding(body.left, param, value, tools, bindings, log, depth + 1);
-      const right = evaluateWithBinding(body.right, param, value, tools, bindings, log, depth + 1);
+      const left = await evaluateWithBinding(body.left, param, value, tools, bindings, log, depth + 1);
+      const right = await evaluateWithBinding(body.right, param, value, tools, bindings, log, depth + 1);
       if (typeof left !== "number" || typeof right !== "number") {
         throw new Error(`add: expected numbers, got ${typeof left} and ${typeof right}`);
       }
@@ -1348,7 +1386,7 @@ function evaluateWithBinding(
     }
 
     case "parseDate": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
+      const str = await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strValue = String(str);
 
       // If examples are provided, prefer synthesis for consistency
@@ -1368,7 +1406,7 @@ function evaluateWithBinding(
     }
 
     case "parseCurrency": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
+      const str = await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strValue = String(str);
 
       // If examples are provided, prefer synthesis for consistency
@@ -1388,7 +1426,7 @@ function evaluateWithBinding(
     }
 
     case "parseNumber": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
+      const str = await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       const strValue = String(str);
 
       // If examples are provided, prefer synthesis for consistency
@@ -1408,13 +1446,13 @@ function evaluateWithBinding(
     }
 
     case "coerce": {
-      const termValue = evaluateWithBinding(body.term, param, value, tools, bindings, log, depth + 1);
+      const termValue = await evaluateWithBinding(body.term, param, value, tools, bindings, log, depth + 1);
       return coerceValue(termValue, body.targetType);
     }
 
     case "extract": {
       if (!Number.isInteger(body.group) || body.group < 0) return null;
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1) as string;
+      const str = await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1) as string;
       if (typeof str !== "string") return null;
       const extractPatternValidation = validateRegex(body.pattern);
       if (!extractPatternValidation.valid) return null;
@@ -1454,7 +1492,7 @@ function evaluateWithBinding(
     }
 
     case "predicate": {
-      const str = evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
+      const str = await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1);
       // Handle grep result objects - extract the line property
       const strValue =
         typeof str === "object" && str !== null && "line" in str
@@ -1478,7 +1516,7 @@ function evaluateWithBinding(
       // For unhandled cases, create a temporary binding and evaluate
       const newBindings = new Map(bindings);
       newBindings.set(param, value);
-      return evaluate(body, tools, newBindings, log, depth + 1);
+      return await evaluate(body, tools, newBindings, log, depth + 1);
   }
 }
 

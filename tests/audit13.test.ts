@@ -101,7 +101,8 @@ describe("Issue #2: evaluateWithBinding depth should propagate", () => {
     const ewbBody = ewbFn![0];
 
     // Find the default case - it should not have evaluate(..., 0)
-    const defaultCase = ewbBody.match(/default:[\s\S]*?return evaluate\([^)]+\)/);
+    // (The `await ` prefix is part of the match after the async refactor.)
+    const defaultCase = ewbBody.match(/default:[\s\S]*?return (?:await )?evaluate\([^)]+\)/);
     expect(defaultCase).not.toBeNull();
     // The default case should NOT pass 0 as the depth argument
     expect(defaultCase![0]).not.toMatch(/evaluate\([^)]+,\s*0\s*\)/);

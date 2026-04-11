@@ -52,7 +52,7 @@ function makeTools(opts: {
 }
 
 describe("nested llm_query — async refactor target", () => {
-  it.fails("(map RESULTS (lambda x (llm_query ...))) invokes sub-LLM once per item", async () => {
+  it("(map RESULTS (lambda x (llm_query ...))) invokes sub-LLM once per item", async () => {
     // OOLONG core pattern: per-item semantic classification. For each
     // element in RESULTS, the lambda should call llm_query once. After
     // the refactor, this returns an Array<string> with one response per
@@ -87,7 +87,7 @@ describe("nested llm_query — async refactor target", () => {
     expect(calls[2]).toContain("line three");
   });
 
-  it.fails("map-based llm_query sees each item's actual value under the placeholder", async () => {
+  it("map-based llm_query sees each item's actual value under the placeholder", async () => {
     // Stronger check: the `{item}` placeholder must interpolate the
     // per-iteration value, not the whole RESULTS binding.
     const received: string[] = [];
@@ -112,7 +112,7 @@ describe("nested llm_query — async refactor target", () => {
     expect(received[1]).toBe("Classify beta");
   });
 
-  it.fails("(if cond (llm_query ...) (llm_query ...)) dispatches through the correct branch", async () => {
+  it("(if cond (llm_query ...) (llm_query ...)) dispatches through the correct branch", async () => {
     // `if` branches must be awaitable when they contain llm_query. Only
     // one sub-LLM call should happen (the taken branch).
     const calls: string[] = [];
@@ -135,7 +135,7 @@ describe("nested llm_query — async refactor target", () => {
     expect(calls[0]).toBe("then path");
   });
 
-  it.fails("filter with an llm_query-backed predicate includes only matching items", async () => {
+  it("filter with an llm_query-backed predicate includes only matching items", async () => {
     // Practical OOLONG-Pairs pattern: semantic filtering. The lambda
     // calls llm_query per item and matches its response against a
     // regex; items whose sub-LLM response says "keep" survive.
@@ -159,7 +159,7 @@ describe("nested llm_query — async refactor target", () => {
     expect(result.value).toEqual(["good item", "another good one"]);
   });
 
-  it.fails("chained map → count via RESULTS works after the refactor", async () => {
+  it("chained map → count via RESULTS works after the refactor", async () => {
     // This exercises the full loop: nested llm_query produces an array,
     // RESULTS is re-bound to that array, and a follow-up `(count ...)`
     // over the result still works. The current POC can't reach this

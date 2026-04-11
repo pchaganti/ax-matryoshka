@@ -75,7 +75,8 @@ describe("Issue #3: evaluateWithBinding var case should not reset depth", () => 
     const ewbBody = ewbFn![0];
 
     // Find the var case — it should NOT call evaluate with depth 0
-    const varCase = ewbBody.match(/case "var":\s*\n[^}]*?return evaluate\([^)]+\)/);
+    // (The `await ` prefix is part of the match after the async refactor.)
+    const varCase = ewbBody.match(/case "var":\s*\n[^}]*?return (?:await )?evaluate\([^)]+\)/);
     expect(varCase).not.toBeNull();
     // The var case should pass depth + 1, not 0
     expect(varCase![0]).not.toMatch(/evaluate\([^,]+,[^,]+,[^,]+,[^,]+,\s*0\s*\)/);

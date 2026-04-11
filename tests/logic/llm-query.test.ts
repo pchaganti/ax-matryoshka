@@ -210,22 +210,8 @@ describe("llm_query solver — error paths", () => {
     expect(result.error).toMatch(/quota exceeded/);
   });
 
-  it("rejects nested llm_query inside a filter lambda (top-level only)", async () => {
-    // This is the POC's deliberate limitation — the sync `await solve()` path
-    // refuses to dispatch `llm_query` when encountered inside another
-    // term. The error message should explicitly say "top level".
-    const parsed = parse(
-      '(filter RESULTS (lambda x (llm_query "classify {x}" (x x))))'
-    );
-    expect(parsed.success).toBe(true);
-
-    // Feed through the sync solver directly — the FSM's solveAsync
-    // routes to await solve() for anything that isn't a top-level llm_query,
-    // so nesting trips the sync path's error case.
-    const bindings: Bindings = new Map();
-    bindings.set("RESULTS", ["a", "b"]);
-    const result = await solve(parsed.term!, makeTools({ llmQuery: async () => "x" }), bindings);
-    expect(result.success).toBe(false);
-    expect(result.error).toMatch(/top level/i);
-  });
+  // The "top-level only" restriction was removed in the full async
+  // refactor — nested llm_query inside filter/map/reduce lambdas now
+  // works. See tests/logic/llm-query-nested.test.ts for the positive
+  // assertions that cover the nested capability.
 });
