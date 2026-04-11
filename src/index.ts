@@ -118,6 +118,8 @@ function parseArgs(args: string[]): CLIOptions {
       options.dryRun = true;
     } else if (!arg.startsWith("-")) {
       positional.push(arg);
+    } else {
+      throw new Error(`Unknown option: ${arg}. Run --help for usage.`);
     }
   }
 
