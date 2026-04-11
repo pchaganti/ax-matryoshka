@@ -467,6 +467,27 @@ export class SessionDB {
   }
 
   /**
+   * Get the total byte size of a handle's stored JSON rows.
+   *
+   * Sums `length(data)` over the handle_data rows in a single SQL query,
+   * so callers can estimate token costs without re-serializing the whole
+   * array on the JS side. The data is already JSON-stringified in SQLite
+   * (see `createHandle`), so this is the authoritative serialized size
+   * minus the JSON array brackets and commas that would wrap it — close
+   * enough for a token-cost estimate.
+   *
+   * Returns 0 for unknown handles.
+   */
+  getHandleDataByteSize(handle: string): number {
+    if (!this.db) return 0;
+    const stmt = this.db.prepare(
+      "SELECT COALESCE(SUM(length(data)), 0) AS total FROM handle_data WHERE handle = ?"
+    );
+    const row = stmt.get(handle) as { total: number } | undefined;
+    return row?.total ?? 0;
+  }
+
+  /**
    * Get metadata for all handles in one query
    */
   listHandleMetadata(): HandleMetadata[] {

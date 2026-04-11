@@ -9,12 +9,16 @@
  *    (should take the first numeric token only)
  * 3. MEDIUM lc-solver.ts — module-level lastContext/lastContextLines cache leaks
  *    across SolverTools instances; move lines onto SolverTools itself
+ * 4. MEDIUM handle-session.ts — execute() re-serializes the whole array just to
+ *    compute a token-savings estimate, defeating the point of handle storage
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NucleusEngine } from "../src/engine/nucleus-engine.js";
 import type { LCTerm } from "../src/logic/types.js";
 import { solve, type SolverTools } from "../src/logic/lc-solver.js";
+import { HandleSession } from "../src/engine/handle-session.js";
+import { SessionDB } from "../src/persistence/session-db.js";
 
 describe("Audit #96 — Chiasmus review round 2", () => {
   // =========================================================================
@@ -202,6 +206,77 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(resultA1.value).toEqual(["alpha", "beta"]);
       expect(resultB.value).toEqual(["gamma", "delta"]);
       expect(resultA2.value).toEqual(["alpha", "beta"]);
+    });
+  });
+
+  // =========================================================================
+  // #4 MEDIUM — execute() should not re-serialize full array for token metadata
+  // =========================================================================
+  describe("#4 — execute() uses DB-side byte size, not full JSON.stringify", () => {
+    it("SessionDB.getHandleDataByteSize returns the sum of stored data sizes", () => {
+      const db = new SessionDB();
+      // createHandle stores each item as JSON via JSON.stringify
+      const handle = db.createHandle(["hello", "world", 42]);
+      // JSON-stringified rows: "\"hello\"" (7) + "\"world\"" (7) + "42" (2) = 16
+      const size = db.getHandleDataByteSize(handle);
+      expect(size).toBe(16);
+      db.close();
+    });
+
+    it("getHandleDataByteSize returns 0 for unknown handle", () => {
+      const db = new SessionDB();
+      expect(db.getHandleDataByteSize("$res999")).toBe(0);
+      db.close();
+    });
+
+    it("execute() routes token-metadata sizing through SessionDB, not JSON.stringify", () => {
+      const session = new HandleSession();
+      session.loadContent(
+        Array.from({ length: 500 }, (_, i) => `line ${i} some content`).join("\n"),
+      );
+
+      // Spy on the DB method we just added. If execute() still reaches for
+      // JSON.stringify(result.value), this spy will never fire. That pins
+      // the refactor: future edits that drop the DB path would fail here.
+      const dbSpy = vi.spyOn(SessionDB.prototype, "getHandleDataByteSize");
+
+      const result = session.execute('(grep "line")');
+
+      expect(result.success).toBe(true);
+      expect(result.handle).toBeDefined();
+      expect(result.tokenMetadata).toBeDefined();
+      expect(result.tokenMetadata!.estimatedFullTokens).toBeGreaterThan(0);
+      expect(result.tokenMetadata!.stubTokens).toBeGreaterThan(0);
+      expect(result.tokenMetadata!.savingsPercent).toBeGreaterThanOrEqual(0);
+
+      // The fix must route through the DB — at least one call, with the
+      // freshly-created handle as the argument.
+      expect(dbSpy).toHaveBeenCalled();
+      const calledWithHandle = dbSpy.mock.calls.some(
+        (args) => args[0] === result.handle,
+      );
+      expect(calledWithHandle).toBe(true);
+
+      dbSpy.mockRestore();
+      session.close();
+    });
+
+    it("token metadata remains directionally correct (large result → high savings)", () => {
+      const session = new HandleSession();
+      session.loadContent(
+        Array.from({ length: 200 }, (_, i) => `match ${i} some text`).join("\n"),
+      );
+      const result = session.execute('(grep "match")');
+
+      expect(result.success).toBe(true);
+      expect(result.tokenMetadata).toBeDefined();
+      // Stub is small, full data is large → savings should be substantial
+      expect(result.tokenMetadata!.estimatedFullTokens).toBeGreaterThan(
+        result.tokenMetadata!.stubTokens,
+      );
+      expect(result.tokenMetadata!.savingsPercent).toBeGreaterThan(50);
+
+      session.close();
     });
   });
 });

@@ -362,8 +362,14 @@ export class HandleSession {
       // Get the stub for LLM context
       const stub = this.registry.getStub(handle);
 
-      // Compute token metadata
-      const fullDataSize = JSON.stringify(result.value).length;
+      // Compute token metadata. The data is already serialized into SQLite
+      // by `registry.store` above, so ask the DB for the byte total rather
+      // than re-stringifying the whole array on the JS side — re-serializing
+      // a 10MB result just to measure its length defeats the point of
+      // handle storage. SQLite's SUM(length(data)) gives the authoritative
+      // size minus JSON bracket/comma overhead, which is close enough for
+      // a token-cost estimate.
+      const fullDataSize = this.db.getHandleDataByteSize(handle);
       const stubSize = stub.length;
       const estimatedFullTokens = estimateTokens(fullDataSize);
       const stubTokens = estimateTokens(stubSize);
