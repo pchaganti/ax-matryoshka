@@ -162,6 +162,15 @@ export async function createSandbox(
 
   // Pre-compute text stats
   const lines = context.split("\n");
+  // Pre-compute newline offsets so the sandbox's grep can do an O(log N)
+  // binary-search lookup of line number per match instead of re-scanning
+  // the context prefix on every hit (which is O(N×L) for N matches in a
+  // context of length L). The equivalent in nucleus-engine.ts already uses
+  // the same index via lineAtOffset.
+  const newlineOffsets: number[] = [];
+  for (let i = 0; i < context.length; i++) {
+    if (context[i] === "\n") newlineOffsets.push(i);
+  }
   const textStats = {
     length: context.length,
     lineCount: lines.length,
@@ -203,6 +212,9 @@ export async function createSandbox(
 
     // Lines array for fuzzy search
     __linesArray: lines,
+
+    // Pre-computed newline offsets for O(log N) line-number lookup in grep
+    __newlineOffsets: newlineOffsets,
 
     // LLM query bridge (async) - accepts optional format option
     __llmQueryBridge: async (prompt: string, options?: LLMQueryOptions): Promise<string> => {
@@ -313,10 +325,21 @@ export async function createSandbox(
       const results = [];
       let match;
 
+      // Binary-search lookup: given a byte offset in context, return the
+      // 1-indexed line number. O(log N) vs the old O(N) context.slice
+      // + match(/\\n/g) per hit.
+      function lineAtOffset(offset) {
+        var lo = 0, hi = __newlineOffsets.length;
+        while (lo < hi) {
+          var mid = (lo + hi) >>> 1;
+          if (__newlineOffsets[mid] < offset) lo = mid + 1;
+          else hi = mid;
+        }
+        return lo + 1;
+      }
+
       while ((match = regex.exec(context)) !== null) {
-        // Calculate line number from character index
-        const beforeMatch = context.slice(0, match.index);
-        const lineNum = (beforeMatch.match(/\\n/g) || []).length + 1;
+        const lineNum = lineAtOffset(match.index);
 
         // Get the full line content
         const line = __linesArray[lineNum - 1] || '';
