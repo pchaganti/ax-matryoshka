@@ -14,7 +14,7 @@ import type { FSMSpec, State } from "repl-sandbox";
 import { parse as parseLC } from "../logic/lc-parser.js";
 import { isClassifyTerm, validateClassifyExamples } from "../logic/lc-compiler.js";
 import { inferType, typeToString } from "../logic/type-inference.js";
-import { solve as solveTerm } from "../logic/lc-solver.js";
+import { solveAsync as solveTermAsync } from "../logic/lc-solver.js";
 import { analyzeExecution, getEncouragement } from "../feedback/execution-feedback.js";
 import { verifyResult } from "../constraints/verifier.js";
 import { generateClassifierGuidance } from "../rlm.js";
@@ -38,6 +38,16 @@ export interface RLMContext {
   turn: number;
   history: Array<{ role: "system" | "user" | "assistant"; content: string }>;
   solverBindings: Bindings;
+  /**
+   * Per-binding provenance — the raw LC source of the term that produced
+   * each binding. Populated in `handleExecute` from `ctx.extractedCode`
+   * and surfaced to the LLM in the "Bindings available" section of the
+   * analysis feedback. Without this, opaque names like `_3` carry no
+   * semantic information across turns, which matters a lot once sub-LLM
+   * calls chain together (a later `(llm_query …)` needs to know what
+   * `_3` contains to reference it sensibly).
+   */
+  solverBindingProvenance: Map<string, string>;
 
   // Turn-specific (reset each turn)
   response: string;
@@ -269,7 +279,7 @@ function handleValidate(ctx: RLMContext): RLMContext {
   return ctx;
 }
 
-function handleExecute(ctx: RLMContext): RLMContext {
+async function handleExecute(ctx: RLMContext): Promise<RLMContext> {
   if (!ctx.parsedTerm || !ctx.extractedCode) return ctx;
 
   ctx.log(`[Turn ${ctx.turn}] Executing LC term with solver...`);
@@ -278,7 +288,9 @@ function handleExecute(ctx: RLMContext): RLMContext {
     ctx.log(`[Turn ${ctx.turn}] Available bindings: ${[...ctx.solverBindings.keys()].join(", ")}`);
   }
 
-  const solverResult = solveTerm(ctx.parsedTerm, ctx.solverTools, ctx.solverBindings);
+  // solveTermAsync handles top-level `(llm_query …)` by calling
+  // `tools.llmQuery`; everything else flows through the sync `solve()`.
+  const solverResult = await solveTermAsync(ctx.parsedTerm, ctx.solverTools, ctx.solverBindings);
   ctx.solverResult = {
     success: solverResult.success,
     value: solverResult.value,
@@ -290,12 +302,26 @@ function handleExecute(ctx: RLMContext): RLMContext {
   if (solverResult.success && solverResult.value !== null && solverResult.value !== undefined) {
     ctx.solverBindings.set(`_${ctx.turn}`, solverResult.value);
 
+    // Record provenance — the raw LC source the LLM emitted this turn.
+    // This is what makes `_N` descriptive across turns: the next
+    // "Bindings available" section shows each name next to the code
+    // that produced it, so the LLM doesn't have to remember what `_3`
+    // was for.
+    const MAX_PROVENANCE_LEN = 160;
+    const provenance = (ctx.extractedCode || "").length > MAX_PROVENANCE_LEN
+      ? (ctx.extractedCode || "").slice(0, MAX_PROVENANCE_LEN) + "…"
+      : (ctx.extractedCode || "");
+    ctx.solverBindingProvenance.set(`_${ctx.turn}`, provenance);
+
     if (Array.isArray(solverResult.value)) {
       const MAX_RESULTS_SIZE = 100000;
       const cappedValue = solverResult.value.length > MAX_RESULTS_SIZE
         ? solverResult.value.slice(0, MAX_RESULTS_SIZE)
         : solverResult.value;
       ctx.solverBindings.set("RESULTS", cappedValue);
+      // RESULTS always reflects the most recent array binding — its
+      // provenance is whatever produced this turn's result.
+      ctx.solverBindingProvenance.set("RESULTS", provenance);
       ctx.previousResultCount = ctx.lastResultCount;
       ctx.lastResultCount = cappedValue.length;
       ctx.log(`[Turn ${ctx.turn}] Bound result to RESULTS and _${ctx.turn}`);
@@ -319,6 +345,9 @@ function handleExecute(ctx: RLMContext): RLMContext {
       const toRemove = turnKeys.slice(0, Math.max(0, turnKeys.length - maxTurnKeys));
       for (const key of toRemove) {
         ctx.solverBindings.delete(key);
+        // Keep provenance in lockstep so we never surface a stub for a
+        // binding that has already been evicted from the values map.
+        ctx.solverBindingProvenance.delete(key);
       }
     }
   } else {
@@ -454,6 +483,41 @@ function handleAnalyze(ctx: RLMContext): RLMContext {
   }
 
   feedback += `\n\n${ctx.adapter.getSuccessFeedback(ctx.lastResultCount, ctx.previousResultCount, ctx.query)}`;
+
+  // Bindings summary with provenance — lets the LLM see what each `_N`
+  // contains without having to remember or re-derive it from history.
+  // Essential for chaining `(llm_query …)` calls, where a later call
+  // needs to know which prior binding to reference.
+  if (ctx.solverBindings.size > 0) {
+    const MAX_BINDINGS_SHOWN = 16;
+    const keys = [...ctx.solverBindings.keys()];
+    const shown = keys.slice(-MAX_BINDINGS_SHOWN);
+    const skipped = keys.length - shown.length;
+
+    const summarizeValue = (val: unknown): string => {
+      if (val === null || val === undefined) return "null";
+      if (Array.isArray(val)) return `Array(${val.length})`;
+      if (typeof val === "string") return `String(${val.length})`;
+      if (typeof val === "number") return `Number(${val})`;
+      if (typeof val === "boolean") return `Bool(${val})`;
+      return typeof val;
+    };
+
+    const lines = shown.map((name) => {
+      const val = ctx.solverBindings.get(name);
+      const provenance = ctx.solverBindingProvenance.get(name);
+      const shape = summarizeValue(val);
+      return provenance
+        ? `  ${name} : ${shape}   ← ${provenance}`
+        : `  ${name} : ${shape}`;
+    });
+    const bindingsBlock = lines.join("\n");
+    const prefix = skipped > 0
+      ? `\n\nBindings available for next turn (${skipped} older entries omitted):\n`
+      : `\n\nBindings available for next turn:\n`;
+    feedback += `${prefix}${bindingsBlock}`;
+  }
+
   ctx.history.push({ role: "user", content: feedback });
 
   return ctx;
@@ -624,6 +688,7 @@ export function createInitialContext(opts: {
       { role: "user", content: opts.userMessage },
     ],
     solverBindings: new Map(),
+    solverBindingProvenance: new Map(),
 
     response: "",
     extractedCode: null,

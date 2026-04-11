@@ -255,6 +255,9 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
     case "symbol_graph":
       return { tag: "any" };
 
+    case "llm_query":
+      return { tag: "string" };
+
     default:
       return { tag: "any" };
   }

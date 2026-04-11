@@ -36,6 +36,14 @@ TRANSFORM:
 (map RESULTS (lambda x (match x "pat" 1)))
 (count RESULTS)   (sum RESULTS)
 
+SUB-LLM (semantic work on what grep/filter can't express):
+(llm_query "Classify each error into a category: {items}" (items RESULTS))
+  — prompt is a literal string with {name} placeholders
+  — each (name BINDING) fills one placeholder with the binding's value
+  — use for open-ended semantic tasks (classification, summarization,
+    paraphrase) that don't reduce to regex patterns
+  — result is a string bound to _N; the next turn sees its provenance
+
 CODE (when analyzing code):
 (list_symbols)  (list_symbols "function")
 (get_symbol_body "name")  (find_references "name")
@@ -198,7 +206,7 @@ function extractCode(response: string): string | null {
 
   // Check for plain S-expression in raw text
   // Find opening paren and balance to closing
-  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph"];
+  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph", "llm_query"];
 
   const MAX_SEXP_ITERATIONS = 200;
   let sexpIterations = 0;

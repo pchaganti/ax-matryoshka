@@ -38,6 +38,22 @@ export interface SolverTools {
    * session lets the line array be garbage-collected.
    */
   lines: string[];
+  /**
+   * Optional sub-LLM invoker.
+   *
+   * When present, the FSM-level `solveAsync()` entry point dispatches
+   * top-level `(llm_query …)` terms through this function. Non-FSM
+   * callers (NucleusEngine, HandleSession, the standalone lattice-mcp
+   * path) omit this field, and the sync `solve()` path rejects
+   * `llm_query` with an explicit "top-level only" error so a nested
+   * `(map RESULTS (lambda x (llm_query …)))` fails loudly rather than
+   * silently returning garbage.
+   *
+   * Full nested support requires making `solve()` itself async — a
+   * deliberate POC limitation, not an oversight. See the GAP 1
+   * discussion in the paper-vs-project review.
+   */
+  llmQuery?: (prompt: string) => Promise<string>;
 }
 
 /**
@@ -123,6 +139,114 @@ export function solve(
     const resolved = resolveConstraints(term);
     const value = evaluate(resolved.term, tools, bindings, log, 0);
     return { success: true, value, logs };
+  } catch (err) {
+    return {
+      success: false,
+      value: null,
+      logs,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+/**
+ * Async entry point — dispatches top-level `(llm_query …)` terms through
+ * `tools.llmQuery` and delegates everything else to the synchronous
+ * `solve()` above.
+ *
+ * This is the POC for symbolic recursion (GAP 1 in the paper review).
+ * Deliberately limited to top-level `llm_query` so the underlying
+ * `solve()` / `evaluate()` machinery can stay synchronous — the full
+ * async refactor (which would enable `(map RESULTS (lambda x (llm_query …)))`)
+ * is a follow-up PR.
+ *
+ * Placeholders in the prompt string are interpolated from the `bindings`
+ * argument list. Each `(name value)` pair is evaluated via `solve()`
+ * (not `solveAsync()` — no recursive `llm_query` inside bindings), its
+ * value is JSON-stringified, and `{name}` in the prompt is replaced.
+ *
+ * @param term          The top-level LC term. If it is `llm_query`, this
+ *                      function does the sub-LLM call; otherwise it
+ *                      delegates straight to sync `solve()`.
+ * @param tools         Tools providing document access + (optionally)
+ *                      `llmQuery` for symbolic recursion.
+ * @param bindings      Cross-turn variable bindings.
+ */
+export async function solveAsync(
+  term: LCTerm,
+  tools: SolverTools,
+  bindings: Bindings = new Map()
+): Promise<SolveResult> {
+  if (term.tag !== "llm_query") {
+    // Fast path: no symbolic recursion requested, use the sync solver.
+    return solve(term, tools, bindings);
+  }
+
+  const logs: string[] = [];
+  const MAX_LOG_ENTRIES = 10000;
+  const MAX_LOG_MSG_LENGTH = 2000;
+  const log = (msg: string) => {
+    if (logs.length < MAX_LOG_ENTRIES) {
+      logs.push(msg.length > MAX_LOG_MSG_LENGTH ? msg.slice(0, MAX_LOG_MSG_LENGTH) + "..." : msg);
+    }
+  };
+
+  if (!tools.llmQuery) {
+    return {
+      success: false,
+      value: null,
+      logs,
+      error:
+        "llm_query is not available in this execution context. The RLM loop " +
+        "provides it; direct NucleusEngine / lattice-mcp sessions do not.",
+    };
+  }
+
+  try {
+    // Interpolate each `{name}` placeholder with the JSON-stringified
+    // value of its matching binding. We evaluate the binding's LC term
+    // with the *sync* solver — `llm_query` is not recursively allowed
+    // inside a binding expression (the sync solver will throw with the
+    // clear "top-level only" message if one is encountered).
+    let interpolated = term.prompt;
+    const MAX_INTERP_LEN = 500_000;
+
+    for (const b of term.bindings) {
+      const resolved = resolveConstraints(b.value);
+      const val = evaluate(resolved.term, tools, bindings, log, 0);
+      let serialized: string;
+      try {
+        serialized =
+          typeof val === "string"
+            ? val
+            : JSON.stringify(val, null, 2);
+      } catch {
+        serialized = String(val);
+      }
+      if (serialized.length > MAX_INTERP_LEN) {
+        serialized =
+          serialized.slice(0, MAX_INTERP_LEN) +
+          `\n…[truncated ${serialized.length - MAX_INTERP_LEN} chars]`;
+      }
+      // Replace every literal occurrence of `{name}` in the prompt.
+      // Escape regex metacharacters in the name defensively even though
+      // the parser already restricts names to identifier characters.
+      const escapedName = b.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      interpolated = interpolated.replace(
+        new RegExp(`\\{${escapedName}\\}`, "g"),
+        // $-sequences in the replacement would otherwise be interpreted.
+        serialized.replace(/\$/g, "$$$$")
+      );
+    }
+
+    log(`[Solver] llm_query prompt length: ${interpolated.length} chars`);
+    log(`[Solver] llm_query bindings: ${term.bindings.map((b) => b.name).join(", ") || "(none)"}`);
+
+    const response = await tools.llmQuery(interpolated);
+
+    log(`[Solver] llm_query response length: ${response.length} chars`);
+
+    return { success: true, value: response, logs };
   } catch (err) {
     return {
       success: false,
@@ -1050,6 +1174,17 @@ function evaluate(
       log(`[Solver] Graph: ${neighborhood.nodes.length} nodes, ${neighborhood.edges.length} edges`);
       return neighborhood;
     }
+
+    case "llm_query":
+      // `llm_query` is only reachable at the top level of a query via
+      // `solveAsync` (the FSM path). If the sync solver encounters one
+      // it means it was nested inside another term — the POC doesn't
+      // support that because `solve()` is sync. Fail loudly so the LLM
+      // sees a clear error and can restructure into a top-level call.
+      throw new Error(
+        "llm_query must be used at the top level of a query, not nested inside another term. " +
+        "Emit it as its own term and reference the previous result via a binding."
+      );
 
     default:
       throw new Error(`Unknown term tag: ${(term as LCTerm).tag}`);

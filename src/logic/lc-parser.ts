@@ -864,6 +864,59 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       return { tag: "symbol_graph", name: sgNameTerm.value };
     }
 
+    case "llm_query": {
+      // (llm_query "prompt" [(name binding) ...])
+      //
+      // Required first argument: string literal prompt.
+      // Optional trailing arguments: (name binding) pairs that fill `{name}`
+      // placeholders in the prompt with the named binding's value.
+      const promptTerm = parseTerm(state, d);
+      if (!promptTerm || promptTerm.tag !== "lit" || typeof promptTerm.value !== "string") {
+        return null;
+      }
+      const promptStr = promptTerm.value;
+
+      // A safety cap matching `escapeForSexp` in the adapter to keep an
+      // accidentally-huge literal from blowing the parser's working set.
+      const MAX_PROMPT_LENGTH = 500_000;
+      if (promptStr.length > MAX_PROMPT_LENGTH) {
+        return null;
+      }
+
+      const bindings: Array<{ name: string; value: LCTerm }> = [];
+      const MAX_BINDINGS = 16;
+
+      while (true) {
+        const next = peek(state);
+        if (!next || next.type === "rparen") break;
+        if (bindings.length >= MAX_BINDINGS) return null;
+
+        // Each binding must be a (name term) paren group.
+        if (next.type !== "lparen") return null;
+        consume(state);
+
+        const bindingNameTok = peek(state);
+        if (!bindingNameTok || bindingNameTok.type !== "symbol") return null;
+        const bindingName = bindingNameTok.value;
+        // Only allow conservative identifiers for the placeholder name so
+        // that string interpolation can't inject odd characters.
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(bindingName)) return null;
+        if (bindingName.length > 64) return null;
+        consume(state);
+
+        const valueTerm = parseTerm(state, d);
+        if (!valueTerm) return null;
+
+        const closing = peek(state);
+        if (!closing || closing.type !== "rparen") return null;
+        consume(state);
+
+        bindings.push({ name: bindingName, value: valueTerm });
+      }
+
+      return { tag: "llm_query", prompt: promptStr, bindings };
+    }
+
     default: {
       const fn: LCTerm = { tag: "var", name: op };
       const arg = parseTerm(state, d);
