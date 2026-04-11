@@ -355,6 +355,112 @@ async function evaluate(
       return selectedLines;
     }
 
+    case "chunk_by_size": {
+      // Split the document context into fixed-size character chunks. The
+      // last chunk may be shorter than `size`. The primary use-case is
+      // feeding each chunk into a per-chunk sub-LLM call via a map lambda.
+      const size = term.size;
+      if (!Number.isFinite(size) || size <= 0) {
+        throw new Error(`chunk_by_size: size must be a positive finite number, got ${size}`);
+      }
+      const intSize = Math.floor(size);
+      // Cap at MAX_CHUNKS to prevent an adversarial `(chunk_by_size 1)` over
+      // a 10MB document from producing a 10M-element array that blows up
+      // downstream handle storage. This is large enough that real use-cases
+      // (2KB chunks of a 50MB file = 25_000 chunks) stay well under it.
+      const MAX_CHUNKS = 100_000;
+      const ctx = tools.context;
+      if (ctx.length === 0) return [];
+      const chunks: string[] = [];
+      for (let i = 0; i < ctx.length && chunks.length < MAX_CHUNKS; i += intSize) {
+        chunks.push(ctx.slice(i, i + intSize));
+      }
+      log(`[Solver] chunk_by_size(${intSize}): produced ${chunks.length} chunks`);
+      return chunks;
+    }
+
+    case "chunk_by_lines": {
+      // Split the document into N-line chunks. Trailing remainder (<N lines)
+      // becomes its own chunk.
+      const n = term.lineCount;
+      if (!Number.isFinite(n) || n <= 0) {
+        throw new Error(`chunk_by_lines: lineCount must be a positive finite number, got ${n}`);
+      }
+      const intN = Math.floor(n);
+      const MAX_CHUNKS = 100_000;
+      const allLines = tools.lines;
+      if (allLines.length === 0) return [];
+      const chunks: string[] = [];
+      for (let i = 0; i < allLines.length && chunks.length < MAX_CHUNKS; i += intN) {
+        chunks.push(allLines.slice(i, i + intN).join("\n"));
+      }
+      log(`[Solver] chunk_by_lines(${intN}): produced ${chunks.length} chunks`);
+      return chunks;
+    }
+
+    case "chunk_by_regex": {
+      // Split the document wherever `pattern` matches. Empty chunks
+      // produced by adjacent delimiters are dropped — the paper's OOLONG
+      // pattern wants "substantive" chunks to feed to sub-LLMs, not empty
+      // strings between `\n\n\n\n` sequences.
+      //
+      // We deliberately DO NOT use `String.prototype.split(regex)` here:
+      // when the user's pattern contains capturing groups, `split`
+      // interleaves the captured text into the output array, producing
+      // surprising chunks that include delimiter characters. Instead we
+      // manually walk matches via matchAll() and extract the text
+      // between them, which treats captures as a no-op.
+      const pat = term.pattern;
+      if (typeof pat !== "string" || pat.length === 0) {
+        throw new Error("chunk_by_regex: pattern must be a non-empty string");
+      }
+      const validation = validateRegex(pat);
+      if (!validation.valid) {
+        throw new Error(`chunk_by_regex: invalid pattern "${pat}" — ${validation.error}`);
+      }
+      // Force the global flag so matchAll() can iterate all matches.
+      // new RegExp(pat, "g") is safe even when the user's pattern
+      // already implies global — JS accepts duplicate-meaning flags
+      // via the string form as long as each character appears once.
+      const regex = new RegExp(pat, "g");
+      const ctx = tools.context;
+      if (ctx.length === 0) return [];
+      const MAX_CHUNKS = 100_000;
+
+      const chunks: string[] = [];
+      let cursor = 0;
+      let matches = 0;
+      // Cap match iteration independently so a pathological regex that
+      // matches millions of zero-width positions (which would be blocked
+      // by the infinite-loop guard below anyway) doesn't burn CPU
+      // building an intermediate array via [...matchAll()].
+      const MAX_MATCH_ITERATIONS = MAX_CHUNKS + 1;
+      for (const m of ctx.matchAll(regex)) {
+        if (matches++ >= MAX_MATCH_ITERATIONS) break;
+        const start = m.index ?? cursor;
+        // Slice content between the previous match end and this match.
+        if (start > cursor) {
+          chunks.push(ctx.slice(cursor, start));
+        }
+        // Advance past this match. Zero-width matches would loop
+        // forever otherwise, so we force forward progress by at least
+        // one char.
+        const matchLen = m[0].length;
+        cursor = start + (matchLen === 0 ? 1 : matchLen);
+        if (chunks.length >= MAX_CHUNKS) break;
+      }
+      // Trailing content after the last match.
+      if (cursor < ctx.length && chunks.length < MAX_CHUNKS) {
+        chunks.push(ctx.slice(cursor));
+      }
+
+      // Drop empty chunks from adjacent delimiters (e.g. "\n\n\n\n"
+      // matched by "\n\n" yields one empty middle piece).
+      const nonEmpty = chunks.filter((c) => c.length > 0);
+      log(`[Solver] chunk_by_regex(/${pat}/): produced ${nonEmpty.length} chunks from ${matches} matches`);
+      return nonEmpty;
+    }
+
     // ==========================
     // PURE OPERATIONS - Use miniKanren for filtering/classification
     // ==========================
@@ -1087,8 +1193,10 @@ async function evaluate(
       if (!tools.llmQuery) {
         throw new Error(
           "llm_query is not available in this execution context. " +
-          "The RLM loop provides it; direct NucleusEngine / lattice-mcp " +
-          "sessions do not."
+          "The RLM loop provides it via the caller's llmClient, and " +
+          "lattice-mcp provides it when the MCP client advertises " +
+          "`sampling` capability. Standalone NucleusEngine / HandleSession " +
+          "instances must pass an llmQuery option to enable it."
         );
       }
       let interpolated = term.prompt;

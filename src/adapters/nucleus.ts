@@ -31,6 +31,13 @@ SEARCH:
 (grep "pattern")              → matching lines w/ line numbers
 (lines START END)             → get line range (1-indexed)
 
+CHUNK (slice document before mapping over it — for too-large docs):
+(chunk_by_size N)             → N-char slices
+(chunk_by_lines N)            → N-line slices
+(chunk_by_regex "pat")        → slices split on regex (e.g. "\\n\\n")
+  — feed to (map … (lambda c (llm_query "summarize: {chunk}" (chunk c))))
+    to fire a sub-LLM per chunk of a document too big for the root window
+
 TRANSFORM:
 (filter RESULTS (lambda x (match x "pat" 0)))
 (map RESULTS (lambda x (match x "pat" 1)))
@@ -60,6 +67,10 @@ CODE (when analyzing code):
 MULTI-LINE: grep keyword → get lineNum → (lines N M)
 QUERY MAP: count→count, total/sum→sum, list→grep+FINAL
 ANSWER: <<<FINAL>>>answer<<<END>>>
+  — for large answers, use FINAL_VAR(name) to reference a binding:
+    <<<FINAL>>>FINAL_VAR(_2)<<<END>>>      — substitutes _2's full value
+    <<<FINAL>>>The matches: FINAL_VAR(RESULTS)<<<END>>>
+  — use this when inlining a large result would blow the context window
 
 ${hints?.hintsText || ""}${hints?.selfCorrectionText || ""}`;
 }
@@ -211,7 +222,7 @@ function extractCode(response: string): string | null {
 
   // Check for plain S-expression in raw text
   // Find opening paren and balance to closing
-  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph", "llm_query"];
+  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph", "llm_query", "chunk_by_size", "chunk_by_lines", "chunk_by_regex"];
 
   const MAX_SEXP_ITERATIONS = 200;
   let sexpIterations = 0;

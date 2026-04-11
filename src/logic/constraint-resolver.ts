@@ -127,6 +127,9 @@ export function resolveConstraints(term: LCTerm): ResolvedTerm {
       case "synthesize":
       case "define-fn":
       case "lines":
+      case "chunk_by_size":
+      case "chunk_by_lines":
+      case "chunk_by_regex":
       case "fuzzy_search":
       case "text_stats":
       case "find_references":

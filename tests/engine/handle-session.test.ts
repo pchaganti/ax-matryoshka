@@ -453,3 +453,65 @@ describe("HandleSession - Token Savings", () => {
     tsSession.close();
   });
 });
+
+describe("HandleSession — llmQuery option (MCP sampling bridge)", () => {
+  // The lattice-mcp-server wraps `server.createMessage(...)` into an
+  // llmQuery callback and passes it to HandleSession so `(llm_query ...)`
+  // inside a lattice_query can delegate back to the MCP client's LLM.
+  // These tests prove the option is threaded through to the underlying
+  // NucleusEngine / solver.
+
+  it("dispatches (llm_query ...) to the constructor-supplied callback", async () => {
+    const seen: string[] = [];
+    const session = new HandleSession({
+      llmQuery: async (prompt: string) => {
+        seen.push(prompt);
+        return "MCP-SAMPLED RESPONSE";
+      },
+    });
+    session.loadContent("hello world");
+    try {
+      const result = await session.execute('(llm_query "What is this?")');
+      expect(result.success).toBe(true);
+      expect(result.value).toBe("MCP-SAMPLED RESPONSE");
+      expect(seen).toEqual(["What is this?"]);
+    } finally {
+      session.close();
+    }
+  });
+
+  it("without llmQuery, (llm_query ...) errors cleanly", async () => {
+    const session = new HandleSession();
+    session.loadContent("hello world");
+    try {
+      const result = await session.execute('(llm_query "should fail")');
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/llm_query is not available/i);
+    } finally {
+      session.close();
+    }
+  });
+
+  it("supports nested llm_query inside map on a handle result", async () => {
+    const calls: string[] = [];
+    const session = new HandleSession({
+      llmQuery: async (prompt: string) => {
+        calls.push(prompt);
+        return `class-${calls.length}`;
+      },
+    });
+    session.loadContent("ERROR alpha\nERROR beta\nERROR gamma\nINFO ok");
+    try {
+      await session.execute('(grep "ERROR")');
+      const result = await session.execute(
+        '(map RESULTS (lambda x (llm_query "tag: {item}" (item x))))'
+      );
+      expect(result.success).toBe(true);
+      // Map result is an array handle
+      expect(result.handle).toMatch(/^\$res\d+$/);
+      expect(calls).toHaveLength(3);
+    } finally {
+      session.close();
+    }
+  });
+});

@@ -63,7 +63,10 @@ export type LCTerm =
   | LCImplementations
   | LCDependents
   | LCSymbolGraph
-  | LCLLMQuery;
+  | LCLLMQuery
+  | LCChunkBySize
+  | LCChunkByLines
+  | LCChunkByRegex;
 
 /**
  * (input) - reference to the current input string
@@ -162,6 +165,40 @@ export interface LCLines {
   tag: "lines";
   start: number;
   end: number;
+}
+
+/**
+ * (chunk_by_size N) - split the document context into chunks of N characters.
+ * Returns an array of string slices, the last of which may be shorter than N.
+ * Primary use: `(map (chunk_by_size 2000) (lambda c (llm_query ...)))` to
+ * fire a sub-LLM call per chunk of a document too big for the root window.
+ */
+export interface LCChunkBySize {
+  tag: "chunk_by_size";
+  size: number;
+}
+
+/**
+ * (chunk_by_lines N) - split the document context into chunks of N lines.
+ * Returns an array of newline-joined slices. Trailing remainder (less than
+ * N lines) becomes its own chunk. Primary use: chunk a log file / code file
+ * into N-line slices before mapping per-chunk semantic work over them.
+ */
+export interface LCChunkByLines {
+  tag: "chunk_by_lines";
+  lineCount: number;
+}
+
+/**
+ * (chunk_by_regex "pattern") - split the document context wherever `pattern`
+ * matches. Returns an array of string slices with empty chunks dropped (so
+ * adjacent delimiters don't produce `""` entries). Primary use: split on
+ * paragraph breaks (`\n\n`), section headers, or explicit delimiters. The
+ * pattern is validated via `validateRegex` before splitting.
+ */
+export interface LCChunkByRegex {
+  tag: "chunk_by_regex";
+  pattern: string;
 }
 
 /**
