@@ -269,22 +269,6 @@ export interface RLMOptions {
   sessionId?: string;
 }
 
-/**
- * Try to parse a numeric value from a string result
- */
-function parseNumericResult(result: unknown): number | null {
-  if (typeof result === "number") return Number.isFinite(result) ? result : null;
-  if (typeof result === "string") {
-    // Handle strings like "Total: 13000000" or "13,000,000"
-    const match = result.match(/[\d,]+(?:\.\d+)?/);
-    if (match) {
-      const parsed = parseFloat(match[0].replace(/,/g, ""));
-      if (!isNaN(parsed) && Number.isFinite(parsed)) return parsed;
-    }
-  }
-  return null;
-}
-
 // verifyAndReturnResult has moved to fsm/rlm-states.ts
 
 /**
@@ -418,12 +402,24 @@ export async function runRLM(
 
     const engine = new FSMEngine<RLMContext>();
     const FSM_TIMEOUT_MS = 5 * 60 * 1000;
+    // The timer must be stored so we can clear it when the FSM wins the
+    // race — otherwise the setTimeout holds the Node event loop alive for
+    // FSM_TIMEOUT_MS after a successful run (CLI hangs, long-lived
+    // processes leak a pending timer per call).
+    let timeoutHandle: NodeJS.Timeout | undefined;
     const finalCtx = await Promise.race([
       engine.run(buildRLMSpec(), fsmCtx),
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`FSM run exceeded ${FSM_TIMEOUT_MS}ms timeout`)), FSM_TIMEOUT_MS)
-      ),
-    ]);
+      new Promise<never>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(`FSM run exceeded ${FSM_TIMEOUT_MS}ms timeout`)),
+          FSM_TIMEOUT_MS
+        );
+      }),
+    ]).finally(() => {
+      if (timeoutHandle !== undefined) {
+        clearTimeout(timeoutHandle);
+      }
+    });
 
     if (finalCtx.result !== null) {
       return finalCtx.result;

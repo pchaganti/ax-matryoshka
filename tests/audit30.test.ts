@@ -64,18 +64,9 @@ describe("Audit #30", () => {
     });
   });
 
-  // =============================================
-  // Issue #4 — Medium: parseNumericResult returns Infinity
-  // =============================================
-  describe("#4 — parseNumericResult Infinity guard", () => {
-    it("should not return Infinity for very long digit strings", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      // After fix, parseNumericResult should check isFinite
-      const fnMatch = source.match(/function parseNumericResult[^}]+\}/s);
-      expect(fnMatch).not.toBeNull();
-      expect(fnMatch![0]).toMatch(/isFinite|Infinity/);
-    });
-  });
+  // #4 removed: parseNumericResult helper was deleted as unreachable.
+  // It was only called by the deprecated rlm.extractFinalAnswer (also
+  // deleted during the FINAL_VAR purge). No production code consumed it.
 
   // =============================================
   // Issue #5 — Medium: verifier minItems > maxItems
