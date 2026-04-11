@@ -32,12 +32,34 @@ export interface ExecutionResult {
 export interface NucleusEngineOptions {
   /** Enable verbose logging */
   verbose?: boolean;
+  /**
+   * Optional sub-LLM bridge for the `(llm_query ...)` primitive.
+   *
+   * When present, the engine threads this callback through to `createSolverTools`
+   * every time a document is loaded, so the solver can dispatch `(llm_query ...)`
+   * terms through it. The main consumer is the MCP sampling bridge in
+   * `lattice-mcp-server.ts`, which wraps `server.createMessage(...)` so that
+   * sub-LLM calls are routed back to the MCP client's model.
+   *
+   * When omitted, `(llm_query ...)` throws a clear "not available" error.
+   */
+  llmQuery?: (prompt: string) => Promise<string>;
 }
 
 /**
  * Create SolverTools from document content
+ *
+ * @param context - Document content to expose via grep/fuzzy/bm25/etc.
+ * @param llmQuery - Optional sub-LLM bridge for the `(llm_query ...)` primitive.
+ *   When passed through (e.g. by the MCP sampling bridge in lattice-mcp-server),
+ *   the solver dispatches every `(llm_query ...)` term through this callback,
+ *   both top-level and nested inside map/filter/reduce lambdas. When omitted,
+ *   `(llm_query ...)` throws a clear "not available" error from the solver.
  */
-function createSolverTools(context: string): SolverTools {
+function createSolverTools(
+  context: string,
+  llmQuery?: (prompt: string) => Promise<string>
+): SolverTools {
   const lines = context.split("\n");
 
   // Build newline offset index for O(log N) line-number lookup from byte offset
@@ -190,6 +212,10 @@ function createSolverTools(context: string): SolverTools {
     })(),
 
     text_stats: () => ({ ...textStats }),
+
+    // Symbolic-recursion hook — only present if the caller threaded one in
+    // (e.g. the MCP sampling bridge). Omitted means `(llm_query ...)` throws.
+    llmQuery,
   };
 }
 
@@ -215,9 +241,11 @@ export class NucleusEngine {
   private solverTools: SolverTools | null = null;
   private verbose: boolean;
   private turnCounter: number = 0;
+  private llmQuery?: (prompt: string) => Promise<string>;
 
   constructor(options: NucleusEngineOptions = {}) {
     this.verbose = options.verbose ?? false;
+    this.llmQuery = options.llmQuery;
   }
 
   /**
@@ -234,7 +262,7 @@ export class NucleusEngine {
   loadContent(content: string): void {
     const trimmed = content.trim();
     this.context = trimmed.length > 0 ? content : "";
-    this.solverTools = trimmed.length > 0 ? createSolverTools(content) : null;
+    this.solverTools = trimmed.length > 0 ? createSolverTools(content, this.llmQuery) : null;
     this.bindings.clear();
     this.turnCounter = 0;
 

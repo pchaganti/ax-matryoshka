@@ -35,6 +35,18 @@ import { HandleSession } from "./engine/handle-session.js";
 import { getVersion } from "./version.js";
 import { hasTraversalSegment } from "./utils/path-safety.js";
 
+// Sub-LLM bridge — populated in main() once the server has connected and we
+// know whether the client supports `sampling/createMessage`. When set, every
+// new HandleSession created by lattice_load / lattice_memo will receive this
+// callback and `(llm_query ...)` inside a lattice_query will be routed back
+// to the MCP client's LLM via the standard sampling protocol.
+let samplingBridge: ((prompt: string) => Promise<string>) | null = null;
+
+// Default cap for sub-LLM responses. The MCP sampling protocol requires a
+// maxTokens value; we keep it modest so sub-LLM calls stay cheap and the
+// paper's OOLONG pattern remains affordable at scale.
+const SAMPLING_MAX_TOKENS = 1024;
+
 // Configuration — timeout is configurable via env var for long sessions
 const SESSION_TIMEOUT_MS = parseInt(process.env.LATTICE_TIMEOUT_MS || "") || 10 * 60 * 1000;
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB limit
@@ -513,7 +525,12 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         } else {
           // Create new session — use temp variable so `session` isn't
           // left pointing at a half-initialised object if loadFile throws.
-          const newSession = new HandleSession();
+          // Thread the sampling bridge through so `(llm_query ...)` inside
+          // lattice_query can delegate to the MCP client's LLM when the
+          // client advertises sampling support.
+          const newSession = new HandleSession({
+            llmQuery: samplingBridge ?? undefined,
+          });
           try {
             stats = await newSession.loadFile(filePath);
           } catch (loadErr) {
@@ -651,9 +668,12 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           return { content: [{ type: "text", text: "Error: label is required" }] };
         }
 
-        // Auto-create session if none exists (memos don't require a loaded document)
+        // Auto-create session if none exists (memos don't require a loaded document).
+        // Thread sampling bridge so memos-first sessions still get llm_query support.
         if (!session) {
-          session = new HandleSession();
+          session = new HandleSession({
+            llmQuery: samplingBridge ?? undefined,
+          });
           console.error("[Lattice] Auto-created session for memo storage");
         }
 
@@ -758,6 +778,33 @@ async function main() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  // Wire the sampling bridge once the client has completed the handshake.
+  // Only install it if the client advertised `sampling` support — otherwise
+  // `(llm_query ...)` inside lattice_query should fail loudly rather than
+  // hitting a protocol error when we call server.createMessage.
+  const clientCaps = server.getClientCapabilities();
+  if (clientCaps?.sampling) {
+    samplingBridge = async (prompt: string): Promise<string> => {
+      const result = await server.createMessage({
+        messages: [{ role: "user", content: { type: "text", text: prompt } }],
+        maxTokens: SAMPLING_MAX_TOKENS,
+        // `none` keeps the sub-LLM isolated from the parent conversation —
+        // the paper's sub-RLM model spins up a fresh context per sub-call.
+        includeContext: "none",
+      });
+      // CreateMessageResult.content is a single block for the no-tools path.
+      if (result.content?.type === "text") {
+        return result.content.text;
+      }
+      // Image / audio content blocks are not useful for string interpolation;
+      // return a visible placeholder so the solver doesn't crash.
+      return `[sub-LLM returned non-text content: ${result.content?.type ?? "unknown"}]`;
+    };
+    console.error("[Lattice] Sampling bridge enabled — (llm_query ...) will delegate to client LLM");
+  } else {
+    console.error("[Lattice] Client did not advertise sampling support — (llm_query ...) will be unavailable");
+  }
 
   console.error("[Lattice] MCP server started (handle-based mode)");
   console.error(`[Lattice] Session timeout: ${SESSION_TIMEOUT_MS / 1000}s`);

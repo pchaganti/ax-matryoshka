@@ -427,3 +427,95 @@ describe("dispose", () => {
     expect(engine.getStats()).toBeNull();
   });
 });
+
+describe("llmQuery option — symbolic recursion hook (P0-followup for MCP sampling)", () => {
+  // These tests prove the llmQuery option is threaded through from
+  // NucleusEngine's constructor into the solver's SolverTools. The MCP
+  // sampling bridge in lattice-mcp-server.ts relies on this plumbing —
+  // it passes a `server.createMessage(...)` wrapper as the llmQuery
+  // callback when the client advertises `sampling` capability.
+
+  it("dispatches (llm_query ...) through the constructor-supplied callback", async () => {
+    const seen: string[] = [];
+    const engine = new NucleusEngine({
+      llmQuery: async (prompt: string) => {
+        seen.push(prompt);
+        return "MOCKED SUB-LLM RESPONSE";
+      },
+    });
+    engine.loadContent("hello world\ngoodbye world");
+
+    const result = await engine.execute('(llm_query "What is this document?")');
+
+    expect(result.success).toBe(true);
+    expect(result.value).toBe("MOCKED SUB-LLM RESPONSE");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toBe("What is this document?");
+  });
+
+  it("interpolates bindings into the sub-LLM prompt", async () => {
+    let seenPrompt = "";
+    const engine = new NucleusEngine({
+      llmQuery: async (prompt: string) => {
+        seenPrompt = prompt;
+        return "classification: error";
+      },
+    });
+    engine.loadContent("ERROR: boom\nERROR: crash\nINFO: ok");
+
+    await engine.execute('(grep "ERROR")');
+    const result = await engine.execute(
+      '(llm_query "Classify these: {items}" (items RESULTS))'
+    );
+
+    expect(result.success).toBe(true);
+    expect(seenPrompt).toContain("Classify these:");
+    expect(seenPrompt).toContain("ERROR: boom");
+    expect(seenPrompt).toContain("ERROR: crash");
+    expect(seenPrompt).not.toContain("{items}");
+  });
+
+  it("supports nested llm_query inside map (OOLONG pattern)", async () => {
+    const calls: string[] = [];
+    const engine = new NucleusEngine({
+      llmQuery: async (prompt: string) => {
+        calls.push(prompt);
+        return `classified-${calls.length}`;
+      },
+    });
+    engine.loadContent("ERROR: one\nERROR: two\nERROR: three");
+
+    await engine.execute('(grep "ERROR")');
+    const result = await engine.execute(
+      '(map RESULTS (lambda x (llm_query "classify: {item}" (item x))))'
+    );
+
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.value)).toBe(true);
+    expect((result.value as string[]).length).toBe(3);
+    expect(calls).toHaveLength(3);
+  });
+
+  it("reloading with loadContent preserves the llmQuery binding", async () => {
+    let called = 0;
+    const engine = new NucleusEngine({
+      llmQuery: async () => {
+        called++;
+        return "ok";
+      },
+    });
+    engine.loadContent("first");
+    await engine.execute('(llm_query "ping")');
+    engine.loadContent("second");
+    await engine.execute('(llm_query "ping")');
+    expect(called).toBe(2);
+  });
+
+  it("without llmQuery option, (llm_query ...) errors cleanly", async () => {
+    const engine = new NucleusEngine();
+    engine.loadContent("some content");
+    const result = await engine.execute('(llm_query "should fail")');
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/llm_query is not available/i);
+  });
+});

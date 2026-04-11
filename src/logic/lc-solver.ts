@@ -1087,8 +1087,10 @@ async function evaluate(
       if (!tools.llmQuery) {
         throw new Error(
           "llm_query is not available in this execution context. " +
-          "The RLM loop provides it; direct NucleusEngine / lattice-mcp " +
-          "sessions do not."
+          "The RLM loop provides it via the caller's llmClient, and " +
+          "lattice-mcp provides it when the MCP client advertises " +
+          "`sampling` capability. Standalone NucleusEngine / HandleSession " +
+          "instances must pass an llmQuery option to enable it."
         );
       }
       let interpolated = term.prompt;

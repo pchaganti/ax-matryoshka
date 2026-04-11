@@ -106,6 +106,20 @@ export interface ExpandResult {
 export interface HandleSessionOptions {
   /** Enable verbose logging on the underlying NucleusEngine */
   verbose?: boolean;
+  /**
+   * Optional sub-LLM bridge for the `(llm_query ...)` primitive.
+   *
+   * When present, the HandleSession forwards this callback to its
+   * underlying `NucleusEngine`, enabling every `(llm_query ...)` term
+   * (top-level and nested) to delegate to the caller-provided model.
+   *
+   * The primary consumer is `lattice-mcp-server.ts`, which wraps
+   * `server.createMessage(...)` so that lattice_query's `(llm_query ...)`
+   * calls are routed back to the MCP client's LLM via the standard
+   * MCP `sampling/createMessage` protocol. When omitted, `(llm_query ...)`
+   * throws a clear "not available" error.
+   */
+  llmQuery?: (prompt: string) => Promise<string>;
 }
 
 export class HandleSession {
@@ -145,7 +159,10 @@ export class HandleSession {
   }
 
   constructor(options: HandleSessionOptions = {}) {
-    this.engine = new NucleusEngine({ verbose: options.verbose });
+    this.engine = new NucleusEngine({
+      verbose: options.verbose,
+      llmQuery: options.llmQuery,
+    });
     this.db = new SessionDB();
     this.registry = new HandleRegistry(this.db);
     this.ops = new HandleOps(this.db, this.registry);
