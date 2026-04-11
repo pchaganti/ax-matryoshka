@@ -11,6 +11,8 @@
  *    across SolverTools instances; move lines onto SolverTools itself
  * 4. MEDIUM handle-session.ts — execute() re-serializes the whole array just to
  *    compute a token-savings estimate, defeating the point of handle storage
+ * 5. MEDIUM handle-session.ts — redundant eviction guard in execute() duplicates
+ *    HandleRegistry.store's own guard; delete the dead check
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -275,6 +277,34 @@ describe("Audit #96 — Chiasmus review round 2", () => {
         result.tokenMetadata!.stubTokens,
       );
       expect(result.tokenMetadata!.savingsPercent).toBeGreaterThan(50);
+
+      session.close();
+    });
+  });
+
+  // =========================================================================
+  // #5 MEDIUM — redundant eviction guard in HandleSession.execute
+  // =========================================================================
+  describe("#5 — handle count stays bounded via registry's internal guard", () => {
+    it("after 250+ array-result queries, handle count stays <= MAX_HANDLES", () => {
+      // HandleRegistry.MAX_HANDLES = 200. After we blow past that, the
+      // registry-internal guard must keep the count bounded. The outer
+      // guard in HandleSession.execute() that this fix deletes was unused
+      // (it checked > 200 but store() already keeps count <= 199) — so
+      // removing it should change nothing behaviorally.
+      const session = new HandleSession();
+      session.loadContent("a\nb\nc\nd\ne");
+
+      for (let i = 0; i < 250; i++) {
+        const r = session.execute('(grep "a")');
+        expect(r.success).toBe(true);
+      }
+
+      const info = session.getSessionInfo();
+      expect(info.handleCount).toBeLessThanOrEqual(200);
+      // Sanity: we actually produced enough queries to trigger eviction.
+      // If store() weren't evicting, handleCount would be 250.
+      expect(info.handleCount).toBeLessThan(250);
 
       session.close();
     });

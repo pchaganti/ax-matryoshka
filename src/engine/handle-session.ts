@@ -349,13 +349,10 @@ export class HandleSession {
       };
     }
 
-    // If result is an array, store in handle registry
-    const MAX_HANDLES = 200;
+    // If result is an array, store in handle registry. HandleRegistry.store()
+    // already bounds the handle count via its own MAX_HANDLES guard — no
+    // need to duplicate that check here.
     if (Array.isArray(result.value)) {
-      // Evict oldest handle if over limit
-      if (this.registry.handleCount() > MAX_HANDLES) {
-        this.registry.evictOldest();
-      }
       const handle = this.registry.store(result.value);
       this.registry.setResults(handle);
 
