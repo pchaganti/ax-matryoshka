@@ -285,6 +285,16 @@ TRANSFORM (returns new handle):
 EXTRACT:
   (match str "pattern" 1)       Extract regex group from string
 
+DATA MODEL IN MAP/FILTER LAMBDAS:
+When iterating over results, each item is converted to a string:
+- grep/bm25/fuzzy results → the matched line text
+- symbol objects (from list_symbols) → the symbol name (e.g. "myFunction")
+- chunks (from chunk_by_lines/size) → the chunk text
+- plain strings → the string itself
+Inside a lambda, the parameter (e.g. x) is this string value.
+Operations available inside lambdas: match, replace, split, parseInt, parseFloat,
+llm_query, get_symbol_body, find_references, and all other Nucleus commands.
+
 LLM_QUERY (multi-turn — works with any MCP client, no sampling required):
   (llm_query "prompt")                                     Ask a question, get your response
   (llm_query "describe: {item}" (item x))                  With variable binding
@@ -312,6 +322,23 @@ LLM_QUERY MAP WORKFLOW (OOLONG pattern — one suspension per item):
    → [LLM_QUERY_REQUEST id=q_2] ... tag: item2 ...  (next item)
 3. lattice_llm_respond id="q_2" response="feature"
    → $res1: Array(2) ["bug", "feature"]  (final result)
+
+LLM_QUERY + SYMBOLS (rate function complexity — one suspension per function):
+1. lattice_query '(list_symbols "function")'
+   → $res1: Array(10) [...]
+2. lattice_query '(map RESULTS (lambda x (llm_query "Rate complexity of {name}: {body}" (name x) (body (get_symbol_body x)))))'
+   → [LLM_QUERY_REQUEST id=q_1] ... Rate complexity of myFunction: function myFunction() { ... }
+3. lattice_llm_respond id="q_1" response="medium — has branching logic and error handling"
+   → [LLM_QUERY_REQUEST id=q_2] ... (next function)
+   ... repeat until all functions are rated ...
+   → $res2: Array(10) ["medium — ...", "low — ...", ...]  (final result)
+
+LLM_QUERY + CHUNKS (summarize document sections):
+1. lattice_query '(map (chunk_by_lines 100) (lambda c (llm_query "Summarize: {chunk}" (chunk c))))'
+   → [LLM_QUERY_REQUEST id=q_1] ... Summarize: <first 100 lines> ...
+2. lattice_llm_respond id="q_1" response="Introduction and setup instructions"
+   → [LLM_QUERY_REQUEST id=q_2] ... (next chunk)
+   ... repeat until all chunks are summarized ...
 
 EXAMPLE WORKFLOW:
 1. (grep "ERROR")                    → Returns: $res1: Array(500) [preview]
