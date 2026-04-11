@@ -49,7 +49,6 @@ function makeMockTools(content: string): SolverTools {
 }
 
 const mockSandbox = {
-  getMemory: () => [],
   execute: async () => ({ result: null, logs: [] }),
   dispose: () => {},
 } as any;

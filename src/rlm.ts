@@ -456,7 +456,7 @@ export async function runRLM(
 
     // Max turns reached without final answer
     log(`\n[RLM] Max turns (${maxTurns}) reached without final answer`);
-    return `Max turns (${maxTurns}) reached without final answer. Last memory state: ${JSON.stringify(sandbox.getMemory())}`;
+    return `Max turns (${maxTurns}) reached without final answer.`;
   } finally {
     try {
       sandbox.dispose();
