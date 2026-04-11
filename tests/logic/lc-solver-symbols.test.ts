@@ -131,6 +131,7 @@ type ID = string | number;
         sample: { start: "", middle: "", end: "" },
       }),
       context: sampleCode,
+      lines: sampleCode.split("\n"),
     };
 
     bindings = new Map();

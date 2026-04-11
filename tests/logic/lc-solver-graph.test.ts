@@ -109,6 +109,7 @@ function createHandler(db: Database): Handler {
         sample: { start: "", middle: "", end: "" },
       }),
       context: sampleCode,
+      lines: sampleCode.split("\n"),
     };
 
     bindings = new Map();

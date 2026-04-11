@@ -56,7 +56,8 @@
     "test:coverage": "vitest run --coverage",
     "mcp": "tsx src/mcp-server.ts",
     "repl": "tsx src/repl/lattice-repl.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.tests.json"
   },
   "keywords": [
     "llm",

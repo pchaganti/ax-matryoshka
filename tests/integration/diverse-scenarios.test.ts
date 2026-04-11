@@ -14,6 +14,7 @@ function createMockTools(context: string): SolverTools {
   const lines = context.split("\n");
   return {
     context,
+    lines,
     grep: (pattern: string) => {
       // Handle special regex chars that should be escaped
       const specialChars = /^[\$\.\^\*\+\?\[\]\(\)\{\}\|\\]$/;

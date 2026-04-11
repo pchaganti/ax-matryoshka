@@ -6,6 +6,7 @@ import type { SolverTools } from "../../src/logic/lc-solver.js";
 
 function makeMockAdapter(overrides?: Partial<ModelAdapter>): ModelAdapter {
   return {
+    name: "mock",
     buildSystemPrompt: () => "system prompt",
     extractCode: (response: string) => {
       // Extract S-expression from response
@@ -43,6 +44,7 @@ function makeMockTools(content: string): SolverTools {
       sample: { start: "", middle: "", end: "" },
     }),
     context: content,
+    lines,
   };
 }
 

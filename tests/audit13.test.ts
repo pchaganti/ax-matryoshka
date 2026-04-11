@@ -15,6 +15,7 @@ function createMockTools(context: string): SolverTools {
   const lines = context.split("\n");
   return {
     context,
+    lines,
     grep: (pattern: string) => {
       try {
         const regex = new RegExp(pattern, "gi");

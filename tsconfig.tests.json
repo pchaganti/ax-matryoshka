@@ -1,0 +1,38 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": ".",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    // Pre-existing latent type issues unrelated to SolverTools drift.
+    // Each is tracked separately; remove from this list once fixed so
+    // the file rejoins the drift-prevention check. See bd ticket
+    // "Backfill type-check coverage for excluded test files".
+    "tests/audit15.test.ts",
+    "tests/audit20.test.ts",
+    "tests/audit25.test.ts",
+    "tests/audit34.test.ts",
+    "tests/common.test.ts",
+    "tests/e2e.test.ts",
+    "tests/llm.test.ts",
+    "tests/mcp.test.ts",
+    "tests/skip-cwd-checking.test.ts",
+    "tests/streams.test.ts",
+    "tests/sugar.test.ts",
+    "tests/logic/relational-solver.test.ts",
+    "tests/persistence/checkpoint.test.ts",
+    "tests/persistence/handle-ops.test.ts",
+    "tests/persistence/integration.test.ts",
+    "tests/persistence/session-db.test.ts",
+    "tests/tool/http-adapter.test.ts",
+    "tests/treesitter/parser-registry.test.ts"
+  ]
+}

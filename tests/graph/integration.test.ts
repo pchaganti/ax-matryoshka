@@ -98,6 +98,7 @@ function bootstrap(): void {
       semantic: () => [],
       text_stats: () => ({ length: code.length, lineCount: code.split("\n").length, sample: { start: "", middle: "", end: "" } }),
       context: code,
+      lines: code.split("\n"),
     };
 
     bindings = new Map();

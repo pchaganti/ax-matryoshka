@@ -12,14 +12,13 @@
  * The LLM outputs LC intent, and this solver executes it.
  */
 
-import type { LCTerm, CoercionType, SynthesisExample } from "./types.js";
+import type { LCTerm, CoercionType } from "./types.js";
 import { fuseRRF, type LineResult } from "./rrf.js";
 import { applyGravityDampening, type DampenableResult } from "./dampening.js";
 import { QValueStore, rerank as rerankFn } from "./qvalue.js";
 import { resolveConstraints } from "./constraint-resolver.js";
-import { run, Rel, eq, conde, exist, failo, type Var, type Substitution } from "../minikanren/index.js";
 import { synthesizeExtractor, compileToFunction, prettyPrint, type Example } from "../synthesis/evalo/index.js";
-import { synthesizeFromExamples, deriveFunction } from "./relational-solver.js";
+import { synthesizeFromExamples } from "./relational-solver.js";
 import { SynthesisIntegrator } from "./synthesis-integrator.js";
 
 // Type for sandbox tools interface
@@ -514,7 +513,7 @@ function evaluate(
       log(`[Solver] True examples: ${trueExamples.length}, False examples: ${falseExamples.length}`);
 
       // Use miniKanren to find distinguishing pattern
-      const pattern = findDistinguishingPattern(trueExamples, falseExamples, log);
+      const pattern = findDistinguishingPattern(trueExamples, falseExamples);
 
       if (!pattern) {
         log(`[Solver] Could not find distinguishing pattern`);
@@ -1383,8 +1382,7 @@ function evaluateWithBinding(
  */
 function findDistinguishingPattern(
   trueExamples: string[],
-  falseExamples: string[],
-  log: (msg: string) => void
+  falseExamples: string[]
 ): string | null {
   // Common patterns to try
   const candidatePatterns = [
