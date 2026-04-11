@@ -506,6 +506,29 @@ SEARCH OPERATIONS (impure - access document):
   (text_stats)                  Get document statistics
   (lines start end)             Get lines in range (1-indexed)
 
+CHUNKING (pre-slice a large document before mapping over it):
+  (chunk_by_size N)             Split document into N-character slices
+  (chunk_by_lines N)            Split document into N-line slices
+  (chunk_by_regex "pat")        Split wherever pat matches; capture groups ignored
+    Canonical pattern:
+      (map (chunk_by_lines 100)
+           (lambda c (llm_query "summarize: {chunk}" (chunk c))))
+    fires one sub-LLM call per chunk — the paper's OOLONG-Pairs
+    pattern applied to a document too large for the context window.
+
+SUB-LLM (symbolic recursion):
+  (llm_query "prompt")                        Direct prompt with no bindings
+  (llm_query "...{name}..." (name VALUE))     With named placeholders
+  Rules:
+    — prompt is a literal string with {name} placeholders
+    — each (name TERM) fills one placeholder with TERM's evaluated value
+    — result is a string; bound to _N as usual
+    — works nested inside map/filter/reduce lambdas
+  Requires the MCP client to advertise "sampling" capability. If the
+  client doesn't, the call returns a clear "not available" error.
+  (Claude Code CLI does not currently support sampling; Claude Desktop
+  does, gated by per-server permission settings.)
+
 SYMBOL OPERATIONS (requires tree-sitter - .ts, .js, .py, .go, .md, etc.):
   (list_symbols)                List all symbols (functions, classes, methods, headings, etc.)
   (list_symbols "kind")         Filter by kind: "function", "class", "method", "interface", "type", "struct"
