@@ -29,6 +29,8 @@
  *     `()`, `[]`, `{}` so mismatched brackets yield confusing slices
  * 12. LOW lc-parser.ts — tokenize silently drops tokens past MAX_TOKENS;
  *     should throw so the caller sees an explicit "too large" error
+ * 13. LOW lc-solver.ts — findDistinguishingPattern fallback word bypasses
+ *     validateRegex (defensive structural guard, not exploitable today)
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
