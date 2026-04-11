@@ -37,12 +37,17 @@ TRANSFORM:
 (count RESULTS)   (sum RESULTS)
 
 SUB-LLM (semantic work on what grep/filter can't express):
-(llm_query "Classify each error into a category: {items}" (items RESULTS))
+(llm_query "Summarize the data below: {items}" (items RESULTS))
+  — one sub-LLM call over the whole binding
+(map RESULTS (lambda x (llm_query "classify: {item}" (item x))))
+  — one sub-LLM call PER ITEM, returns an array of strings
+(filter RESULTS (lambda x (match (llm_query "keep?: {item}" (item x)) "keep" 0)))
+  — semantic predicate, keep items whose sub-LLM response matches
+Rules:
   — prompt is a literal string with {name} placeholders
-  — each (name BINDING) fills one placeholder with the binding's value
+  — each (name TERM) fills one placeholder with TERM's evaluated value
   — use for open-ended semantic tasks (classification, summarization,
     paraphrase) that don't reduce to regex patterns
-  — result is a string bound to _N; the next turn sees its provenance
 
 CODE (when analyzing code):
 (list_symbols)  (list_symbols "function")

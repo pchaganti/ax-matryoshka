@@ -165,10 +165,10 @@ function createSolverTools(
 
     text_stats: () => ({ ...textStats }),
 
-    // Optional symbolic-recursion hook — threaded through only when the
-    // caller (runRLM) provides an llmClient. Other consumers that build
-    // a solver tools instance without an llmClient get undefined here,
-    // and `(llm_query …)` at solveAsync time returns a clear error.
+    // Optional symbolic-recursion hook — threaded through only when
+    // the caller (runRLM) provides an llmClient. Other consumers that
+    // build a solver tools instance without an llmClient get undefined
+    // here, and `(llm_query …)` at solve time throws a clear error.
     //
     // The sub-LLM is invoked with a standalone prompt that prefixes a
     // brief role-setting sentence so it doesn't try to act like a root
@@ -382,7 +382,7 @@ export async function runRLM(
 
   // Create solver tools for document operations. Passing llmClient here
   // enables the `(llm_query …)` LC primitive — the symbolic-recursion
-  // entry point used by solveAsync in the FSM handleExecute state.
+  // entry point used by solve() when the FSM's handleExecute dispatches.
   const solverTools = createSolverTools(documentContent, llmClient);
 
   // Build user message with optional constraints

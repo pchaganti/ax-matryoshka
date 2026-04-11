@@ -14,7 +14,7 @@ import type { FSMSpec, State } from "repl-sandbox";
 import { parse as parseLC } from "../logic/lc-parser.js";
 import { isClassifyTerm, validateClassifyExamples } from "../logic/lc-compiler.js";
 import { inferType, typeToString } from "../logic/type-inference.js";
-import { solveAsync as solveTermAsync } from "../logic/lc-solver.js";
+import { solve as solveTerm } from "../logic/lc-solver.js";
 import { analyzeExecution, getEncouragement } from "../feedback/execution-feedback.js";
 import { verifyResult } from "../constraints/verifier.js";
 import { generateClassifierGuidance } from "../rlm.js";
@@ -288,9 +288,10 @@ async function handleExecute(ctx: RLMContext): Promise<RLMContext> {
     ctx.log(`[Turn ${ctx.turn}] Available bindings: ${[...ctx.solverBindings.keys()].join(", ")}`);
   }
 
-  // solveTermAsync handles top-level `(llm_query …)` by calling
-  // `tools.llmQuery`; everything else flows through the sync `solve()`.
-  const solverResult = await solveTermAsync(ctx.parsedTerm, ctx.solverTools, ctx.solverBindings);
+  // solve() is fully async — it handles `(llm_query …)` both at the
+  // top level and inside nested map/filter/reduce lambdas, dispatching
+  // via `tools.llmQuery` when available.
+  const solverResult = await solveTerm(ctx.parsedTerm, ctx.solverTools, ctx.solverBindings);
   ctx.solverResult = {
     success: solverResult.success,
     value: solverResult.value,

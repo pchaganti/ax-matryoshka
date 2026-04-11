@@ -39,19 +39,17 @@ export interface SolverTools {
    */
   lines: string[];
   /**
-   * Optional sub-LLM invoker.
+   * Optional sub-LLM invoker for the `(llm_query …)` primitive.
    *
-   * When present, the FSM-level `solveAsync()` entry point dispatches
-   * top-level `(llm_query …)` terms through this function. Non-FSM
-   * callers (NucleusEngine, HandleSession, the standalone lattice-mcp
-   * path) omit this field, and the sync `solve()` path rejects
-   * `llm_query` with an explicit "top-level only" error so a nested
-   * `(map RESULTS (lambda x (llm_query …)))` fails loudly rather than
-   * silently returning garbage.
+   * When present, the solver dispatches every `(llm_query …)` term
+   * through this function — both top-level and nested inside
+   * `map`/`filter`/`reduce` lambdas. When absent, `(llm_query …)`
+   * throws a clear error naming the execution context.
    *
-   * Full nested support requires making `solve()` itself async — a
-   * deliberate POC limitation, not an oversight. See the GAP 1
-   * discussion in the paper-vs-project review.
+   * Only `runRLM` threads an `llmClient` through to here. Direct
+   * `NucleusEngine` / `HandleSession` / `LatticeTool` consumers
+   * deliberately leave this undefined — they run deterministic LC
+   * queries without the option to recurse into an LLM.
    */
   llmQuery?: (prompt: string) => Promise<string>;
 }
@@ -134,77 +132,11 @@ export async function solve(
     log(`[Solver] Available bindings: ${[...bindings.keys()].join(", ")}`);
   }
 
-  // Top-level `(llm_query …)` dispatch. This sits above the constraint
-  // resolver and the sync evaluator because `await evaluate()` is currently
-  // sync and cannot make sub-LLM calls directly. The follow-up Chunk 4
-  // of this refactor makes `await evaluate()` async and moves this handling
-  // inline into the switch so that nested use (inside `map` / `filter`
-  // lambdas) works — at which point this top-level branch becomes
-  // redundant and can be removed.
-  if (term.tag === "llm_query") {
-    if (!tools.llmQuery) {
-      return {
-        success: false,
-        value: null,
-        logs,
-        error:
-          "llm_query is not available in this execution context. The RLM loop " +
-          "provides it; direct NucleusEngine / lattice-mcp sessions do not.",
-      };
-    }
-
-    try {
-      let interpolated = term.prompt;
-      const MAX_INTERP_LEN = 500_000;
-
-      for (const b of term.bindings) {
-        const resolved = resolveConstraints(b.value);
-        // Nested bindings still use the sync evaluator — `llm_query`
-        // inside a binding expression is rejected with "top level only"
-        // until Chunk 4 makes await evaluate() async.
-        const val = await evaluate(resolved.term, tools, bindings, log, 0);
-        let serialized: string;
-        try {
-          serialized =
-            typeof val === "string" ? val : JSON.stringify(val, null, 2);
-        } catch {
-          serialized = String(val);
-        }
-        if (serialized.length > MAX_INTERP_LEN) {
-          serialized =
-            serialized.slice(0, MAX_INTERP_LEN) +
-            `\n…[truncated ${serialized.length - MAX_INTERP_LEN} chars]`;
-        }
-        const escapedName = b.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-        interpolated = interpolated.replace(
-          new RegExp(`\\{${escapedName}\\}`, "g"),
-          serialized.replace(/\$/g, "$$$$")
-        );
-      }
-
-      log(`[Solver] llm_query prompt length: ${interpolated.length} chars`);
-      log(
-        `[Solver] llm_query bindings: ${term.bindings.map((b) => b.name).join(", ") || "(none)"}`
-      );
-
-      const response = await tools.llmQuery(interpolated);
-
-      log(`[Solver] llm_query response length: ${response.length} chars`);
-
-      return { success: true, value: response, logs };
-    } catch (err) {
-      return {
-        success: false,
-        value: null,
-        logs,
-        error: err instanceof Error ? err.message : String(err),
-      };
-    }
-  }
-
   try {
     // Resolve constraints first
     const resolved = resolveConstraints(term);
+    // evaluate() handles every term tag uniformly, including
+    // `(llm_query …)` in both top-level and nested positions.
     const value = await evaluate(resolved.term, tools, bindings, log, 0);
     return { success: true, value, logs };
   } catch (err) {
@@ -217,16 +149,6 @@ export async function solve(
   }
 }
 
-/**
- * Deprecated alias for `solve()`. Prior to the async refactor `solve`
- * was sync and `solveAsync` dispatched top-level `(llm_query …)`
- * separately. Now `solve` itself is async and handles every term
- * uniformly (including nested `llm_query` inside `map`/`filter`/etc.).
- * Existing imports of `solveAsync` keep working while callers migrate.
- *
- * @deprecated Use `solve()` directly — this alias will be removed.
- */
-export const solveAsync = solve;
 
 const MAX_EVAL_DEPTH = 200;
 
@@ -487,6 +409,16 @@ async function evaluate(
       const transformLambda = term.transform;
       log(`[Solver] Mapping over ${collection.length} items`);
 
+      // Sequential iteration by design. When the lambda is pure (just
+      // regex match/extract) the sequential cost is negligible. When
+      // the lambda contains `(llm_query …)`, each iteration fires a
+      // sub-LLM call and sequential means N blocking round-trips —
+      // slow but deterministic. A future optimization can parallelize
+      // pure map bodies via `Promise.all`, or run llm_query lambdas
+      // with a bounded concurrency limit; both are separate PRs that
+      // need their own latency/ordering testing and are flagged in
+      // the paper's own limitations as the biggest performance win
+      // still on the table.
       const results: unknown[] = [];
       for (const item of collection) {
         // Handle both grep results (objects with .line) and raw values
@@ -1147,13 +1079,11 @@ async function evaluate(
     }
 
     case "llm_query": {
-      // Now that evaluate() is async (Chunk 4), `llm_query` works in
-      // any nested position — inside map/filter/reduce lambdas —
-      // because the surrounding evaluator can now `await` its result.
-      // The top-level fast-path in `solve()` still handles the common
-      // case without descending into the switch; this branch fires
-      // when `llm_query` appears inside a containing term like:
-      //   (map RESULTS (lambda x (llm_query "classify {item}" (item x))))
+      // Symbolic-recursion primitive. Works in any position the LC
+      // grammar allows — top-level, and nested inside map/filter/
+      // reduce lambdas — because evaluate() is async. The common
+      // OOLONG pattern looks like:
+      //   (map RESULTS (lambda x (llm_query "classify: {item}" (item x))))
       if (!tools.llmQuery) {
         throw new Error(
           "llm_query is not available in this execution context. " +
@@ -1183,8 +1113,13 @@ async function evaluate(
           serialized.replace(/\$/g, "$$$$")
         );
       }
-      log(`[Solver] llm_query (nested) prompt length: ${interpolated.length} chars`);
-      return await tools.llmQuery(interpolated);
+      log(`[Solver] llm_query prompt length: ${interpolated.length} chars`);
+      log(
+        `[Solver] llm_query bindings: ${term.bindings.map((b) => b.name).join(", ") || "(none)"}`
+      );
+      const response = await tools.llmQuery(interpolated);
+      log(`[Solver] llm_query response length: ${response.length} chars`);
+      return response;
     }
 
     default:

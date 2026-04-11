@@ -1,22 +1,19 @@
 /**
  * Tests for the `(llm_query …)` LC primitive — the symbolic-recursion
- * POC introduced as the paper-review GAP 1 fix.
+ * paper-review GAP 1 fix.
  *
- * Coverage:
+ * Coverage (top-level shapes — nested cases are in llm-query-nested.test.ts):
  *   1. Parser accepts the zero-binding and n-binding forms and rejects
  *      malformed shapes.
  *   2. Type inference returns `string`.
- *   3. `solveAsync` dispatches top-level `(llm_query …)` through
- *      `tools.llmQuery` and interpolates named bindings into the
- *      prompt.
- *   4. `solveAsync` surfaces a clean error when `tools.llmQuery` is
+ *   3. `solve()` dispatches `(llm_query …)` through `tools.llmQuery`
+ *      and interpolates named bindings into the prompt.
+ *   4. `solve()` surfaces a clean error when `tools.llmQuery` is
  *      missing.
- *   5. `solveAsync` propagates errors thrown by the underlying
+ *   5. `solve()` propagates errors thrown by the underlying
  *      `tools.llmQuery` callback.
- *   6. Nested `(llm_query …)` inside a `filter`/`map`/etc. throws a
- *      clear "top-level only" error via the sync `await solve()` path.
- *   7. Bindings inside a `(llm_query …)` are evaluated via the sync
- *      solver and respect cross-turn variables (`RESULTS`, `_N`).
+ *   6. Bindings inside a `(llm_query …)` are evaluated via the solver
+ *      and respect cross-turn variables (`RESULTS`, `_N`).
  */
 
 import { describe, it, expect } from "vitest";
@@ -24,7 +21,6 @@ import { parse } from "../../src/logic/lc-parser.js";
 import { inferType, typeToString } from "../../src/logic/type-inference.js";
 import {
   solve,
-  solveAsync,
   type SolverTools,
   type Bindings,
 } from "../../src/logic/lc-solver.js";
@@ -120,7 +116,7 @@ describe("llm_query solver — top-level execution", () => {
     const parsed = parse('(llm_query "What is this document about?")');
     expect(parsed.success).toBe(true);
 
-    const result = await solveAsync(parsed.term!, tools, new Map());
+    const result = await solve(parsed.term!, tools, new Map());
     expect(result.success).toBe(true);
     expect(result.value).toBe("MOCKED SUB-LLM RESPONSE");
     expect(received).toHaveLength(1);
@@ -147,7 +143,7 @@ describe("llm_query solver — top-level execution", () => {
     );
     expect(parsed.success).toBe(true);
 
-    const result = await solveAsync(parsed.term!, tools, bindings);
+    const result = await solve(parsed.term!, tools, bindings);
     expect(result.success).toBe(true);
     expect(received[0]).toContain("Classify these errors:");
     expect(received[0]).toContain("ERROR: disk full");
@@ -173,7 +169,7 @@ describe("llm_query solver — top-level execution", () => {
       '(llm_query "Apply {rules} to {data}" (rules _1) (data _2))'
     );
     expect(parsed.success).toBe(true);
-    const result = await solveAsync(parsed.term!, tools, bindings);
+    const result = await solve(parsed.term!, tools, bindings);
 
     expect(result.success).toBe(true);
     expect(seenPrompt).toBe("Apply rule-set-A to data-set-B");
@@ -183,7 +179,7 @@ describe("llm_query solver — top-level execution", () => {
     // `(lit 42)` should round-trip through the sync path unchanged.
     const parsed = parse("42");
     expect(parsed.success).toBe(true);
-    const result = await solveAsync(parsed.term!, makeTools(), new Map());
+    const result = await solve(parsed.term!, makeTools(), new Map());
     expect(result.success).toBe(true);
     expect(result.value).toBe(42);
   });
@@ -193,7 +189,7 @@ describe("llm_query solver — error paths", () => {
   it("errors cleanly when tools.llmQuery is missing", async () => {
     const parsed = parse('(llm_query "summarize")');
     expect(parsed.success).toBe(true);
-    const result = await solveAsync(parsed.term!, makeTools(), new Map());
+    const result = await solve(parsed.term!, makeTools(), new Map());
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/llm_query is not available/i);
   });
@@ -205,13 +201,10 @@ describe("llm_query solver — error paths", () => {
       },
     });
     const parsed = parse('(llm_query "summarize")');
-    const result = await solveAsync(parsed.term!, tools, new Map());
+    const result = await solve(parsed.term!, tools, new Map());
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/quota exceeded/);
   });
 
-  // The "top-level only" restriction was removed in the full async
-  // refactor — nested llm_query inside filter/map/reduce lambdas now
-  // works. See tests/logic/llm-query-nested.test.ts for the positive
-  // assertions that cover the nested capability.
+  // Nested-case coverage lives in tests/logic/llm-query-nested.test.ts.
 });

@@ -1,31 +1,24 @@
 /**
- * TDD harness for the nested `(llm_query …)` capability — the full
- * async refactor that unlocks the paper's OOLONG pattern
- * `(map RESULTS (lambda x (llm_query "classify: {item}" (item x))))`.
+ * Positive-assertion tests for the nested `(llm_query …)` capability
+ * — the paper's OOLONG pattern
  *
- * All tests in this file are currently marked `.fails` because the POC
- * sync `solve()` rejects nested `llm_query` with a "top level only"
- * error. As the async refactor lands in subsequent commits, each test
- * is expected to flip to a positive assertion (drop the `.fails`).
+ *   (map RESULTS (lambda x (llm_query "classify: {item}" (item x))))
  *
- * This file is the empirical contract for the refactor: the moment
- * every test here is flipped and still green, we know the new
- * capability actually works end-to-end. Until then, the `.fails` marker
- * keeps the suite green while documenting the target state.
+ * was the target of the full async refactor. This file exercises the
+ * nested capability from several angles (map, filter predicate, if
+ * branches, chained consumption) to prove that the sub-LLM is actually
+ * called at the expected nested sites and that results flow through
+ * downstream terms correctly.
  *
- * Commit history:
- *   - Chunk 1 (this commit): tests added as `.fails`, all green in
- *     expected-fail mode.
- *   - Chunks 2–3: async refactor of evaluate()/solve() and downstream
- *     callers. These tests remain `.fails` and green.
- *   - Chunk 4: restriction removed, tests flipped to `it(...)` and
- *     pass as positive assertions.
+ * Originally introduced as `.fails` TDD tests; flipped to `it(...)`
+ * once the async evaluator landed and the "top-level only" restriction
+ * was removed.
  */
 
 import { describe, it, expect } from "vitest";
 import { parse } from "../../src/logic/lc-parser.js";
 import {
-  solveAsync,
+  solve,
   type SolverTools,
   type Bindings,
 } from "../../src/logic/lc-solver.js";
@@ -73,7 +66,7 @@ describe("nested llm_query — async refactor target", () => {
     );
     expect(parsed.success).toBe(true);
 
-    const result = await solveAsync(parsed.term!, tools, bindings);
+    const result = await solve(parsed.term!, tools, bindings);
     expect(result.success).toBe(true);
     expect(Array.isArray(result.value)).toBe(true);
     expect(result.value).toEqual([
@@ -106,7 +99,7 @@ describe("nested llm_query — async refactor target", () => {
     );
     expect(parsed.success).toBe(true);
 
-    await solveAsync(parsed.term!, tools, bindings);
+    await solve(parsed.term!, tools, bindings);
     expect(received).toHaveLength(2);
     expect(received[0]).toBe("Classify alpha");
     expect(received[1]).toBe("Classify beta");
@@ -128,7 +121,7 @@ describe("nested llm_query — async refactor target", () => {
     );
     expect(parsed.success).toBe(true);
 
-    const result = await solveAsync(parsed.term!, tools, new Map());
+    const result = await solve(parsed.term!, tools, new Map());
     expect(result.success).toBe(true);
     expect(result.value).toBe("then-branch");
     expect(calls).toHaveLength(1);
@@ -154,16 +147,15 @@ describe("nested llm_query — async refactor target", () => {
     );
     expect(parsed.success).toBe(true);
 
-    const result = await solveAsync(parsed.term!, tools, bindings);
+    const result = await solve(parsed.term!, tools, bindings);
     expect(result.success).toBe(true);
     expect(result.value).toEqual(["good item", "another good one"]);
   });
 
   it("chained map → count via RESULTS works after the refactor", async () => {
-    // This exercises the full loop: nested llm_query produces an array,
+    // Exercises the full loop: nested llm_query produces an array,
     // RESULTS is re-bound to that array, and a follow-up `(count ...)`
-    // over the result still works. The current POC can't reach this
-    // state because the first term already trips "top level only".
+    // over the result still works.
     const tools = makeTools({
       llmQuery: async () => "OK",
     });
@@ -176,7 +168,7 @@ describe("nested llm_query — async refactor target", () => {
     );
     expect(parsed.success).toBe(true);
 
-    const mapResult = await solveAsync(parsed.term!, tools, bindings);
+    const mapResult = await solve(parsed.term!, tools, bindings);
     expect(mapResult.success).toBe(true);
     expect(mapResult.value).toEqual(["OK", "OK", "OK", "OK"]);
   });
