@@ -60,6 +60,10 @@ CODE (when analyzing code):
 MULTI-LINE: grep keyword → get lineNum → (lines N M)
 QUERY MAP: count→count, total/sum→sum, list→grep+FINAL
 ANSWER: <<<FINAL>>>answer<<<END>>>
+  — for large answers, use FINAL_VAR(name) to reference a binding:
+    <<<FINAL>>>FINAL_VAR(_2)<<<END>>>      — substitutes _2's full value
+    <<<FINAL>>>The matches: FINAL_VAR(RESULTS)<<<END>>>
+  — use this when inlining a large result would blow the context window
 
 ${hints?.hintsText || ""}${hints?.selfCorrectionText || ""}`;
 }

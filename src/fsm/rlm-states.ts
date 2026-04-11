@@ -97,6 +97,69 @@ function truncate(s: string, max: number = 4000): string {
   return s.slice(0, half) + `\n... [${s.length - max} chars truncated] ...\n` + s.slice(-half);
 }
 
+/**
+ * Expand `FINAL_VAR(name)` markers in a final-answer string by looking up
+ * `name` in the solver bindings and substituting in the serialized value.
+ *
+ * This lets the LLM close the loop without inlining a large binding into
+ * its <<<FINAL>>> payload:
+ *
+ *   <<<FINAL>>>FINAL_VAR(_2)<<<END>>>
+ *   <<<FINAL>>>Here are the results: FINAL_VAR(RESULTS) — done<<<END>>>
+ *
+ * Design choices:
+ *   - Unknown bindings are left in place. Silent stripping would hide a
+ *     real mistake (references to a binding that never existed); leaving
+ *     the marker makes the error obvious to the user without crashing.
+ *   - Arrays / objects are JSON.stringified; strings pass through
+ *     unchanged; numbers and booleans are coerced via String().
+ *   - Each expansion is capped at MAX_FINAL_VAR_EXPANSION bytes to
+ *     protect downstream consumers from pathological payloads. A cap
+ *     here is safer than removing it — the whole point of the feature
+ *     is to let the LLM reference large data, but "large" should not
+ *     mean unbounded.
+ *   - The regex only accepts identifier-shaped names, rejecting weird
+ *     cases like `FINAL_VAR(../../etc/passwd)` before they hit the
+ *     binding lookup.
+ */
+const FINAL_VAR_REGEX = /FINAL_VAR\(([A-Za-z_]\w*)\)/g;
+const MAX_FINAL_VAR_EXPANSION = 500_000;
+
+function expandFinalVar(answer: string, bindings: Bindings): string {
+  // Fast-path: no marker → return original string untouched, avoiding
+  // a regex allocation on the hot path where every final answer flows
+  // through this helper.
+  if (!answer.includes("FINAL_VAR(")) return answer;
+
+  return answer.replace(FINAL_VAR_REGEX, (match, name: string) => {
+    if (!bindings.has(name)) {
+      // Unknown binding: pass through so the error is visible.
+      return match;
+    }
+    const value = bindings.get(name);
+    let serialized: string;
+    if (typeof value === "string") {
+      serialized = value;
+    } else if (value === null || value === undefined) {
+      serialized = String(value);
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      serialized = String(value);
+    } else {
+      try {
+        serialized = JSON.stringify(value, null, 2);
+      } catch {
+        serialized = String(value);
+      }
+    }
+    if (serialized.length > MAX_FINAL_VAR_EXPANSION) {
+      serialized =
+        serialized.slice(0, MAX_FINAL_VAR_EXPANSION) +
+        `\n…[truncated ${serialized.length - MAX_FINAL_VAR_EXPANSION} chars]`;
+    }
+    return serialized;
+  });
+}
+
 interface VerificationResult {
   valid: boolean;
   result: string;
@@ -527,8 +590,12 @@ function handleAnalyze(ctx: RLMContext): RLMContext {
 function handleCheckFinalAnswer(ctx: RLMContext): RLMContext {
   // After code execution: check for final answer in the same response
   if (ctx.solverResult && !ctx.solverResult.error && !ctx.lastOutputWasUnhelpful && !Array.isArray(ctx.solverResult.value)) {
-    const finalAnswer = ctx.adapter.extractFinalAnswer(ctx.response);
-    if (finalAnswer !== null) {
+    const rawAnswer = ctx.adapter.extractFinalAnswer(ctx.response);
+    if (rawAnswer !== null) {
+      // Expand any FINAL_VAR(name) markers against the live solver bindings.
+      // Lets the LLM close the loop by pointing at a handle rather than
+      // inlining a potentially huge value into the final answer string.
+      const finalAnswer = expandFinalVar(rawAnswer, ctx.solverBindings);
       ctx.log(`[Turn ${ctx.turn}] Final answer found after code execution`);
       const verification = verifyAndReturnResult(finalAnswer, ctx.constraint, ctx.log);
       if (verification.valid) {
@@ -560,8 +627,8 @@ function handleCheckFinalAnswer(ctx: RLMContext): RLMContext {
       return ctx;
     }
 
-    const finalAnswer = ctx.adapter.extractFinalAnswer(ctx.response);
-    if (finalAnswer !== null) {
+    const rawAnswer = ctx.adapter.extractFinalAnswer(ctx.response);
+    if (rawAnswer !== null) {
       if (!ctx.codeExecuted) {
         ctx.log(`[Turn ${ctx.turn}] Rejecting final answer - no code executed yet`);
         ctx.history.push({
@@ -576,6 +643,8 @@ function handleCheckFinalAnswer(ctx: RLMContext): RLMContext {
         return ctx;
       }
 
+      // Expand FINAL_VAR(name) markers — see rationale in the first branch.
+      const finalAnswer = expandFinalVar(rawAnswer, ctx.solverBindings);
       ctx.log(`[Turn ${ctx.turn}] Final answer received`);
       const verification = verifyAndReturnResult(finalAnswer, ctx.constraint, ctx.log);
       if (verification.valid) {

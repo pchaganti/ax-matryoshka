@@ -1,9 +1,19 @@
 /**
- * Fingerprint test for the FINAL_VAR / memory-buffer legacy purge.
+ * Fingerprint test for the legacy JS-sandbox / memory-buffer purge.
  *
  * Each assertion pins a fact about the purged state so that an accidental
  * revert (e.g. re-adding FinalVarMarker, re-introducing memory.push into a
- * prompt) flips a test red instead of silently drifting back in.
+ * prompt, restoring src/sandbox.ts) flips a test red instead of silently
+ * drifting back in.
+ *
+ * NOTE on FINAL_VAR: the old JS-sandbox-backed `FINAL_VAR(memoryKey)` path
+ * is permanently gone, but a new binding-backed `FINAL_VAR(name)` primitive
+ * was revived in the async-RLM refactor. The new mechanism lives in
+ * `src/fsm/rlm-states.ts` (binding lookup at the final-answer boundary) and
+ * `src/adapters/nucleus.ts` (prompt hint). Those files are excluded from
+ * the FINAL_VAR-absence checks below; the other adapters and rlm.ts itself
+ * must still stay clean of the string, because reviving it there would
+ * reintroduce the FinalVarMarker type or the memory-buffer path.
  *
  * These are deliberately grep-based over source files — the whole point is
  * to assert the *absence* of specific strings/files, which a structural
@@ -56,10 +66,12 @@ describe("FINAL_VAR / memory-buffer legacy purge", () => {
     });
   });
 
-  describe("FINAL_VAR parsing and prompt hints removed", () => {
+  describe("FINAL_VAR legacy path removed (new binding-backed path excluded)", () => {
+    // nucleus.ts is intentionally excluded: it now teaches the LLM the
+    // revived FINAL_VAR(name) primitive in its system prompt. The adapters
+    // below never supported the feature, so they must stay clean.
     it.each([
       "adapters/base.ts",
-      "adapters/nucleus.ts",
       "adapters/deepseek.ts",
       "adapters/qwen.ts",
       "adapters/qwen-synthesis.ts",
