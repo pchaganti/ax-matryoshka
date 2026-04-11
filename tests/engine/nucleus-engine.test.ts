@@ -23,38 +23,38 @@ describe("NucleusEngine", () => {
   });
 
   describe("initialization", () => {
-    it("should create engine without document", () => {
+    it("should create engine without document", async () => {
       const emptyEngine = new NucleusEngine();
       expect(emptyEngine.isLoaded()).toBe(false);
     });
 
-    it("should load document content", () => {
+    it("should load document content", async () => {
       expect(engine.isLoaded()).toBe(true);
     });
 
-    it("should report correct stats", () => {
+    it("should report correct stats", async () => {
       const stats = engine.getStats();
       expect(stats).not.toBeNull();
       expect(stats!.lineCount).toBe(12);
       expect(stats!.length).toBeGreaterThan(0);
     });
 
-    it("should get raw content", () => {
+    it("should get raw content", async () => {
       expect(engine.getContent()).toBe(SAMPLE_DOCUMENT);
     });
   });
 
   describe("grep command", () => {
-    it("should find matches with grep", () => {
-      const result = engine.execute('(grep "FATAL")');
+    it("should find matches with grep", async () => {
+      const result = await engine.execute('(grep "FATAL")');
 
       expect(result.success).toBe(true);
       expect(Array.isArray(result.value)).toBe(true);
       expect((result.value as unknown[]).length).toBe(3);
     });
 
-    it("should return match details", () => {
-      const result = engine.execute('(grep "FATAL")');
+    it("should return match details", async () => {
+      const result = await engine.execute('(grep "FATAL")');
       const matches = result.value as Array<{ match: string; line: string; lineNum: number }>;
 
       expect(matches[0].match).toBe("FATAL");
@@ -62,15 +62,15 @@ describe("NucleusEngine", () => {
       expect(matches[0].lineNum).toBe(1);
     });
 
-    it("should handle regex patterns", () => {
-      const result = engine.execute('(grep "Sales:")');
+    it("should handle regex patterns", async () => {
+      const result = await engine.execute('(grep "Sales:")');
 
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(4);
     });
 
-    it("should return empty array for no matches", () => {
-      const result = engine.execute('(grep "NOTFOUND")');
+    it("should return empty array for no matches", async () => {
+      const result = await engine.execute('(grep "NOTFOUND")');
 
       expect(result.success).toBe(true);
       expect(result.value).toEqual([]);
@@ -78,17 +78,17 @@ describe("NucleusEngine", () => {
   });
 
   describe("count command", () => {
-    it("should count results after grep", () => {
-      engine.execute('(grep "FATAL")');
-      const result = engine.execute('(count RESULTS)');
+    it("should count results after grep", async () => {
+      await engine.execute('(grep "FATAL")');
+      const result = await engine.execute('(count RESULTS)');
 
       expect(result.success).toBe(true);
       expect(result.value).toBe(3);
     });
 
-    it("should count all lines with INFO", () => {
-      engine.execute('(grep "INFO")');
-      const result = engine.execute('(count RESULTS)');
+    it("should count all lines with INFO", async () => {
+      await engine.execute('(grep "INFO")');
+      const result = await engine.execute('(count RESULTS)');
 
       expect(result.success).toBe(true);
       expect(result.value).toBe(3);
@@ -96,17 +96,17 @@ describe("NucleusEngine", () => {
   });
 
   describe("filter command", () => {
-    it("should filter results with predicate", () => {
-      engine.execute('(grep "FATAL")');
-      const result = engine.execute('(filter RESULTS (lambda x (match x "Network" 0)))');
+    it("should filter results with predicate", async () => {
+      await engine.execute('(grep "FATAL")');
+      const result = await engine.execute('(filter RESULTS (lambda x (match x "Network" 0)))');
 
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(1);
     });
 
-    it("should filter for specific content", () => {
-      engine.execute('(grep "FATAL")');
-      const result = engine.execute('(filter RESULTS (lambda x (match x "Database" 0)))');
+    it("should filter for specific content", async () => {
+      await engine.execute('(grep "FATAL")');
+      const result = await engine.execute('(filter RESULTS (lambda x (match x "Database" 0)))');
 
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(1);
@@ -114,9 +114,9 @@ describe("NucleusEngine", () => {
   });
 
   describe("sum command", () => {
-    it("should sum numeric values", () => {
-      engine.execute('(grep "Sales")');
-      const result = engine.execute('(sum RESULTS)');
+    it("should sum numeric values", async () => {
+      await engine.execute('(grep "Sales")');
+      const result = await engine.execute('(sum RESULTS)');
 
       expect(result.success).toBe(true);
       // $1,500,000 + $2,300,000 + $1,800,000 + $2,400,000 = $8,000,000
@@ -125,10 +125,10 @@ describe("NucleusEngine", () => {
   });
 
   describe("map command", () => {
-    it("should extract values with map", () => {
-      engine.execute('(grep "Sales")');
+    it("should extract values with map", async () => {
+      await engine.execute('(grep "Sales")');
       // Extract the dollar amounts
-      const result = engine.execute('(map RESULTS (lambda x (match x "\\\\$([0-9,]+)" 1)))');
+      const result = await engine.execute('(map RESULTS (lambda x (match x "\\\\$([0-9,]+)" 1)))');
 
       expect(result.success).toBe(true);
       // Map extracts from the .line property of grep results
@@ -137,8 +137,8 @@ describe("NucleusEngine", () => {
   });
 
   describe("text_stats command", () => {
-    it("should return document statistics", () => {
-      const result = engine.execute('(text_stats)');
+    it("should return document statistics", async () => {
+      const result = await engine.execute('(text_stats)');
 
       expect(result.success).toBe(true);
       const stats = result.value as { length: number; lineCount: number };
@@ -148,8 +148,8 @@ describe("NucleusEngine", () => {
   });
 
   describe("lines command", () => {
-    it("should return line range", () => {
-      const result = engine.execute('(lines 1 3)');
+    it("should return line range", async () => {
+      const result = await engine.execute('(lines 1 3)');
 
       expect(result.success).toBe(true);
       // lines returns an array for compatibility with filter/map
@@ -159,36 +159,36 @@ describe("NucleusEngine", () => {
   });
 
   describe("string operations", () => {
-    it("should match pattern and extract group", () => {
-      const result = engine.execute('(match "Sales Q1: $1,500,000" "\\\\$([0-9,]+)" 1)');
+    it("should match pattern and extract group", async () => {
+      const result = await engine.execute('(match "Sales Q1: $1,500,000" "\\\\$([0-9,]+)" 1)');
 
       expect(result.success).toBe(true);
       expect(result.value).toBe("1,500,000");
     });
 
-    it("should replace pattern", () => {
-      const result = engine.execute('(replace "hello world" "world" "universe")');
+    it("should replace pattern", async () => {
+      const result = await engine.execute('(replace "hello world" "world" "universe")');
 
       expect(result.success).toBe(true);
       expect(result.value).toBe("hello universe");
     });
 
-    it("should split string", () => {
-      const result = engine.execute('(split "a,b,c" "," 1)');
+    it("should split string", async () => {
+      const result = await engine.execute('(split "a,b,c" "," 1)');
 
       expect(result.success).toBe(true);
       expect(result.value).toBe("b");
     });
 
-    it("should parse integer", () => {
-      const result = engine.execute('(parseInt "42")');
+    it("should parse integer", async () => {
+      const result = await engine.execute('(parseInt "42")');
 
       expect(result.success).toBe(true);
       expect(result.value).toBe(42);
     });
 
-    it("should parse float", () => {
-      const result = engine.execute('(parseFloat "3.14")');
+    it("should parse float", async () => {
+      const result = await engine.execute('(parseFloat "3.14")');
 
       expect(result.success).toBe(true);
       expect(result.value).toBe(3.14);
@@ -196,38 +196,38 @@ describe("NucleusEngine", () => {
   });
 
   describe("bindings and state", () => {
-    it("should maintain RESULTS across commands", () => {
-      engine.execute('(grep "FATAL")');
+    it("should maintain RESULTS across commands", async () => {
+      await engine.execute('(grep "FATAL")');
 
       const bindings = engine.getBindings();
       expect(bindings.RESULTS).toBe("Array[3]");
     });
 
-    it("should create numbered bindings", () => {
-      engine.execute('(grep "FATAL")');
-      engine.execute('(count RESULTS)');
+    it("should create numbered bindings", async () => {
+      await engine.execute('(grep "FATAL")');
+      await engine.execute('(count RESULTS)');
 
       const bindings = engine.getBindings();
       expect(bindings._1).toBe("Array[3]");
       expect(bindings._2).toBe(3);
     });
 
-    it("should allow manual binding", () => {
+    it("should allow manual binding", async () => {
       engine.setBinding("myVar", 42);
       expect(engine.getBinding("myVar")).toBe(42);
     });
 
-    it("should reset state", () => {
-      engine.execute('(grep "FATAL")');
+    it("should reset state", async () => {
+      await engine.execute('(grep "FATAL")');
       expect(Object.keys(engine.getBindings()).length).toBeGreaterThan(0);
 
       engine.reset();
       expect(Object.keys(engine.getBindings()).length).toBe(0);
     });
 
-    it("should preserve RESULTS when executing scalar operations", () => {
-      engine.execute('(grep "FATAL")');
-      const countResult = engine.execute('(count RESULTS)');
+    it("should preserve RESULTS when executing scalar operations", async () => {
+      await engine.execute('(grep "FATAL")');
+      const countResult = await engine.execute('(count RESULTS)');
 
       // RESULTS should still be the array, not the count
       const results = engine.getBinding("RESULTS") as unknown[];
@@ -238,10 +238,10 @@ describe("NucleusEngine", () => {
   });
 
   describe("turn bindings eviction", () => {
-    it("should evict old turn bindings after exceeding cap while preserving RESULTS and _fn_*", () => {
+    it("should evict old turn bindings after exceeding cap while preserving RESULTS and _fn_*", async () => {
       // Execute more than 100 queries to trigger eviction
       for (let i = 0; i < 110; i++) {
-        engine.execute('(grep "FATAL")');
+        await engine.execute('(grep "FATAL")');
       }
 
       const bindings = engine.getBindings();
@@ -257,10 +257,10 @@ describe("NucleusEngine", () => {
       expect(bindings._110).toBeDefined();
     });
 
-    it("should evict numerically oldest keys, not lexicographically first", () => {
+    it("should evict numerically oldest keys, not lexicographically first", async () => {
       // Execute 105 queries - should keep _6 through _105 (100 keys)
       for (let i = 0; i < 105; i++) {
-        engine.execute('(grep "FATAL")');
+        await engine.execute('(grep "FATAL")');
       }
 
       const bindings = engine.getBindings();
@@ -277,7 +277,7 @@ describe("NucleusEngine", () => {
   });
 
   describe("grep match limit", () => {
-    it("should cap results at MAX_GREP_MATCHES for broad patterns", () => {
+    it("should cap results at MAX_GREP_MATCHES for broad patterns", async () => {
       // Create a very large document that would produce many matches
       const bigLines: string[] = [];
       for (let i = 0; i < 15000; i++) {
@@ -287,62 +287,62 @@ describe("NucleusEngine", () => {
       bigEngine.loadContent(bigLines.join("\n"));
 
       // Pattern that matches every "line" - will produce 15000 matches
-      const result = bigEngine.execute('(grep "line")');
+      const result = await bigEngine.execute('(grep "line")');
       expect(result.success).toBe(true);
       const matches = result.value as unknown[];
       // Should be capped at 10000 (MAX_GREP_MATCHES)
       expect(matches.length).toBeLessThanOrEqual(10000);
     });
 
-    it("should return all matches when below limit", () => {
-      const result = engine.execute('(grep "FATAL")');
+    it("should return all matches when below limit", async () => {
+      const result = await engine.execute('(grep "FATAL")');
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(3);
     });
   });
 
   describe("regex validation (ReDoS protection)", () => {
-    it("should reject catastrophic backtracking patterns", () => {
-      const result = engine.execute('(grep "(a+)+$")');
+    it("should reject catastrophic backtracking patterns", async () => {
+      const result = await engine.execute('(grep "(a+)+$")');
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/regex|pattern|nested/i);
     });
 
-    it("should reject excessively long patterns", () => {
+    it("should reject excessively long patterns", async () => {
       const longPattern = "a".repeat(501);
-      const result = engine.execute(`(grep "${longPattern}")`);
+      const result = await engine.execute(`(grep "${longPattern}")`);
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/regex|pattern|long/i);
     });
 
-    it("should accept normal patterns", () => {
-      const result = engine.execute('(grep "ERROR|WARN")');
+    it("should accept normal patterns", async () => {
+      const result = await engine.execute('(grep "ERROR|WARN")');
       expect(result.success).toBe(true);
     });
 
-    it("should accept digit patterns", () => {
-      const result = engine.execute('(grep "\\\\d+")');
+    it("should accept digit patterns", async () => {
+      const result = await engine.execute('(grep "\\\\d+")');
       expect(result.success).toBe(true);
     });
   });
 
   describe("error handling", () => {
-    it("should return error for invalid syntax", () => {
-      const result = engine.execute('(grep "unclosed');
+    it("should return error for invalid syntax", async () => {
+      const result = await engine.execute('(grep "unclosed');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Parse error");
     });
 
-    it("should return error for unknown command", () => {
-      const result = engine.execute('(unknownCommand "test")');
+    it("should return error for unknown command", async () => {
+      const result = await engine.execute('(unknownCommand "test")');
 
       expect(result.success).toBe(false);
     });
 
-    it("should return error when no document loaded", () => {
+    it("should return error when no document loaded", async () => {
       const emptyEngine = new NucleusEngine();
-      const result = emptyEngine.execute('(grep "test")');
+      const result = await emptyEngine.execute('(grep "test")');
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("No document loaded");
@@ -350,8 +350,8 @@ describe("NucleusEngine", () => {
   });
 
   describe("executeAll", () => {
-    it("should execute multiple commands in sequence", () => {
-      const results = engine.executeAll([
+    it("should execute multiple commands in sequence", async () => {
+      const results = await engine.executeAll([
         '(grep "FATAL")',
         '(count RESULTS)',
       ]);
@@ -364,7 +364,7 @@ describe("NucleusEngine", () => {
   });
 
   describe("command reference", () => {
-    it("should return command reference", () => {
+    it("should return command reference", async () => {
       const ref = NucleusEngine.getCommandReference();
 
       expect(ref).toContain("grep");
@@ -375,7 +375,7 @@ describe("NucleusEngine", () => {
 });
 
 describe("Factory functions", () => {
-  it("should create engine from content", () => {
+  it("should create engine from content", async () => {
     const engine = createEngineFromContent("test content");
 
     expect(engine.isLoaded()).toBe(true);
@@ -391,23 +391,23 @@ describe("Factory functions", () => {
 });
 
 describe("ReDoS protection in grep", () => {
-  it("should reject ReDoS pattern (a+)+", () => {
+  it("should reject ReDoS pattern (a+)+", async () => {
     const engine = createEngineFromContent("aaaaaaaaaaaa test data");
-    const result = engine.execute('(grep "(a+)+")');
+    const result = await engine.execute('(grep "(a+)+")');
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/regex|backtracking/i);
   });
 });
 
 describe("loadContent empty string edge case", () => {
-  it("should treat empty string as not loaded", () => {
+  it("should treat empty string as not loaded", async () => {
     const engine = new NucleusEngine();
     engine.loadContent("");
     // Empty document should not be considered "loaded"
     expect(engine.isLoaded()).toBe(false);
   });
 
-  it("should treat whitespace-only string as not loaded", () => {
+  it("should treat whitespace-only string as not loaded", async () => {
     const engine = new NucleusEngine();
     engine.loadContent("   \n\n  ");
     // Whitespace-only document should not be considered "loaded"
@@ -416,7 +416,7 @@ describe("loadContent empty string edge case", () => {
 });
 
 describe("dispose", () => {
-  it("should clear content and state after dispose", () => {
+  it("should clear content and state after dispose", async () => {
     const engine = createEngineFromContent("some content here");
     expect(engine.isLoaded()).toBe(true);
     expect(engine.getContent()).toBe("some content here");

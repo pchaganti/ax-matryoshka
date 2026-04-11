@@ -43,7 +43,7 @@ describe("Audit16 #2: solver extract group<0", () => {
       pattern: "(\\d+)",
       group: -1,
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     // Should return null for negative group, not access result[-1]
     expect(result.value).toBe(null);
   });
@@ -70,7 +70,7 @@ describe("Audit16 #3: evaluateWithBinding extract group<0", () => {
         body: { tag: "extract", str: { tag: "var", name: "x" }, pattern: "(\\d+)", group: -1 },
       },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     const arr = result.value as any[];
     if (arr.length > 0) {
@@ -95,7 +95,7 @@ describe("Audit16 #4: solver split negative index", () => {
       delim: ",",
       index: -1,
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     // Negative index should return null, not access from end of array
     expect(result.value).toBe(null);
   });
@@ -122,7 +122,7 @@ describe("Audit16 #5: evaluateWithBinding split negative index", () => {
         body: { tag: "split", str: { tag: "var", name: "x" }, delim: ",", index: -1 },
       },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     const arr = result.value as any[];
     if (arr.length > 0) {
@@ -154,7 +154,7 @@ describe("Audit16 #6: evaluatePredicate group<0", () => {
         body: { tag: "match", str: { tag: "var", name: "x" }, pattern: "hello", group: -1 },
       },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     // With group -1, match should fail, so filter should return empty
     const arr = result.value as any[];
@@ -243,7 +243,7 @@ describe("Audit16 #9: parseCurrency operator precedence", () => {
       tag: "parseCurrency",
       str: { tag: "lit", value: "(1234" },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     // Without explicit parens in the OR chain, JS may misparse the precedence
     // The result should be positive 1234, not -1234
     expect(result.value).toBe(1234);

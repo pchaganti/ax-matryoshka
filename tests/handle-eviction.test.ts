@@ -33,11 +33,11 @@ describe("Handle eviction", () => {
     fs.rmSync(tempDir, { recursive: true });
   });
 
-  it("should not evict handles when count is below limit", () => {
+  it("should not evict handles when count is below limit", async () => {
     // Create a few handles
-    const r1 = session.execute('(grep "LINE_00")');
-    const r2 = session.execute('(grep "LINE_01")');
-    const r3 = session.execute('(grep "LINE_02")');
+    const r1 = await session.execute('(grep "LINE_00")');
+    const r2 = await session.execute('(grep "LINE_01")');
+    const r3 = await session.execute('(grep "LINE_02")');
 
     expect(r1.handle).toBe("$res1");
     expect(r2.handle).toBe("$res2");
@@ -50,12 +50,12 @@ describe("Handle eviction", () => {
     expect(bindings["$res3"]).toBeDefined();
   });
 
-  it("should not evict when at exactly MAX_HANDLES - 1", () => {
+  it("should not evict when at exactly MAX_HANDLES - 1", async () => {
     // Create handles up to limit minus 1. This is a conceptual test:
     // after storing a handle, the count should be the number of stored handles.
     // The eviction check should use > not >= to avoid premature eviction.
-    const r1 = session.execute('(grep "LINE_00")');
-    const r2 = session.execute('(grep "LINE_01")');
+    const r1 = await session.execute('(grep "LINE_00")');
+    const r2 = await session.execute('(grep "LINE_01")');
 
     // Both should be present - no eviction for small counts
     expect(session.expand(r1.handle!).success).toBe(true);

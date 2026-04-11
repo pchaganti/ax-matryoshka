@@ -21,14 +21,14 @@ DEBUG: Cache hit ratio: 95%`;
   });
 
   describe("loadContent", () => {
-    it("should load document and return stats", () => {
+    it("should load document and return stats", async () => {
       const stats = session.loadContent(testDocument);
 
       expect(stats.lineCount).toBe(7);
       expect(stats.size).toBe(testDocument.length);
     });
 
-    it("should mark session as loaded", () => {
+    it("should mark session as loaded", async () => {
       expect(session.isLoaded()).toBe(false);
       session.loadContent(testDocument);
       expect(session.isLoaded()).toBe(true);
@@ -40,8 +40,8 @@ DEBUG: Cache hit ratio: 95%`;
       session.loadContent(testDocument);
     });
 
-    it("should return handle stub for array results", () => {
-      const result = session.execute('(grep "ERROR")');
+    it("should return handle stub for array results", async () => {
+      const result = await session.execute('(grep "ERROR")');
 
       expect(result.success).toBe(true);
       expect(result.handle).toMatch(/^\$res\d+$/);
@@ -49,38 +49,38 @@ DEBUG: Cache hit ratio: 95%`;
       expect(result.value).toBeUndefined(); // Full data not returned
     });
 
-    it("should return scalar values directly", () => {
+    it("should return scalar values directly", async () => {
       // First get some results
-      session.execute('(grep "ERROR")');
+      await session.execute('(grep "ERROR")');
 
       // Then count them
-      const result = session.execute("(count RESULTS)");
+      const result = await session.execute("(count RESULTS)");
 
       expect(result.success).toBe(true);
       expect(result.value).toBe(3);
       expect(result.handle).toBeUndefined(); // No handle for scalars
     });
 
-    it("should include preview in stub", () => {
-      const result = session.execute('(grep "ERROR")');
+    it("should include preview in stub", async () => {
+      const result = await session.execute('(grep "ERROR")');
 
       expect(result.stub).toContain("ERROR"); // Preview should show first item
     });
 
-    it("should chain queries using RESULTS", () => {
+    it("should chain queries using RESULTS", async () => {
       // Get all errors
-      const grep = session.execute('(grep "ERROR")');
+      const grep = await session.execute('(grep "ERROR")');
       expect(grep.success).toBe(true);
 
       // Filter to timeout errors - note: lambda syntax is (lambda x ...) not (lambda (x) ...)
-      const filtered = session.execute(
+      const filtered = await session.execute(
         '(filter RESULTS (lambda x (match x "timeout" 0)))'
       );
       expect(filtered.success).toBe(true);
       expect(filtered.handle).toBeDefined();
 
       // Count filtered results
-      const count = session.execute("(count RESULTS)");
+      const count = await session.execute("(count RESULTS)");
       expect(count.value).toBe(2); // "Connection timeout" and "Request timeout"
     });
   });
@@ -90,8 +90,8 @@ DEBUG: Cache hit ratio: 95%`;
       session.loadContent(testDocument);
     });
 
-    it("should expand handle to full data", () => {
-      const grep = session.execute('(grep "ERROR")');
+    it("should expand handle to full data", async () => {
+      const grep = await session.execute('(grep "ERROR")');
       const expanded = session.expand(grep.handle!);
 
       expect(expanded.success).toBe(true);
@@ -99,8 +99,8 @@ DEBUG: Cache hit ratio: 95%`;
       expect(expanded.total).toBe(3);
     });
 
-    it("should support limit for partial expansion", () => {
-      const grep = session.execute('(grep "ERROR")');
+    it("should support limit for partial expansion", async () => {
+      const grep = await session.execute('(grep "ERROR")');
       const expanded = session.expand(grep.handle!, { limit: 2 });
 
       expect(expanded.success).toBe(true);
@@ -109,8 +109,8 @@ DEBUG: Cache hit ratio: 95%`;
       expect(expanded.limit).toBe(2);
     });
 
-    it("should support offset for pagination", () => {
-      const grep = session.execute('(grep "ERROR")');
+    it("should support offset for pagination", async () => {
+      const grep = await session.execute('(grep "ERROR")');
       const expanded = session.expand(grep.handle!, { offset: 1, limit: 2 });
 
       expect(expanded.success).toBe(true);
@@ -118,8 +118,8 @@ DEBUG: Cache hit ratio: 95%`;
       expect(expanded.offset).toBe(1);
     });
 
-    it("should format as lines when requested", () => {
-      const grep = session.execute('(grep "ERROR")');
+    it("should format as lines when requested", async () => {
+      const grep = await session.execute('(grep "ERROR")');
       const expanded = session.expand(grep.handle!, { format: "lines" });
 
       expect(expanded.success).toBe(true);
@@ -127,7 +127,7 @@ DEBUG: Cache hit ratio: 95%`;
       expect(expanded.data![0]).toMatch(/^\[\d+\]/);
     });
 
-    it("should return error for invalid handle", () => {
+    it("should return error for invalid handle", async () => {
       const expanded = session.expand("$invalid");
 
       expect(expanded.success).toBe(false);
@@ -140,9 +140,9 @@ DEBUG: Cache hit ratio: 95%`;
       session.loadContent(testDocument);
     });
 
-    it("should list all handles as stubs", () => {
-      session.execute('(grep "ERROR")');
-      session.execute('(grep "INFO")');
+    it("should list all handles as stubs", async () => {
+      await session.execute('(grep "ERROR")');
+      await session.execute('(grep "INFO")');
 
       const bindings = session.getBindings();
 
@@ -151,8 +151,8 @@ DEBUG: Cache hit ratio: 95%`;
       expect(bindings["$res1"]).toContain("Array");
     });
 
-    it("should indicate current RESULTS binding", () => {
-      session.execute('(grep "ERROR")');
+    it("should indicate current RESULTS binding", async () => {
+      await session.execute('(grep "ERROR")');
 
       const bindings = session.getBindings();
 
@@ -161,13 +161,13 @@ DEBUG: Cache hit ratio: 95%`;
   });
 
   describe("preview and sample", () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       session.loadContent(testDocument);
       // Use a pattern that matches all lines (any character sequence)
-      session.execute('(grep "[A-Z]")'); // Matches all lines starting with letters
+      await session.execute('(grep "[A-Z]")'); // Matches all lines starting with letters
     });
 
-    it("should preview first N items", () => {
+    it("should preview first N items", async () => {
       const bindings = session.getBindings();
       const handle = Object.keys(bindings).find((k) => k.startsWith("$res"))!;
 
@@ -176,7 +176,7 @@ DEBUG: Cache hit ratio: 95%`;
       expect(preview).toHaveLength(3);
     });
 
-    it("should sample random N items", () => {
+    it("should sample random N items", async () => {
       const bindings = session.getBindings();
       const handle = Object.keys(bindings).find((k) => k.startsWith("$res"))!;
 
@@ -191,8 +191,8 @@ DEBUG: Cache hit ratio: 95%`;
       session.loadContent(testDocument);
     });
 
-    it("should describe handle contents", () => {
-      const grep = session.execute('(grep "ERROR")');
+    it("should describe handle contents", async () => {
+      const grep = await session.execute('(grep "ERROR")');
       const desc = session.describe(grep.handle!);
 
       expect(desc.count).toBe(3);
@@ -207,8 +207,8 @@ DEBUG: Cache hit ratio: 95%`;
       session.loadContent(testDocument);
     });
 
-    it("should clear resultsHandle explicitly after clearing query handles", () => {
-      session.execute('(grep "ERROR")');
+    it("should clear resultsHandle explicitly after clearing query handles", async () => {
+      await session.execute('(grep "ERROR")');
 
       const registry = (session as unknown as { registry: { getResults: () => string | null } }).registry;
       expect(registry.getResults()).not.toBeNull();
@@ -218,7 +218,7 @@ DEBUG: Cache hit ratio: 95%`;
       expect(registry.getResults()).toBeNull();
     });
 
-    it("should clear resultsHandle even when it points to a surviving memo handle", () => {
+    it("should clear resultsHandle even when it points to a surviving memo handle", async () => {
       const memoResult = session.memo("test memo content", "test label");
       const registry = (session as unknown as { registry: { setResults: (h: string) => void; getResults: () => string | null } }).registry;
 
@@ -232,8 +232,8 @@ DEBUG: Cache hit ratio: 95%`;
       expect(registry.getResults()).toBeNull();
     });
 
-    it("should preserve memo handles while clearing query handles", () => {
-      session.execute('(grep "ERROR")');
+    it("should preserve memo handles while clearing query handles", async () => {
+      await session.execute('(grep "ERROR")');
       session.memo("test memo content", "test label");
 
       const bindingsBefore = session.getBindings();
@@ -253,8 +253,8 @@ DEBUG: Cache hit ratio: 95%`;
       session.loadContent(testDocument);
     });
 
-    it("should clear all handles but keep document", () => {
-      session.execute('(grep "ERROR")');
+    it("should clear all handles but keep document", async () => {
+      await session.execute('(grep "ERROR")');
       expect(Object.keys(session.getBindings()).length).toBeGreaterThan(0);
 
       session.reset();
@@ -265,7 +265,7 @@ DEBUG: Cache hit ratio: 95%`;
   });
 
   describe("close safety", () => {
-    it("should close DB even if parserRegistry.dispose() throws", () => {
+    it("should close DB even if parserRegistry.dispose() throws", async () => {
       // Create a separate session for this test to avoid afterEach double-close
       const testSession = new HandleSession();
       testSession.loadContent(testDocument);
@@ -279,7 +279,7 @@ DEBUG: Cache hit ratio: 95%`;
       expect(() => testSession.close()).not.toThrow();
     });
 
-    it("should complete close even if both parserRegistry.dispose() and db.close() throw", () => {
+    it("should complete close even if both parserRegistry.dispose() and db.close() throw", async () => {
       const testSession = new HandleSession();
       testSession.loadContent(testDocument);
 
@@ -340,7 +340,7 @@ DEBUG: Cache hit ratio: 95%`;
         size: expect.any(Number),
       });
 
-      const grepResult = session.execute('(grep "SLEEP_TOKEN")');
+      const grepResult = await session.execute('(grep "SLEEP_TOKEN")');
       expect(grepResult.success).toBe(true);
       expect(grepResult.handle).toBeDefined();
 
@@ -353,7 +353,7 @@ DEBUG: Cache hit ratio: 95%`;
       await session.loadFile("test-fixtures/short-article.md");
       await session.waitForSymbols();
 
-      const symbolResult = session.execute("(list_symbols)");
+      const symbolResult = await session.execute("(list_symbols)");
       expect(symbolResult.success).toBe(true);
       expect(symbolResult.handle).toBeDefined();
 
@@ -367,7 +367,7 @@ DEBUG: Cache hit ratio: 95%`;
       await session.loadFile("test-fixtures/setext-headings.md");
       await session.waitForSymbols();
 
-      const symbolResult = session.execute("(list_symbols)");
+      const symbolResult = await session.execute("(list_symbols)");
       expect(symbolResult.success).toBe(true);
       expect(symbolResult.handle).toBeDefined();
 
@@ -385,9 +385,9 @@ DEBUG: Cache hit ratio: 95%`;
   });
 
   describe("getSessionInfo", () => {
-    it("should return session metadata", () => {
+    it("should return session metadata", async () => {
       session.loadContent(testDocument, "test.log");
-      session.execute('(grep "ERROR")');
+      await session.execute('(grep "ERROR")');
 
       const info = session.getSessionInfo();
 
@@ -401,7 +401,7 @@ DEBUG: Cache hit ratio: 95%`;
 });
 
 describe("HandleSession - Token Savings", () => {
-  it("should demonstrate token savings with large results", () => {
+  it("should demonstrate token savings with large results", async () => {
     const session = new HandleSession();
 
     // Generate a large document
@@ -414,7 +414,7 @@ describe("HandleSession - Token Savings", () => {
     session.loadContent(largeDoc);
 
     // Execute query that returns many results
-    const result = session.execute('(grep "Log entry")');
+    const result = await session.execute('(grep "Log entry")');
 
     // Handle stub should be compact
     expect(result.stub!.length).toBeLessThan(100);

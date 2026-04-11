@@ -36,8 +36,8 @@ describe("Token metadata on results", () => {
       await session.loadFile(testFile);
     });
 
-    it("should include estimatedTokens on array results", () => {
-      const result = session.execute('(grep "LOG")');
+    it("should include estimatedTokens on array results", async () => {
+      const result = await session.execute('(grep "LOG")');
 
       expect(result.success).toBe(true);
       expect(result.tokenMetadata).toBeDefined();
@@ -45,24 +45,24 @@ describe("Token metadata on results", () => {
       expect(result.tokenMetadata!.stubTokens).toBeGreaterThan(0);
     });
 
-    it("should show significant savings ratio for large results", () => {
-      const result = session.execute('(grep "LOG")');
+    it("should show significant savings ratio for large results", async () => {
+      const result = await session.execute('(grep "LOG")');
 
       const meta = result.tokenMetadata!;
       expect(meta.estimatedFullTokens).toBeGreaterThan(meta.stubTokens);
       expect(meta.savingsPercent).toBeGreaterThan(90);
     });
 
-    it("should not include tokenMetadata for scalar results", () => {
-      session.execute('(grep "LOG")');
-      const result = session.execute("(count RESULTS)");
+    it("should not include tokenMetadata for scalar results", async () => {
+      await session.execute('(grep "LOG")');
+      const result = await session.execute("(count RESULTS)");
 
       expect(result.success).toBe(true);
       expect(result.tokenMetadata).toBeUndefined();
     });
 
-    it("should estimate tokens using ~4 chars per token heuristic", () => {
-      const result = session.execute('(grep "LOG")');
+    it("should estimate tokens using ~4 chars per token heuristic", async () => {
+      const result = await session.execute('(grep "LOG")');
 
       const meta = result.tokenMetadata!;
       // Stub is small, full data is much larger
@@ -76,8 +76,8 @@ describe("Token metadata on results", () => {
       await session.loadFile(testFile);
     });
 
-    it("should include token cost on expanded results", () => {
-      const query = session.execute('(grep "LOG")');
+    it("should include token cost on expanded results", async () => {
+      const query = await session.execute('(grep "LOG")');
       const expanded = session.expand(query.handle!, { limit: 10 });
 
       expect(expanded.success).toBe(true);
@@ -86,8 +86,8 @@ describe("Token metadata on results", () => {
       expect(expanded.tokenMetadata!.totalTokens).toBeGreaterThan(0);
     });
 
-    it("should show partial vs total tokens when using limit", () => {
-      const query = session.execute('(grep "LOG")');
+    it("should show partial vs total tokens when using limit", async () => {
+      const query = await session.execute('(grep "LOG")');
       const expanded = session.expand(query.handle!, { limit: 5 });
 
       const meta = expanded.tokenMetadata!;

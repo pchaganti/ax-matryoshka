@@ -27,7 +27,7 @@ describe("Memory Pad (Memo)", () => {
   });
 
   describe("basic memo storage", () => {
-    it("should store a memo and return a handle stub", () => {
+    it("should store a memo and return a handle stub", async () => {
       const result = session.memo("Hello, world!\nThis is a test.", "greeting");
 
       expect(result.success).toBe(true);
@@ -37,14 +37,14 @@ describe("Memory Pad (Memo)", () => {
       expect(result.stub).toContain("2 lines");
     });
 
-    it("should work without a loaded document", () => {
+    it("should work without a loaded document", async () => {
       // No loadFile/loadContent called
       const result = session.memo("Some context to remember", "context note");
       expect(result.success).toBe(true);
       expect(result.handle).toBe("$memo1");
     });
 
-    it("should assign incrementing memo handles", () => {
+    it("should assign incrementing memo handles", async () => {
       const r1 = session.memo("First memo", "first");
       const r2 = session.memo("Second memo", "second");
       const r3 = session.memo("Third memo", "third");
@@ -54,7 +54,7 @@ describe("Memory Pad (Memo)", () => {
       expect(r3.handle).toBe("$memo3");
     });
 
-    it("should report token savings", () => {
+    it("should report token savings", async () => {
       const longContent = "x".repeat(4000); // ~1000 tokens
       const result = session.memo(longContent, "big memo");
 
@@ -66,7 +66,7 @@ describe("Memory Pad (Memo)", () => {
   });
 
   describe("memo expansion", () => {
-    it("should expand memo content via expand()", () => {
+    it("should expand memo content via expand()", async () => {
       const content = "Line 1\nLine 2\nLine 3";
       session.memo(content, "test memo");
 
@@ -76,7 +76,7 @@ describe("Memory Pad (Memo)", () => {
       expect(expanded.data).toEqual(["Line 1", "Line 2", "Line 3"]);
     });
 
-    it("should support limit and offset on memo expansion", () => {
+    it("should support limit and offset on memo expansion", async () => {
       const content = Array.from({ length: 20 }, (_, i) => `Line ${i + 1}`).join("\n");
       session.memo(content, "numbered lines");
 
@@ -91,7 +91,7 @@ describe("Memory Pad (Memo)", () => {
   });
 
   describe("memo labels in bindings", () => {
-    it("should show memo labels in getBindings()", () => {
+    it("should show memo labels in getBindings()", async () => {
       session.memo("Some architecture notes", "arch overview");
 
       const bindings = session.getBindings();
@@ -105,7 +105,7 @@ describe("Memory Pad (Memo)", () => {
 
       await session.loadFile(testFile);
       session.memo("Analysis summary", "error analysis");
-      session.execute('(grep "ERROR")');
+      await session.execute('(grep "ERROR")');
 
       const bindings = session.getBindings();
       expect(bindings["$memo1"]).toContain("error analysis");
@@ -124,7 +124,7 @@ describe("Memory Pad (Memo)", () => {
       fs.writeFileSync(testFile, "Some document content");
 
       await session.loadFile(testFile);
-      session.execute('(grep "content")');
+      await session.execute('(grep "content")');
 
       // Clear query handles (simulates document reload)
       session.clearQueryHandles();
@@ -148,19 +148,19 @@ describe("Memory Pad (Memo)", () => {
   });
 
   describe("getMemoLabel", () => {
-    it("should return label for memo handles", () => {
+    it("should return label for memo handles", async () => {
       session.memo("Content", "my label");
       expect(session.getMemoLabel("$memo1")).toBe("my label");
     });
 
-    it("should return null for non-memo handles", () => {
+    it("should return null for non-memo handles", async () => {
       expect(session.getMemoLabel("$res1")).toBeNull();
       expect(session.getMemoLabel("$memo999")).toBeNull();
     });
   });
 
   describe("memo deletion", () => {
-    it("should delete a memo by handle", () => {
+    it("should delete a memo by handle", async () => {
       session.memo("Content A", "memo a");
       session.memo("Content B", "memo b");
 
@@ -175,12 +175,12 @@ describe("Memory Pad (Memo)", () => {
       expect(memo2.success).toBe(true);
     });
 
-    it("should return false for non-memo handles", () => {
+    it("should return false for non-memo handles", async () => {
       expect(session.deleteMemo("$res1")).toBe(false);
       expect(session.deleteMemo("$memo999")).toBe(false);
     });
 
-    it("should update byte tracking on delete", () => {
+    it("should update byte tracking on delete", async () => {
       session.memo("x".repeat(1000), "big memo");
       const before = session.getMemoStats();
       expect(before.totalBytes).toBe(1000);
@@ -193,7 +193,7 @@ describe("Memory Pad (Memo)", () => {
   });
 
   describe("memo eviction", () => {
-    it("should evict oldest memo when count limit exceeded", () => {
+    it("should evict oldest memo when count limit exceeded", async () => {
       const limit = HandleSession.MAX_MEMOS;
       // Fill to the limit
       for (let i = 0; i < limit; i++) {
@@ -215,7 +215,7 @@ describe("Memory Pad (Memo)", () => {
       expect(latest.success).toBe(true);
     });
 
-    it("should evict oldest memos when byte budget exceeded", () => {
+    it("should evict oldest memos when byte budget exceeded", async () => {
       const maxBytes = HandleSession.MAX_MEMO_BYTES;
       const chunkSize = Math.floor(maxBytes / 3);
 
@@ -237,7 +237,7 @@ describe("Memory Pad (Memo)", () => {
   });
 
   describe("reset clears memo state", () => {
-    it("should clear memo tracking on reset()", () => {
+    it("should clear memo tracking on reset()", async () => {
       session.memo("x".repeat(500), "memo a");
       session.memo("x".repeat(500), "memo b");
       expect(session.getMemoStats().count).toBe(2);
@@ -257,7 +257,7 @@ describe("Memory Pad (Memo)", () => {
   });
 
   describe("eviction order is numeric not alphabetic", () => {
-    it("should evict $memo2 before $memo10", () => {
+    it("should evict $memo2 before $memo10", async () => {
       // Create 12 memos so we have handles crossing the single/double digit boundary
       for (let i = 0; i < 12; i++) {
         session.memo(`Memo ${i + 1}`, `memo-${i + 1}`);
@@ -284,7 +284,7 @@ describe("Memory Pad (Memo)", () => {
   });
 
   describe("memo stats", () => {
-    it("should track memo count and bytes", () => {
+    it("should track memo count and bytes", async () => {
       const empty = session.getMemoStats();
       expect(empty.count).toBe(0);
       expect(empty.totalBytes).toBe(0);

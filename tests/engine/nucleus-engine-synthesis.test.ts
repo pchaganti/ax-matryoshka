@@ -10,11 +10,11 @@ import { NucleusEngine } from "../../src/engine/nucleus-engine.js";
 
 describe("NucleusEngine with Synthesis", () => {
   describe("synthesis integration", () => {
-    it("synthesizes currency parser via engine API", () => {
+    it("synthesizes currency parser via engine API", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("Price: 1.234,56€\nPrice: 500,00€");
 
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (map (grep "Price")
           (lambda x
             (parseCurrency (match x "([0-9.,]+€)" 1)
@@ -25,11 +25,11 @@ describe("NucleusEngine with Synthesis", () => {
       expect(result.value).toEqual([1234.56, 500]);
     });
 
-    it("synthesizes date parser via engine API", () => {
+    it("synthesizes date parser via engine API", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("Date: 15/01/24\nDate: 20/02/24");
 
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (map (grep "Date")
           (lambda x
             (parseDate (match x "(\\d+/\\d+/\\d+)" 1)
@@ -40,14 +40,14 @@ describe("NucleusEngine with Synthesis", () => {
       expect(result.value).toEqual(["2024-01-15", "2024-02-20"]);
     });
 
-    it("synthesizes predicate for filtering via engine API", () => {
+    it("synthesizes predicate for filtering via engine API", async () => {
       const engine = new NucleusEngine();
       engine.loadContent(
         "[ERROR] Connection failed\n[INFO] Started\n[ERROR] Timeout\n[DEBUG] Trace"
       );
 
       // Use lines instead of grep "" to avoid character-by-character matches
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (filter (lines 1 4)
           (lambda x
             (predicate x
@@ -66,53 +66,53 @@ describe("NucleusEngine with Synthesis", () => {
   });
 
   describe("define-fn and apply-fn", () => {
-    it("defines a function and applies it directly", () => {
+    it("defines a function and applies it directly", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("test");
 
       // Define a custom euro parser
-      const defineResult = engine.execute(`
+      const defineResult = await engine.execute(`
         (define-fn "euro-parser"
           :examples [("€100" 100) ("€250" 250)])
       `);
       expect(defineResult.success).toBe(true);
 
       // Apply it directly
-      const applyResult = engine.execute('(apply-fn "euro-parser" "€500")');
+      const applyResult = await engine.execute('(apply-fn "euro-parser" "€500")');
       expect(applyResult.success).toBe(true);
       expect(applyResult.value).toBe(500);
     });
 
-    it("can apply defined function in sequence", () => {
+    it("can apply defined function in sequence", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("€100\n€250\n€500");
 
       // Define function first
-      engine.execute(`
+      await engine.execute(`
         (define-fn "euro-parser"
           :examples [("€100" 100) ("€250" 250)])
       `);
 
       // Get lines, then apply function in a subsequent query
-      const linesResult = engine.execute("(lines 1 3)");
+      const linesResult = await engine.execute("(lines 1 3)");
       expect(linesResult.success).toBe(true);
 
       // Apply to first result
-      const applyResult = engine.execute('(apply-fn "euro-parser" "€100")');
+      const applyResult = await engine.execute('(apply-fn "euro-parser" "€100")');
       expect(applyResult.success).toBe(true);
       expect(applyResult.value).toBe(100);
     });
   });
 
   describe("classify standalone", () => {
-    it("builds classifier from examples and uses it", () => {
+    it("builds classifier from examples and uses it", async () => {
       const engine = new NucleusEngine();
       engine.loadContent(
         "ERROR: Failed\nINFO: OK\nERROR: Timeout\nWARN: Slow"
       );
 
       // Build classifier - it returns a function stored in RESULTS
-      const classifyResult = engine.execute(`
+      const classifyResult = await engine.execute(`
         (classify
           :examples [
             ("ERROR: Failed" true)
@@ -126,14 +126,14 @@ describe("NucleusEngine with Synthesis", () => {
   });
 
   describe("complex workflows", () => {
-    it("combines synthesis with count and filter using lines", () => {
+    it("combines synthesis with count and filter using lines", async () => {
       const engine = new NucleusEngine();
       engine.loadContent(
         "Sales: $1,000\nSales: $2,500\nExpense: $500\nSales: $750"
       );
 
       // Count sales using synthesized predicate with lines
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (count
           (filter (lines 1 4)
             (lambda x
@@ -148,14 +148,14 @@ describe("NucleusEngine with Synthesis", () => {
       expect(result.value).toBe(3); // 3 Sales lines
     });
 
-    it("chains map with synthesized parsers", () => {
+    it("chains map with synthesized parsers", async () => {
       const engine = new NucleusEngine();
       engine.loadContent(
         "Item A: €100,00\nItem B: €250,50\nItem C: €75,00"
       );
 
       // Sum all prices using synthesized parser
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (sum
           (map (grep "Item")
             (lambda x
@@ -167,13 +167,13 @@ describe("NucleusEngine with Synthesis", () => {
       expect(result.value).toBe(425.5);
     });
 
-    it("uses extract with type hint and synthesis", () => {
+    it("uses extract with type hint and synthesis", async () => {
       const engine = new NucleusEngine();
       engine.loadContent(
         "Revenue: $1,234.56\nRevenue: $789.00"
       );
 
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (map (grep "Revenue")
           (lambda x
             (extract x "\\$([0-9,.]+)" 1
@@ -187,12 +187,12 @@ describe("NucleusEngine with Synthesis", () => {
   });
 
   describe("error handling", () => {
-    it("handles synthesis failure gracefully", () => {
+    it("handles synthesis failure gracefully", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("test data");
 
       // Conflicting examples should still try to work
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (parseCurrency "invalid"
           :examples [("same" 1) ("same" 2)])
       `);
@@ -201,12 +201,12 @@ describe("NucleusEngine with Synthesis", () => {
       expect(result.success).toBeDefined();
     });
 
-    it("handles missing examples with fallback", () => {
+    it("handles missing examples with fallback", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("$100 and $200");
 
       // No examples provided - should use built-in parser
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (parseCurrency "$100")
       `);
 
@@ -216,12 +216,12 @@ describe("NucleusEngine with Synthesis", () => {
   });
 
   describe("RESULTS binding", () => {
-    it("persists synthesized results in RESULTS binding", () => {
+    it("persists synthesized results in RESULTS binding", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("[ERROR] One\n[INFO] Two\n[ERROR] Three");
 
       // Filter errors using synthesis with lines
-      engine.execute(`
+      await engine.execute(`
         (filter (lines 1 3)
           (lambda x
             (predicate x
@@ -232,19 +232,19 @@ describe("NucleusEngine with Synthesis", () => {
       `);
 
       // Count should use RESULTS from previous query
-      const countResult = engine.execute("(count RESULTS)");
+      const countResult = await engine.execute("(count RESULTS)");
       expect(countResult.success).toBe(true);
       expect(countResult.value).toBe(2);
     });
   });
 
   describe("synthesize standalone command", () => {
-    it("synthesizes function from example pairs", () => {
+    it("synthesizes function from example pairs", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("test");
 
       // Synthesize an uppercase transformer
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (synthesize
           ("hello" "HELLO")
           ("world" "WORLD"))
@@ -256,12 +256,12 @@ describe("NucleusEngine with Synthesis", () => {
       expect(typeof result.value).toBe("function");
     });
 
-    it("synthesizes function using example keyword syntax", () => {
+    it("synthesizes function using example keyword syntax", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("test");
 
       // This is the documented syntax that currently fails
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (synthesize
           (example "hello" "HELLO")
           (example "world" "WORLD"))
@@ -271,12 +271,12 @@ describe("NucleusEngine with Synthesis", () => {
       expect(result.value).toBeDefined();
     });
 
-    it("synthesizes numeric transformer", () => {
+    it("synthesizes numeric transformer", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("test");
 
       // Synthesize a doubling function
-      const result = engine.execute(`
+      const result = await engine.execute(`
         (synthesize
           ("1" 2)
           ("5" 10)

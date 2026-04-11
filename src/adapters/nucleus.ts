@@ -36,6 +36,19 @@ TRANSFORM:
 (map RESULTS (lambda x (match x "pat" 1)))
 (count RESULTS)   (sum RESULTS)
 
+SUB-LLM (semantic work on what grep/filter can't express):
+(llm_query "Summarize the data below: {items}" (items RESULTS))
+  — one sub-LLM call over the whole binding
+(map RESULTS (lambda x (llm_query "classify: {item}" (item x))))
+  — one sub-LLM call PER ITEM, returns an array of strings
+(filter RESULTS (lambda x (match (llm_query "keep?: {item}" (item x)) "keep" 0)))
+  — semantic predicate, keep items whose sub-LLM response matches
+Rules:
+  — prompt is a literal string with {name} placeholders
+  — each (name TERM) fills one placeholder with TERM's evaluated value
+  — use for open-ended semantic tasks (classification, summarization,
+    paraphrase) that don't reduce to regex patterns
+
 CODE (when analyzing code):
 (list_symbols)  (list_symbols "function")
 (get_symbol_body "name")  (find_references "name")
@@ -198,7 +211,7 @@ function extractCode(response: string): string | null {
 
   // Check for plain S-expression in raw text
   // Find opening paren and balance to closing
-  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph"];
+  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph", "llm_query"];
 
   const MAX_SEXP_ITERATIONS = 200;
   let sexpIterations = 0;

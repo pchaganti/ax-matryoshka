@@ -143,11 +143,11 @@ type ID = string | number;
   });
 
   describe("list_symbols", () => {
-    it("should return all symbols as array", () => {
+    it("should return all symbols as array", async () => {
       const result = parse("(list_symbols)");
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       expect(Array.isArray(solved.value)).toBe(true);
 
@@ -155,11 +155,11 @@ type ID = string | number;
       expect(symbols.length).toBe(6);
     });
 
-    it("should filter symbols by kind", () => {
+    it("should filter symbols by kind", async () => {
       const result = parse('(list_symbols "function")');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
 
       const symbols = solved.value as Symbol[];
@@ -168,11 +168,11 @@ type ID = string | number;
       expect(symbols[0].kind).toBe("function");
     });
 
-    it("should return methods when filtered", () => {
+    it("should return methods when filtered", async () => {
       const result = parse('(list_symbols "method")');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
 
       const symbols = solved.value as Symbol[];
@@ -182,11 +182,11 @@ type ID = string | number;
       expect(names).toContain("farewell");
     });
 
-    it("should return symbol metadata", () => {
+    it("should return symbol metadata", async () => {
       const result = parse('(list_symbols "class")');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
 
       const symbols = solved.value as Symbol[];
@@ -201,11 +201,11 @@ type ID = string | number;
   });
 
   describe("get_symbol_body", () => {
-    it("should return code body for symbol by name", () => {
+    it("should return code body for symbol by name", async () => {
       const result = parse('(get_symbol_body "hello")');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
 
       const body = solved.value as string;
@@ -213,10 +213,10 @@ type ID = string | number;
       expect(body).toContain('return "Hello, "');
     });
 
-    it("should return code body for symbol from result", () => {
+    it("should return code body for symbol from result", async () => {
       // First get a symbol
       const listResult = parse('(list_symbols "function")');
-      const listSolved = solve(listResult.term!, tools, bindings);
+      const listSolved = await solve(listResult.term!, tools, bindings);
       const symbols = listSolved.value as Symbol[];
 
       // Store in bindings as RESULTS
@@ -225,29 +225,29 @@ type ID = string | number;
       const result = parse("(get_symbol_body RESULTS)");
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
 
       const body = solved.value as string;
       expect(body).toContain("function hello");
     });
 
-    it("should return null for non-existent symbol", () => {
+    it("should return null for non-existent symbol", async () => {
       const result = parse('(get_symbol_body "nonExistent")');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       expect(solved.value).toBeNull();
     });
   });
 
   describe("find_references", () => {
-    it("should find all references to identifier", () => {
+    it("should find all references to identifier", async () => {
       const result = parse('(find_references "hello")');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
 
       const refs = solved.value as Array<{ line: string; lineNum: number }>;
@@ -255,11 +255,11 @@ type ID = string | number;
       expect(refs.length).toBeGreaterThanOrEqual(2); // Declaration + usage in greet()
     });
 
-    it("should find references to class name", () => {
+    it("should find references to class name", async () => {
       const result = parse('(find_references "Greeter")');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
 
       const refs = solved.value as Array<{ line: string; lineNum: number }>;
@@ -267,11 +267,11 @@ type ID = string | number;
       expect(refs.length).toBeGreaterThanOrEqual(1);
     });
 
-    it("should return empty array for unused identifier", () => {
+    it("should return empty array for unused identifier", async () => {
       const result = parse('(find_references "unusedThing")');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
 
       const refs = solved.value as Array<{ line: string; lineNum: number }>;
@@ -279,12 +279,12 @@ type ID = string | number;
       expect(refs.length).toBe(0);
     });
 
-    it("should not throw when name contains regex metacharacters", () => {
+    it("should not throw when name contains regex metacharacters", async () => {
       // Names with regex metacharacters should be escaped, not throw
       const result = parse('(find_references "foo(bar")');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       // Should not throw - metacharacters are escaped
       expect(solved.success).toBe(true);
       const refs = solved.value as Array<{ line: string; lineNum: number }>;
@@ -293,7 +293,7 @@ type ID = string | number;
   });
 
   describe("evaluation depth limit", () => {
-    it("should throw on deeply nested lambda application instead of crashing", () => {
+    it("should throw on deeply nested lambda application instead of crashing", async () => {
       // Build a deeply nested application: (app (app (app ... )))
       // This tests that evaluate() has a depth guard
       // We'll construct a term that causes deep recursion via evaluate
@@ -308,7 +308,7 @@ type ID = string | number;
         return;
       }
 
-      const solved = solve(result.term, tools, bindings);
+      const solved = await solve(result.term, tools, bindings);
       // Either it succeeds (if depth is within limit) or fails with depth error
       // The important thing is it doesn't crash with stack overflow
       if (!solved.success) {
@@ -318,10 +318,10 @@ type ID = string | number;
   });
 
   describe("integration scenarios", () => {
-    it("should support grep + symbols workflow", () => {
+    it("should support grep + symbols workflow", async () => {
       // Find all methods then get their bodies
       const listResult = parse('(list_symbols "method")');
-      const listSolved = solve(listResult.term!, tools, bindings);
+      const listSolved = await solve(listResult.term!, tools, bindings);
       expect(listSolved.success).toBe(true);
 
       const methods = listSolved.value as Symbol[];
@@ -330,23 +330,23 @@ type ID = string | number;
       // Get body of first method
       bindings.set("RESULTS", methods[0]);
       const bodyResult = parse("(get_symbol_body RESULTS)");
-      const bodySolved = solve(bodyResult.term!, tools, bindings);
+      const bodySolved = await solve(bodyResult.term!, tools, bindings);
       expect(bodySolved.success).toBe(true);
       expect(typeof bodySolved.value).toBe("string");
     });
 
-    it("should count symbols by kind", () => {
+    it("should count symbols by kind", async () => {
       const result = parse('(count (list_symbols "method"))');
       expect(result.success).toBe(true);
 
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       expect(solved.value).toBe(2);
     });
   });
 
   describe("regex validation in string operations", () => {
-    it("should reject match with nested-quantifier regex (ReDoS)", () => {
+    it("should reject match with nested-quantifier regex (ReDoS)", async () => {
       // Directly invoke solve with a match term containing a dangerous regex
       const term = {
         tag: "match" as const,
@@ -354,38 +354,38 @@ type ID = string | number;
         pattern: "(a+)+",
         group: 0,
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/backtracking|invalid regex|match:/i);
     });
 
-    it("should reject replace with nested-quantifier regex (ReDoS)", () => {
+    it("should reject replace with nested-quantifier regex (ReDoS)", async () => {
       const term = {
         tag: "replace" as const,
         str: { tag: "lit" as const, value: "test string" },
         from: "(a+)+",
         to: "x",
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/backtracking|invalid regex|replace:/i);
     });
 
-    it("should reject extract with nested-quantifier regex (ReDoS)", () => {
+    it("should reject extract with nested-quantifier regex (ReDoS)", async () => {
       const term = {
         tag: "extract" as const,
         str: { tag: "lit" as const, value: "test string" },
         pattern: "(a+)+",
         group: 0,
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/backtracking|invalid regex|extract:/i);
     });
   });
 
   describe("empty regex validation", () => {
-    it("should reject empty regex pattern", () => {
+    it("should reject empty regex pattern", async () => {
       const result = validateRegex("");
       expect(result.valid).toBe(false);
       expect(result.error).toContain("Empty");
@@ -393,82 +393,82 @@ type ID = string | number;
   });
 
   describe("add type validation", () => {
-    it("should throw when adding non-numeric operands", () => {
+    it("should throw when adding non-numeric operands", async () => {
       const term = {
         tag: "add" as const,
         left: { tag: "lit" as const, value: "hello" },
         right: { tag: "lit" as const, value: 5 },
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/expected numbers/i);
     });
 
-    it("should succeed with valid numeric operands", () => {
+    it("should succeed with valid numeric operands", async () => {
       const term = {
         tag: "add" as const,
         left: { tag: "lit" as const, value: 3 },
         right: { tag: "lit" as const, value: 5 },
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(true);
       expect(result.value).toBe(8);
     });
   });
 
   describe("negative group index guard", () => {
-    it("should return null for negative group index in match", () => {
+    it("should return null for negative group index in match", async () => {
       const term = {
         tag: "match" as const,
         str: { tag: "lit" as const, value: "hello world" },
         pattern: "(\\w+)",
         group: -1,
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(true);
       expect(result.value).toBeNull();
     });
   });
 
   describe("parseDate input length limit", () => {
-    it("should return null for excessively long date string", () => {
+    it("should return null for excessively long date string", async () => {
       const term = {
         tag: "parseDate" as const,
         str: { tag: "lit" as const, value: "A".repeat(500) },
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(true);
       expect(result.value).toBeNull();
     });
   });
 
   describe("parseDate month/day validation", () => {
-    it("should reject Feb 31 as invalid date", () => {
+    it("should reject Feb 31 as invalid date", async () => {
       const term = {
         tag: "parseDate" as const,
         str: { tag: "lit" as const, value: "02/31/2024" },
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(true);
       expect(result.value).toBeNull();
     });
 
-    it("should reject month 13 as invalid date", () => {
+    it("should reject month 13 as invalid date", async () => {
       const term = {
         tag: "parseDate" as const,
         str: { tag: "lit" as const, value: "2024-13-01" },
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(true);
       expect(result.value).toBeNull();
     });
 
-    it("should reject month 0 as invalid date", () => {
+    it("should reject month 0 as invalid date", async () => {
       const term = {
         tag: "parseDate" as const,
         str: { tag: "lit" as const, value: "2024-00-15" },
       };
-      const result = solve(term as any, tools, bindings);
+      const result = await solve(term as any, tools, bindings);
       expect(result.success).toBe(true);
       expect(result.value).toBeNull();
     });

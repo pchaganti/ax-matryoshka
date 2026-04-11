@@ -188,7 +188,7 @@ describe("Audit26 #11: lc-solver word split empty string filter", () => {
       fuzzy_search: () => [],
       text_stats: () => ({}),
     };
-    const result = mod.solve(
+    const result = await mod.solve(
       {
         tag: "classify" as const,
         examples: [

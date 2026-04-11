@@ -69,7 +69,7 @@ end
     it("should auto-index symbols on TypeScript file load", async () => {
       await session.loadContentWithSymbols(sampleTypeScript, "test.ts");
 
-      const result = session.execute('(list_symbols)');
+      const result = await session.execute('(list_symbols)');
       expect(result.success).toBe(true);
       expect(result.handle).toBeDefined();
 
@@ -87,7 +87,7 @@ end
     it("should auto-index symbols on Python file load", async () => {
       await session.loadContentWithSymbols(samplePython, "test.py");
 
-      const result = session.execute('(list_symbols)');
+      const result = await session.execute('(list_symbols)');
       expect(result.success).toBe(true);
 
       const expanded = session.expand(result.handle!);
@@ -100,7 +100,7 @@ end
     it("should auto-index symbols on Elixir file load", async () => {
       await session.loadContentWithSymbols(sampleElixir, "test.ex");
 
-      const result = session.execute('(list_symbols)');
+      const result = await session.execute('(list_symbols)');
       expect(result.success).toBe(true);
 
       const expanded = session.expand(result.handle!);
@@ -116,7 +116,7 @@ end
       await session.loadContentWithSymbols(plainText, "readme.txt");
 
       // list_symbols should return empty array, not fail
-      const result = session.execute('(list_symbols)');
+      const result = await session.execute('(list_symbols)');
       expect(result.success).toBe(true);
 
       // Either handle is empty or returns empty array
@@ -132,7 +132,7 @@ end
     it("should update symbols on document reload", async () => {
       // Load initial content
       await session.loadContentWithSymbols(sampleTypeScript, "test.ts");
-      let result = session.execute('(list_symbols "function")');
+      let result = await session.execute('(list_symbols "function")');
       expect(result.success).toBe(true);
       let expanded = session.expand(result.handle!);
 
@@ -144,7 +144,7 @@ function baz() { return 3; }
 `.trim();
 
       await session.loadContentWithSymbols(newCode, "test.ts");
-      result = session.execute('(list_symbols "function")');
+      result = await session.execute('(list_symbols "function")');
       expect(result.success).toBe(true);
       expanded = session.expand(result.handle!);
 
@@ -163,15 +163,15 @@ function baz() { return 3; }
       await session.loadContentWithSymbols(sampleTypeScript, "test.ts");
     });
 
-    it("should return handle for (list_symbols)", () => {
-      const result = session.execute('(list_symbols)');
+    it("should return handle for (list_symbols)", async () => {
+      const result = await session.execute('(list_symbols)');
       expect(result.success).toBe(true);
       expect(result.handle).toMatch(/^\$res\d+$/);
       expect(result.stub).toBeDefined();
     });
 
-    it("should allow expanding symbol handle", () => {
-      const result = session.execute('(list_symbols "method")');
+    it("should allow expanding symbol handle", async () => {
+      const result = await session.execute('(list_symbols "method")');
       expect(result.success).toBe(true);
 
       const expanded = session.expand(result.handle!, { limit: 2 });
@@ -186,8 +186,8 @@ function baz() { return 3; }
       });
     });
 
-    it("should support get_symbol_body by name", () => {
-      const result = session.execute('(get_symbol_body "hello")');
+    it("should support get_symbol_body by name", async () => {
+      const result = await session.execute('(get_symbol_body "hello")');
       expect(result.success).toBe(true);
 
       const body = result.value as string;
@@ -195,8 +195,8 @@ function baz() { return 3; }
       expect(body).toContain('return "Hello, "');
     });
 
-    it("should support find_references", () => {
-      const result = session.execute('(find_references "hello")');
+    it("should support find_references", async () => {
+      const result = await session.execute('(find_references "hello")');
       expect(result.success).toBe(true);
       expect(result.handle).toBeDefined();
 
@@ -210,8 +210,8 @@ function baz() { return 3; }
       await session.loadContentWithSymbols(sampleElixir, "test.ex");
     });
 
-    it("should return protocol symbols with interface kind", () => {
-      const result = session.execute('(list_symbols "interface")');
+    it("should return protocol symbols with interface kind", async () => {
+      const result = await session.execute('(list_symbols "interface")');
       expect(result.success).toBe(true);
 
       const expanded = session.expand(result.handle!);
@@ -219,8 +219,8 @@ function baz() { return 3; }
       expect(symbols.some(s => s.kind === "interface" && s.name === "String.Chars")).toBe(true);
     });
 
-    it("should support get_symbol_body for Elixir functions", () => {
-      const result = session.execute('(get_symbol_body "hello")');
+    it("should support get_symbol_body for Elixir functions", async () => {
+      const result = await session.execute('(get_symbol_body "hello")');
       expect(result.success).toBe(true);
 
       const body = result.value as string;
@@ -234,20 +234,20 @@ function baz() { return 3; }
       await session.loadContentWithSymbols(sampleTypeScript, "test.ts");
     });
 
-    it("should support counting symbols", () => {
-      const result = session.execute('(count (list_symbols "method"))');
+    it("should support counting symbols", async () => {
+      const result = await session.execute('(count (list_symbols "method"))');
       expect(result.success).toBe(true);
       expect(typeof result.value).toBe("number");
       expect(result.value).toBeGreaterThanOrEqual(2); // greet and farewell
     });
 
-    it("should work with grep alongside symbols", () => {
+    it("should work with grep alongside symbols", async () => {
       // Find all lines with "return"
-      const grepResult = session.execute('(grep "return")');
+      const grepResult = await session.execute('(grep "return")');
       expect(grepResult.success).toBe(true);
 
       // Also list functions
-      const symbolResult = session.execute('(list_symbols "function")');
+      const symbolResult = await session.execute('(list_symbols "function")');
       expect(symbolResult.success).toBe(true);
 
       // Both should work independently
@@ -258,9 +258,9 @@ function baz() { return 3; }
       expect(symbolExpanded.data?.length).toBeGreaterThan(0);
     });
 
-    it("should support mapping symbol names", () => {
+    it("should support mapping symbol names", async () => {
       // List all symbols
-      const listResult = session.execute('(list_symbols)');
+      const listResult = await session.execute('(list_symbols)');
       expect(listResult.success).toBe(true);
 
       // Verify RESULTS contains symbols with name property

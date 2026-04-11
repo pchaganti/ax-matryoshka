@@ -68,7 +68,7 @@ const testContext = `[10:00] INFO: System started
 [10:04] INFO: Connection established`;
 
 describe("dampen Parser", () => {
-  it("should parse dampen with collection and query", () => {
+  it("should parse dampen with collection and query", async () => {
     const result = parse('(dampen (bm25 "error") "database error")');
     expect(result.success).toBe(true);
     expect(result.term?.tag).toBe("dampen");
@@ -78,7 +78,7 @@ describe("dampen Parser", () => {
     }
   });
 
-  it("should parse dampen with variable reference", () => {
+  it("should parse dampen with variable reference", async () => {
     const result = parse('(dampen RESULTS "connection timeout")');
     expect(result.success).toBe(true);
     if (result.term?.tag === "dampen") {
@@ -87,26 +87,26 @@ describe("dampen Parser", () => {
     }
   });
 
-  it("should fail without query string", () => {
+  it("should fail without query string", async () => {
     const result = parse("(dampen RESULTS)");
     expect(result.success).toBe(false);
   });
 
-  it("should fail on empty dampen", () => {
+  it("should fail on empty dampen", async () => {
     const result = parse("(dampen)");
     expect(result.success).toBe(false);
   });
 });
 
 describe("dampen prettyPrint", () => {
-  it("should round-trip dampen", () => {
+  it("should round-trip dampen", async () => {
     const result = parse('(dampen RESULTS "database error")');
     expect(result.success).toBe(true);
     const printed = prettyPrint(result.term!);
     expect(printed).toBe('(dampen RESULTS "database error")');
   });
 
-  it("should round-trip dampen with nested expression", () => {
+  it("should round-trip dampen with nested expression", async () => {
     const result = parse('(dampen (bm25 "error") "database error")');
     expect(result.success).toBe(true);
     const printed = prettyPrint(result.term!);
@@ -115,7 +115,7 @@ describe("dampen prettyPrint", () => {
 });
 
 describe("dampen Type Inference", () => {
-  it("should infer array type for dampen", () => {
+  it("should infer array type for dampen", async () => {
     const result = parse('(dampen (bm25 "error") "database")');
     expect(result.success).toBe(true);
     const typeResult = inferType(result.term!);
@@ -125,14 +125,14 @@ describe("dampen Type Inference", () => {
 });
 
 describe("dampen Solver", () => {
-  it("should dampen results that lack query terms", () => {
+  it("should dampen results that lack query terms", async () => {
     const tools = createMockTools(testContext);
 
     // BM25 returns results with scores — dampen ones without "database"
     const result = parse('(dampen (bm25 "error connection database") "database")');
     expect(result.success).toBe(true);
 
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     expect(Array.isArray(solveResult.value)).toBe(true);
     const results = solveResult.value as DampenableResult[];
@@ -148,44 +148,44 @@ describe("dampen Solver", () => {
     }
   });
 
-  it("should work with bindings", () => {
+  it("should work with bindings", async () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
 
     // Store bm25 results in bindings
     const bm25Parse = parse('(bm25 "error connection")');
-    const bm25Result = solve(bm25Parse.term!, tools);
+    const bm25Result = await solve(bm25Parse.term!, tools);
     bindings.set("RESULTS", bm25Result.value);
 
     // Dampen using bindings
     const dampenParse = parse('(dampen RESULTS "database")');
     expect(dampenParse.success).toBe(true);
-    const dampenResult = solve(dampenParse.term!, tools, bindings);
+    const dampenResult = await solve(dampenParse.term!, tools, bindings);
     expect(dampenResult.success).toBe(true);
     expect(Array.isArray(dampenResult.value)).toBe(true);
   });
 
-  it("should compose with filter after dampening", () => {
+  it("should compose with filter after dampening", async () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
 
     const dampenParse = parse('(dampen (bm25 "error") "error")');
-    const dampenResult = solve(dampenParse.term!, tools);
+    const dampenResult = await solve(dampenParse.term!, tools);
     expect(dampenResult.success).toBe(true);
     bindings.set("RESULTS", dampenResult.value);
 
     const filterParse = parse('(filter RESULTS (lambda x (match x "timeout" 0)))');
     expect(filterParse.success).toBe(true);
-    const filterResult = solve(filterParse.term!, tools, bindings);
+    const filterResult = await solve(filterParse.term!, tools, bindings);
     expect(filterResult.success).toBe(true);
   });
 
-  it("should compose with fuse then dampen", () => {
+  it("should compose with fuse then dampen", async () => {
     const tools = createMockTools(testContext);
 
     const result = parse('(dampen (fuse (grep "ERROR") (bm25 "error")) "error")');
     expect(result.success).toBe(true);
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     expect(Array.isArray(solveResult.value)).toBe(true);
   });

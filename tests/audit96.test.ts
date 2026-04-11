@@ -68,9 +68,9 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       ].join("\n"));
     });
 
-    it("top-level (match \"Error\" \"error\" 0) returns match (case-insensitive)", () => {
+    it("top-level (match \"Error\" \"error\" 0) returns match (case-insensitive)", async () => {
       // This hits evaluate() match case at lc-solver.ts:547
-      const result = engine.execute('(match "Error 500" "error" 0)');
+      const result = await engine.execute('(match "Error 500" "error" 0)');
       expect(result.success).toBe(true);
       // Case-insensitive regex matches "Error"
       expect(result.value).not.toBeNull();
@@ -78,14 +78,14 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect((result.value as string).toLowerCase()).toBe("error");
     });
 
-    it("(filter RESULTS (lambda x (match x \"error\" 0))) keeps upper-case matches", () => {
+    it("(filter RESULTS (lambda x (match x \"error\" 0))) keeps upper-case matches", async () => {
       // This hits evaluatePredicate match case at lc-solver.ts:1078
-      const grepResult = engine.execute('(grep "error")');
+      const grepResult = await engine.execute('(grep "error")');
       expect(grepResult.success).toBe(true);
       // Grep is case-insensitive — finds "Error 500" and "Error" in "Internal Server Error"
       expect(Array.isArray(grepResult.value)).toBe(true);
 
-      const filterResult = engine.execute(
+      const filterResult = await engine.execute(
         '(filter RESULTS (lambda x (match x "error" 0)))'
       );
       expect(filterResult.success).toBe(true);
@@ -98,12 +98,12 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(hasError500).toBe(true);
     });
 
-    it("(map RESULTS (lambda x (match x \"fatal\" 0))) matches upper-case FATAL", () => {
+    it("(map RESULTS (lambda x (match x \"fatal\" 0))) matches upper-case FATAL", async () => {
       // This hits evaluateWithBinding match case at lc-solver.ts:1184
-      const grepResult = engine.execute('(grep "fatal")');
+      const grepResult = await engine.execute('(grep "fatal")');
       expect(grepResult.success).toBe(true);
 
-      const mapResult = engine.execute(
+      const mapResult = await engine.execute(
         '(map RESULTS (lambda x (match x "fatal" 0)))'
       );
       expect(mapResult.success).toBe(true);
@@ -142,7 +142,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       };
     }
 
-    it("sums $100 + $200, NOT $100+5 + $200+10 (multi-number line)", () => {
+    it("sums $100 + $200, NOT $100+5 + $200+10 (multi-number line)", async () => {
       // Before the fix: regex accumulates ALL numbers per line:
       //   Line 1: 100 + 5 = 105
       //   Line 2: 200 + 10 = 210
@@ -156,12 +156,12 @@ describe("Audit #96 — Chiasmus review round 2", () => {
         tag: "sum",
         collection: { tag: "grep", pattern: "Item" },
       };
-      const result = solve(term, tools);
+      const result = await solve(term, tools);
       expect(result.success).toBe(true);
       expect(result.value).toBe(300);
     });
 
-    it("sums error code 500 + error code 404 = 904 (no currency case)", () => {
+    it("sums error code 500 + error code 404 = 904 (no currency case)", async () => {
       // Before the fix: "Error 500: timeout 30s" would sum 500+30 = 530
       //                 "Error 404: attempt 2 of 3" would sum 404+2+3 = 409
       //                 Total = 939 (garbage)
@@ -175,17 +175,17 @@ describe("Audit #96 — Chiasmus review round 2", () => {
         tag: "sum",
         collection: { tag: "grep", pattern: "Error" },
       };
-      const result = solve(term, tools);
+      const result = await solve(term, tools);
       expect(result.success).toBe(true);
       expect(result.value).toBe(904);
     });
 
-    it("plain numeric-string entries still parse correctly (no regression)", () => {
+    it("plain numeric-string entries still parse correctly (no regression)", async () => {
       // Plain strings go through the `typeof val === "string"` branch, not
       // the grep-object branch. Verify that branch is unaffected by the fix.
       const stringEngine = new NucleusEngine();
       stringEngine.loadContent("$1,000\n$2,500.50");
-      const result = stringEngine.execute("(sum (lines 1 2))");
+      const result = await stringEngine.execute("(sum (lines 1 2))");
       expect(result.success).toBe(true);
       expect(result.value).toBe(3500.5);
     });
@@ -211,28 +211,28 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       };
     }
 
-    it("(lines 1 2) respects tools.lines even when it diverges from context", () => {
+    it("(lines 1 2) respects tools.lines even when it diverges from context", async () => {
       // Intentionally construct a tools object where `context` would, if
       // re-split, produce a DIFFERENT array than `lines`. The solver must
       // trust `tools.lines` rather than falling back to a cached reparse of
       // `tools.context` (which is exactly what the old module-level cache did).
       const tools = makeTools("aaa\nbbb\nccc", ["XXX", "YYY", "ZZZ"]);
       const term: LCTerm = { tag: "lines", start: 1, end: 2 };
-      const result = solve(term, tools);
+      const result = await solve(term, tools);
       expect(result.success).toBe(true);
       expect(result.value).toEqual(["XXX", "YYY"]);
     });
 
-    it("two tools instances do not leak state between each other", () => {
+    it("two tools instances do not leak state between each other", async () => {
       // Call A with one tools, then B with another. If A's call cached data
       // at module scope, B's call could accidentally see it.
       const toolsA = makeTools("line 1\nline 2", ["alpha", "beta"]);
       const toolsB = makeTools("line 3\nline 4", ["gamma", "delta"]);
       const term: LCTerm = { tag: "lines", start: 1, end: 2 };
 
-      const resultA1 = solve(term, toolsA);
-      const resultB = solve(term, toolsB);
-      const resultA2 = solve(term, toolsA);
+      const resultA1 = await solve(term, toolsA);
+      const resultB = await solve(term, toolsB);
+      const resultA2 = await solve(term, toolsA);
 
       expect(resultA1.value).toEqual(["alpha", "beta"]);
       expect(resultB.value).toEqual(["gamma", "delta"]);
@@ -244,7 +244,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
   // #4 MEDIUM — execute() should not re-serialize full array for token metadata
   // =========================================================================
   describe("#4 — execute() uses DB-side byte size, not full JSON.stringify", () => {
-    it("SessionDB.getHandleDataByteSize returns the sum of stored data sizes", () => {
+    it("SessionDB.getHandleDataByteSize returns the sum of stored data sizes", async () => {
       const db = new SessionDB();
       // createHandle stores each item as JSON via JSON.stringify
       const handle = db.createHandle(["hello", "world", 42]);
@@ -254,13 +254,13 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       db.close();
     });
 
-    it("getHandleDataByteSize returns 0 for unknown handle", () => {
+    it("getHandleDataByteSize returns 0 for unknown handle", async () => {
       const db = new SessionDB();
       expect(db.getHandleDataByteSize("$res999")).toBe(0);
       db.close();
     });
 
-    it("execute() routes token-metadata sizing through SessionDB, not JSON.stringify", () => {
+    it("execute() routes token-metadata sizing through SessionDB, not JSON.stringify", async () => {
       const session = new HandleSession();
       session.loadContent(
         Array.from({ length: 500 }, (_, i) => `line ${i} some content`).join("\n"),
@@ -271,7 +271,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       // the refactor: future edits that drop the DB path would fail here.
       const dbSpy = vi.spyOn(SessionDB.prototype, "getHandleDataByteSize");
 
-      const result = session.execute('(grep "line")');
+      const result = await session.execute('(grep "line")');
 
       expect(result.success).toBe(true);
       expect(result.handle).toBeDefined();
@@ -292,12 +292,12 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       session.close();
     });
 
-    it("token metadata remains directionally correct (large result → high savings)", () => {
+    it("token metadata remains directionally correct (large result → high savings)", async () => {
       const session = new HandleSession();
       session.loadContent(
         Array.from({ length: 200 }, (_, i) => `match ${i} some text`).join("\n"),
       );
-      const result = session.execute('(grep "match")');
+      const result = await session.execute('(grep "match")');
 
       expect(result.success).toBe(true);
       expect(result.tokenMetadata).toBeDefined();
@@ -315,10 +315,10 @@ describe("Audit #96 — Chiasmus review round 2", () => {
   // #6 MEDIUM — expand() reports totalTokens > 0 when offset is past end
   // =========================================================================
   describe("#6 — expand() reports non-zero totalTokens when slice is empty", () => {
-    it("offset past end returns empty slice but still reports true total size", () => {
+    it("offset past end returns empty slice but still reports true total size", async () => {
       const session = new HandleSession();
       session.loadContent("alpha\nbeta\ngamma\ndelta\nepsilon");
-      const grep = session.execute('(grep "a")');
+      const grep = await session.execute('(grep "a")');
       expect(grep.success).toBe(true);
       expect(grep.handle).toBeDefined();
 
@@ -348,10 +348,10 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       session.close();
     });
 
-    it("limit=0 returns empty slice but still reports true total size", () => {
+    it("limit=0 returns empty slice but still reports true total size", async () => {
       const session = new HandleSession();
       session.loadContent("alpha\nbeta\ngamma");
-      const grep = session.execute('(grep "a")');
+      const grep = await session.execute('(grep "a")');
       expect(grep.success).toBe(true);
 
       const full = session.expand(grep.handle!);
@@ -374,17 +374,17 @@ describe("Audit #96 — Chiasmus review round 2", () => {
   // #5 MEDIUM — redundant eviction guard in HandleSession.execute
   // =========================================================================
   describe("#5 — handle count stays bounded via registry's internal guard", () => {
-    it("after 250+ array-result queries, handle count stays <= MAX_HANDLES", () => {
+    it("after 250+ array-result queries, handle count stays <= MAX_HANDLES", async () => {
       // HandleRegistry.MAX_HANDLES = 200. After we blow past that, the
       // registry-internal guard must keep the count bounded. The outer
-      // guard in HandleSession.execute() that this fix deletes was unused
+      // guard in await HandleSession.execute() that this fix deletes was unused
       // (it checked > 200 but store() already keeps count <= 199) — so
       // removing it should change nothing behaviorally.
       const session = new HandleSession();
       session.loadContent("a\nb\nc\nd\ne");
 
       for (let i = 0; i < 250; i++) {
-        const r = session.execute('(grep "a")');
+        const r = await session.execute('(grep "a")');
         expect(r.success).toBe(true);
       }
 
@@ -413,7 +413,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       };
     }
 
-    it("finds a node reachable only via a mixed out→in path", () => {
+    it("finds a node reachable only via a mixed out→in path", async () => {
       // Graph: A → B ← C
       // neighborhood(A, 2) should include C — it's 2 undirected hops away
       // (A→B, then B←C). The old implementation only walked pure-outgoing
@@ -430,7 +430,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(nodeNames).toEqual(["A", "B", "C"]);
     });
 
-    it("finds a chain through alternating directions", () => {
+    it("finds a chain through alternating directions", async () => {
       // Graph: A → B ← C → D
       // neighborhood(A, 3) should include D — 3 undirected hops via
       // A→B←C→D. Old impl stopped at B.
@@ -445,7 +445,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(nodeNames).toEqual(["A", "B", "C", "D"]);
     });
 
-    it("respects the depth limit (doesn't grab the whole graph)", () => {
+    it("respects the depth limit (doesn't grab the whole graph)", async () => {
       // Graph: A → B → C → D  (chain)
       // neighborhood(A, 2) should only reach {A, B, C}, not D.
       const graph = new SymbolGraph();
@@ -459,7 +459,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(nodeNames).toEqual(["A", "B", "C"]);
     });
 
-    it("returns only the root for depth 0", () => {
+    it("returns only the root for depth 0", async () => {
       const graph = new SymbolGraph();
       graph.addSymbol(mkSymbol("A"));
       graph.addSymbol(mkSymbol("B"));
@@ -489,7 +489,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       return { db, search };
     }
 
-    it("highlighted output escapes < > & from original content", () => {
+    it("highlighted output escapes < > & from original content", async () => {
       const { db, search } = setupSearch();
       const results = search.searchWithHighlights("alert");
       expect(results.length).toBeGreaterThan(0);
@@ -508,7 +508,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       db.close();
     });
 
-    it("snippet output escapes < > & from original content", () => {
+    it("snippet output escapes < > & from original content", async () => {
       const { db, search } = setupSearch();
       const results = search.searchWithSnippets("alert");
       expect(results.length).toBeGreaterThan(0);
@@ -524,7 +524,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       db.close();
     });
 
-    it("pre-existing &amp; in content is re-encoded to &amp;amp;", () => {
+    it("pre-existing &amp; in content is re-encoded to &amp;amp;", async () => {
       // Escape must be idempotent-hostile: if we see `&amp;` in the input,
       // we must NOT leave it alone (that would double-decode on render).
       // Instead, every `&` becomes `&amp;` so the literal source text
@@ -543,14 +543,14 @@ describe("Audit #96 — Chiasmus review round 2", () => {
   // #11 LOW — parseAll must track ()/[]/{} as independent bracket kinds
   // =========================================================================
   describe("#11 — parseAll separates paren/bracket/brace depth", () => {
-    it("two top-level s-expressions back to back are split correctly", () => {
+    it("two top-level s-expressions back to back are split correctly", async () => {
       const results = parseAll('(grep "foo") (grep "bar")');
       expect(results.length).toBe(2);
       expect(results[0].success).toBe(true);
       expect(results[1].success).toBe(true);
     });
 
-    it("does not split mid-expression on a brace inside a string", () => {
+    it("does not split mid-expression on a brace inside a string", async () => {
       // `(grep "}")` — the closing brace is inside a string, so parseAll's
       // depth counter must not touch it. Already handled by the inString
       // check. Keep this as a regression guard.
@@ -559,7 +559,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(results[0].success).toBe(true);
     });
 
-    it("stray `)` without matching `(` is ignored, not treated as expression close", () => {
+    it("stray `)` without matching `(` is ignored, not treated as expression close", async () => {
       // `[x) (grep "foo")`:
       //
       // Buggy behavior (single depth counter):
@@ -582,7 +582,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(results[0].success).toBe(false);
     });
 
-    it("valid consecutive expressions with different bracket shapes", () => {
+    it("valid consecutive expressions with different bracket shapes", async () => {
       // `(grep "foo") [list] (grep "bar")` — three top-level forms.
       // Note: `[list]` won't parse as a valid LC term (no leading op),
       // but parseAll should still emit three slices, not two.
@@ -597,7 +597,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
   // #12 LOW — tokenize must error instead of silently truncating
   // =========================================================================
   describe("#12 — parse() errors out on oversize input, doesn't silently truncate", () => {
-    it("an input with > MAX_TOKENS tokens produces a parse failure, not a partial success", () => {
+    it("an input with > MAX_TOKENS tokens produces a parse failure, not a partial success", async () => {
       // MAX_TOKENS = 100_000. Generate a list with enough tokens to blow
       // through the cap. Each `a` symbol is ~1 token, plus whitespace.
       const tokens = Array.from({ length: 120_000 }, () => "a").join(" ");
@@ -619,7 +619,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
   // #14 LOW — setBinding must accept hyphens (matches auto-register regex)
   // =========================================================================
   describe("#14 — setBinding and synthesized-fn auto-register use one regex", () => {
-    it("setBinding accepts hyphenated names so `_fn_parse-date` round-trips", () => {
+    it("setBinding accepts hyphenated names so `_fn_parse-date` round-trips", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("anything");
       // Before the fix: setBinding rejects hyphens via
@@ -631,7 +631,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(engine.getBinding("_fn_parse-date")).toEqual({ foo: 1 });
     });
 
-    it("setBinding still rejects other invalid characters", () => {
+    it("setBinding still rejects other invalid characters", async () => {
       const engine = new NucleusEngine();
       engine.loadContent("anything");
       // Quick sanity: things that should still be invalid stay invalid.
@@ -645,7 +645,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
   // #15 LOW — hasTraversalSegment replaces .includes("..") guards
   // =========================================================================
   describe("#15 — path-traversal check is segment-aware", () => {
-    it("rejects true parent-directory traversal", () => {
+    it("rejects true parent-directory traversal", async () => {
       expect(hasTraversalSegment("../etc/passwd")).toBe(true);
       expect(hasTraversalSegment("..")).toBe(true);
       expect(hasTraversalSegment("foo/../bar")).toBe(true);
@@ -654,7 +654,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(hasTraversalSegment("a/b/../c/d")).toBe(true);
     });
 
-    it("accepts legitimate filenames containing the `..` substring", () => {
+    it("accepts legitimate filenames containing the `..` substring", async () => {
       // Before the fix these would have been rejected as path traversal.
       expect(hasTraversalSegment("readme..txt")).toBe(false);
       expect(hasTraversalSegment("foo..bar.md")).toBe(false);
@@ -663,7 +663,7 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(hasTraversalSegment("my.file..v2")).toBe(false);
     });
 
-    it("accepts normal relative paths and edge cases", () => {
+    it("accepts normal relative paths and edge cases", async () => {
       expect(hasTraversalSegment("")).toBe(false);
       expect(hasTraversalSegment(".")).toBe(false);
       expect(hasTraversalSegment("./file.txt")).toBe(false);

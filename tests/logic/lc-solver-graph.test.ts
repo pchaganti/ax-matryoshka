@@ -122,36 +122,36 @@ function createHandler(db: Database): Handler {
   });
 
   describe("callers", () => {
-    it("should return callers of a symbol", () => {
+    it("should return callers of a symbol", async () => {
       const result = parse('(callers "speak")');
       expect(result.success).toBe(true);
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       const callers = solved.value as Symbol[];
       expect(callers).toHaveLength(1);
       expect(callers[0].name).toBe("bark");
     });
 
-    it("should return empty array for uncalled symbol", () => {
+    it("should return empty array for uncalled symbol", async () => {
       const result = parse('(callers "whimper")');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       expect(solved.value).toEqual([]);
     });
 
-    it("should error when no graph is available", () => {
+    it("should error when no graph is available", async () => {
       bindings.delete("_symbolGraph");
       const result = parse('(callers "speak")');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(false);
       expect(solved.error).toMatch(/graph/i);
     });
   });
 
   describe("callees", () => {
-    it("should return callees of a symbol", () => {
+    it("should return callees of a symbol", async () => {
       const result = parse('(callees "startServer")');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       const callees = solved.value as Symbol[];
       expect(callees.map((s) => s.name).sort()).toEqual(["createHandler", "initDb"]);
@@ -159,26 +159,26 @@ function createHandler(db: Database): Handler {
   });
 
   describe("ancestors", () => {
-    it("should return ancestor chain", () => {
+    it("should return ancestor chain", async () => {
       const result = parse('(ancestors "Puppy")');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       const ancestors = solved.value as Symbol[];
       expect(ancestors.map((s) => s.name)).toEqual(["Dog", "Animal"]);
     });
 
-    it("should return empty for root class", () => {
+    it("should return empty for root class", async () => {
       const result = parse('(ancestors "Animal")');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       expect(solved.value).toEqual([]);
     });
   });
 
   describe("descendants", () => {
-    it("should return all descendants", () => {
+    it("should return all descendants", async () => {
       const result = parse('(descendants "Animal")');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       const desc = solved.value as Symbol[];
       expect(desc.map((s) => s.name).sort()).toEqual(["Dog", "Puppy"]);
@@ -186,9 +186,9 @@ function createHandler(db: Database): Handler {
   });
 
   describe("implementations", () => {
-    it("should return all implementations of an interface", () => {
+    it("should return all implementations of an interface", async () => {
       const result = parse('(implementations "IRepo")');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       const impls = solved.value as Symbol[];
       expect(impls.map((s) => s.name).sort()).toEqual(["MockRepo", "SqlRepo"]);
@@ -196,18 +196,18 @@ function createHandler(db: Database): Handler {
   });
 
   describe("dependents", () => {
-    it("should return transitive dependents", () => {
+    it("should return transitive dependents", async () => {
       const result = parse('(dependents "createHandler")');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       const deps = solved.value as Symbol[];
       expect(deps.map((s) => s.name)).toEqual(["startServer"]);
     });
 
-    it("should respect depth limit", () => {
+    it("should respect depth limit", async () => {
       // initDb is called by startServer only
       const result = parse('(dependents "initDb" 1)');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       const deps = solved.value as Symbol[];
       expect(deps.map((s) => s.name)).toEqual(["startServer"]);
@@ -215,9 +215,9 @@ function createHandler(db: Database): Handler {
   });
 
   describe("symbol_graph", () => {
-    it("should return neighborhood subgraph", () => {
+    it("should return neighborhood subgraph", async () => {
       const result = parse('(symbol_graph "Dog" 1)');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       const hood = solved.value as { nodes: Symbol[]; edges: Array<{ source: string; target: string; relation: string }> };
       const names = hood.nodes.map((s) => s.name).sort();
@@ -227,9 +227,9 @@ function createHandler(db: Database): Handler {
       expect(names).toContain("Puppy");
     });
 
-    it("should use default depth of 1 when not specified", () => {
+    it("should use default depth of 1 when not specified", async () => {
       const result = parse('(symbol_graph "Dog")');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       const hood = solved.value as { nodes: Symbol[]; edges: any[] };
       expect(hood.nodes.length).toBeGreaterThanOrEqual(2);
@@ -237,16 +237,16 @@ function createHandler(db: Database): Handler {
   });
 
   describe("composition with existing operations", () => {
-    it("should count callers", () => {
+    it("should count callers", async () => {
       const result = parse('(count (callers "speak"))');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       expect(solved.value).toBe(1);
     });
 
-    it("should filter callees", () => {
+    it("should filter callees", async () => {
       const result = parse('(count (callees "startServer"))');
-      const solved = solve(result.term!, tools, bindings);
+      const solved = await solve(result.term!, tools, bindings);
       expect(solved.success).toBe(true);
       expect(solved.value).toBe(2);
     });

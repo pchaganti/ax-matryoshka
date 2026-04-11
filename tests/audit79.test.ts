@@ -31,7 +31,10 @@ describe("Audit #79", () => {
       // Make sure we're in evaluate, not evaluateWithBinding
       const evalWithBinding = source.indexOf("function evaluateWithBinding(");
       expect(addCase).toBeLessThan(evalWithBinding);
-      const block = source.slice(addCase, addCase + 500);
+      // Bumped from 500 → 700 after the async refactor added `await` prefixes
+      // to every evaluate() call, pushing the `Number.isFinite(addResult)`
+      // check past the end of the 500-char window.
+      const block = source.slice(addCase, addCase + 700);
       expect(block).toMatch(/isFinite\(.*(?:result|addResult|left\s*\+\s*right)/);
     });
   });

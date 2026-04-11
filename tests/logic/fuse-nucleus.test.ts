@@ -68,7 +68,7 @@ const testContext = `[10:00] INFO: System started
 [10:04] INFO: Connection established`;
 
 describe("fuse Parser", () => {
-  it("should parse fuse with two sub-expressions", () => {
+  it("should parse fuse with two sub-expressions", async () => {
     const result = parse('(fuse (grep "ERROR") (bm25 "error"))');
     expect(result.success).toBe(true);
     expect(result.term?.tag).toBe("fuse");
@@ -79,7 +79,7 @@ describe("fuse Parser", () => {
     }
   });
 
-  it("should parse fuse with three sub-expressions", () => {
+  it("should parse fuse with three sub-expressions", async () => {
     const result = parse('(fuse (grep "ERROR") (bm25 "error") (fuzzy_search "error"))');
     expect(result.success).toBe(true);
     if (result.term?.tag === "fuse") {
@@ -87,7 +87,7 @@ describe("fuse Parser", () => {
     }
   });
 
-  it("should parse fuse with variable references", () => {
+  it("should parse fuse with variable references", async () => {
     const result = parse("(fuse RESULTS _1)");
     expect(result.success).toBe(true);
     if (result.term?.tag === "fuse") {
@@ -97,19 +97,19 @@ describe("fuse Parser", () => {
     }
   });
 
-  it("should fail on fuse with fewer than 2 arguments", () => {
+  it("should fail on fuse with fewer than 2 arguments", async () => {
     const result = parse('(fuse (grep "ERROR"))');
     expect(result.success).toBe(false);
   });
 
-  it("should fail on empty fuse", () => {
+  it("should fail on empty fuse", async () => {
     const result = parse("(fuse)");
     expect(result.success).toBe(false);
   });
 });
 
 describe("fuse prettyPrint", () => {
-  it("should round-trip fuse with two sub-expressions", () => {
+  it("should round-trip fuse with two sub-expressions", async () => {
     const result = parse('(fuse (grep "ERROR") (bm25 "error"))');
     expect(result.success).toBe(true);
     const printed = prettyPrint(result.term!);
@@ -118,7 +118,7 @@ describe("fuse prettyPrint", () => {
 });
 
 describe("fuse Type Inference", () => {
-  it("should infer array type for fuse", () => {
+  it("should infer array type for fuse", async () => {
     const result = parse('(fuse (grep "ERROR") (bm25 "error"))');
     expect(result.success).toBe(true);
     const typeResult = inferType(result.term!);
@@ -128,12 +128,12 @@ describe("fuse Type Inference", () => {
 });
 
 describe("fuse Solver", () => {
-  it("should fuse grep and bm25 results", () => {
+  it("should fuse grep and bm25 results", async () => {
     const tools = createMockTools(testContext);
     const result = parse('(fuse (grep "ERROR") (bm25 "error"))');
     expect(result.success).toBe(true);
 
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     expect(Array.isArray(solveResult.value)).toBe(true);
     const results = solveResult.value as Array<{ line: string; lineNum: number; score: number }>;
@@ -144,48 +144,48 @@ describe("fuse Solver", () => {
     }
   });
 
-  it("should fuse bindings with fresh results", () => {
+  it("should fuse bindings with fresh results", async () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
 
     // Simulate a previous grep result stored in _1
     const grepParse = parse('(grep "ERROR")');
-    const grepResult = solve(grepParse.term!, tools);
+    const grepResult = await solve(grepParse.term!, tools);
     bindings.set("_1", grepResult.value);
 
     // Fuse _1 with fresh bm25
     const fuseParse = parse('(fuse _1 (bm25 "connection"))');
     expect(fuseParse.success).toBe(true);
-    const fuseResult = solve(fuseParse.term!, tools, bindings);
+    const fuseResult = await solve(fuseParse.term!, tools, bindings);
     expect(fuseResult.success).toBe(true);
     expect(Array.isArray(fuseResult.value)).toBe(true);
   });
 
-  it("should work with filter on fused results", () => {
+  it("should work with filter on fused results", async () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
 
     // Fuse and store
     const fuseParse = parse('(fuse (grep "ERROR") (bm25 "connection"))');
-    const fuseResult = solve(fuseParse.term!, tools);
+    const fuseResult = await solve(fuseParse.term!, tools);
     expect(fuseResult.success).toBe(true);
     bindings.set("RESULTS", fuseResult.value);
 
     // Filter fused results
     const filterParse = parse('(filter RESULTS (lambda x (match x "timeout" 0)))');
     expect(filterParse.success).toBe(true);
-    const filterResult = solve(filterParse.term!, tools, bindings);
+    const filterResult = await solve(filterParse.term!, tools, bindings);
     expect(filterResult.success).toBe(true);
   });
 
-  it("should normalize grep results that lack score field", () => {
+  it("should normalize grep results that lack score field", async () => {
     const tools = createMockTools(testContext);
     // grep results have {match, line, lineNum, index, groups} but NO score
     // fuse must assign default score=1 to them
     const result = parse('(fuse (grep "ERROR") (bm25 "error"))');
     expect(result.success).toBe(true);
 
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     const results = solveResult.value as Array<{ line: string; lineNum: number; score: number }>;
     // All fused results must have numeric scores
@@ -196,12 +196,12 @@ describe("fuse Solver", () => {
     }
   });
 
-  it("should fuse three signals", () => {
+  it("should fuse three signals", async () => {
     const tools = createMockTools(testContext);
     const result = parse('(fuse (grep "ERROR") (bm25 "error") (fuzzy_search "error"))');
     expect(result.success).toBe(true);
 
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     expect(Array.isArray(solveResult.value)).toBe(true);
   });

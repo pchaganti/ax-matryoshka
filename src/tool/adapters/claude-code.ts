@@ -150,26 +150,26 @@ export class ClaudeCodeAdapter {
         if (typeof args.command !== "string") {
           throw new Error("lattice_query: command must be a string");
         }
-        response = this.tool.execute({
+        response = await this.tool.execute({
           type: "query",
           command: args.command,
         });
         break;
 
       case "lattice_bindings":
-        response = this.tool.execute({ type: "bindings" });
+        response = await this.tool.execute({ type: "bindings" });
         break;
 
       case "lattice_reset":
-        response = this.tool.execute({ type: "reset" });
+        response = await this.tool.execute({ type: "reset" });
         break;
 
       case "lattice_stats":
-        response = this.tool.execute({ type: "stats" });
+        response = await this.tool.execute({ type: "stats" });
         break;
 
       case "lattice_help":
-        response = this.tool.execute({ type: "help" });
+        response = await this.tool.execute({ type: "help" });
         break;
 
       default:

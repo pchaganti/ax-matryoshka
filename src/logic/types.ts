@@ -62,7 +62,8 @@ export type LCTerm =
   | LCDescendants
   | LCImplementations
   | LCDependents
-  | LCSymbolGraph;
+  | LCSymbolGraph
+  | LCLLMQuery;
 
 /**
  * (input) - reference to the current input string
@@ -511,6 +512,28 @@ export interface LCSymbolGraph {
   tag: "symbol_graph";
   name: string;
   depth?: number;
+}
+
+/**
+ * (llm_query "prompt" [(name binding) ...]) — symbolic recursion primitive
+ *
+ * Invokes a sub-LLM with a literal prompt string. The prompt may contain
+ * `{name}` placeholders, each of which is filled by a named binding
+ * argument. The result is a string bound to the next auto-sequenced `_N`.
+ *
+ * Top-level only in the POC — nested use inside `map`/`filter`/etc.
+ * throws an error. Full nested support requires making `solve()` async.
+ *
+ * Examples:
+ *   (llm_query "Summarize in one sentence.")
+ *   (llm_query "Classify each: {errors}" (errors _1))
+ *   (llm_query "Apply {rules} to {data}" (rules _1) (data _2))
+ */
+export interface LCLLMQuery {
+  tag: "llm_query";
+  prompt: string;
+  /** Named bindings that fill `{name}` placeholders in the prompt. */
+  bindings: Array<{ name: string; value: LCTerm }>;
 }
 
 /**

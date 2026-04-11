@@ -70,7 +70,7 @@ const testContext = `[10:00] INFO: System started
 [10:04] INFO: Connection established`;
 
 describe("BM25 Parser", () => {
-  it("should parse bm25 with query", () => {
+  it("should parse bm25 with query", async () => {
     const result = parse('(bm25 "database error")');
     expect(result.success).toBe(true);
     expect(result.term?.tag).toBe("bm25");
@@ -80,7 +80,7 @@ describe("BM25 Parser", () => {
     }
   });
 
-  it("should parse bm25 with query and limit", () => {
+  it("should parse bm25 with query and limit", async () => {
     const result = parse('(bm25 "database error" 20)');
     expect(result.success).toBe(true);
     expect(result.term?.tag).toBe("bm25");
@@ -90,26 +90,26 @@ describe("BM25 Parser", () => {
     }
   });
 
-  it("should fail on non-string query", () => {
+  it("should fail on non-string query", async () => {
     const result = parse("(bm25 42)");
     expect(result.success).toBe(false);
   });
 
-  it("should fail on empty bm25", () => {
+  it("should fail on empty bm25", async () => {
     const result = parse("(bm25)");
     expect(result.success).toBe(false);
   });
 });
 
 describe("BM25 prettyPrint", () => {
-  it("should round-trip bm25 without limit", () => {
+  it("should round-trip bm25 without limit", async () => {
     const result = parse('(bm25 "database error")');
     expect(result.success).toBe(true);
     const printed = prettyPrint(result.term!);
     expect(printed).toBe('(bm25 "database error")');
   });
 
-  it("should round-trip bm25 with limit", () => {
+  it("should round-trip bm25 with limit", async () => {
     const result = parse('(bm25 "database error" 20)');
     expect(result.success).toBe(true);
     const printed = prettyPrint(result.term!);
@@ -118,7 +118,7 @@ describe("BM25 prettyPrint", () => {
 });
 
 describe("BM25 Type Inference", () => {
-  it("should infer array type for bm25", () => {
+  it("should infer array type for bm25", async () => {
     const result = parse('(bm25 "query")');
     expect(result.success).toBe(true);
     const typeResult = inferType(result.term!);
@@ -128,52 +128,52 @@ describe("BM25 Type Inference", () => {
 });
 
 describe("BM25 Solver", () => {
-  it("should execute bm25 search and return results", () => {
+  it("should execute bm25 search and return results", async () => {
     const tools = createMockTools(testContext);
     const result = parse('(bm25 "error database")');
     expect(result.success).toBe(true);
 
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     expect(Array.isArray(solveResult.value)).toBe(true);
     const results = solveResult.value as Array<{ line: string; lineNum: number; score: number }>;
     expect(results.length).toBeGreaterThan(0);
   });
 
-  it("should respect limit in bm25 search", () => {
+  it("should respect limit in bm25 search", async () => {
     const tools = createMockTools(testContext);
     const result = parse('(bm25 "error" 1)');
     expect(result.success).toBe(true);
 
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     const results = solveResult.value as Array<{ line: string }>;
     expect(results.length).toBeLessThanOrEqual(1);
   });
 
-  it("should work with filter on bm25 results", () => {
+  it("should work with filter on bm25 results", async () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
 
     // First: run bm25
     const bm25Result = parse('(bm25 "error connection")');
     expect(bm25Result.success).toBe(true);
-    const bm25SolveResult = solve(bm25Result.term!, tools);
+    const bm25SolveResult = await solve(bm25Result.term!, tools);
     expect(bm25SolveResult.success).toBe(true);
     bindings.set("RESULTS", bm25SolveResult.value);
 
     // Then: filter RESULTS
     const filterResult = parse('(filter RESULTS (lambda line (match line "timeout" 0)))');
     expect(filterResult.success).toBe(true);
-    const filterSolveResult = solve(filterResult.term!, tools, bindings);
+    const filterSolveResult = await solve(filterResult.term!, tools, bindings);
     expect(filterSolveResult.success).toBe(true);
   });
 
-  it("should use default limit when none provided", () => {
+  it("should use default limit when none provided", async () => {
     const tools = createMockTools(testContext);
     const result = parse('(bm25 "error")');
     expect(result.success).toBe(true);
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     // Default limit is 10, so all matching lines should appear
     const results = solveResult.value as Array<{ line: string }>;

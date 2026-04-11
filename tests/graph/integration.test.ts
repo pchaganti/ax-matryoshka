@@ -106,10 +106,10 @@ function bootstrap(): void {
     bindings.set("_symbolGraph", graph);
   }
 
-  function query(cmd: string) {
+  async function query(cmd: string) {
     const parsed = parse(cmd);
     expect(parsed.success).toBe(true);
-    const result = solve(parsed.term!, tools, bindings);
+    const result = await solve(parsed.term!, tools, bindings);
     // Bind arrays for chaining
     if (result.success && Array.isArray(result.value)) {
       bindings.set("RESULTS", result.value);
@@ -117,63 +117,63 @@ function bootstrap(): void {
     return result;
   }
 
-  it("should detect inheritance chain", () => {
+  it("should detect inheritance chain", async () => {
     setup();
-    const result = query('(ancestors "AppLogger")');
+    const result = await query('(ancestors "AppLogger")');
     expect(result.success).toBe(true);
     const names = (result.value as Symbol[]).map((s) => s.name);
     expect(names).toEqual(["Logger", "EventEmitter"]);
   });
 
-  it("should find all descendants of base class", () => {
+  it("should find all descendants of base class", async () => {
     setup();
-    const result = query('(descendants "EventEmitter")');
+    const result = await query('(descendants "EventEmitter")');
     expect(result.success).toBe(true);
     const names = (result.value as Symbol[]).map((s) => s.name).sort();
     expect(names).toEqual(["AppLogger", "Logger"]);
   });
 
-  it("should find interface implementations", () => {
+  it("should find interface implementations", async () => {
     setup();
-    const result = query('(implementations "Plugin")');
+    const result = await query('(implementations "Plugin")');
     expect(result.success).toBe(true);
     const names = (result.value as Symbol[]).map((s) => s.name);
     expect(names).toEqual(["MetricsPlugin"]);
   });
 
-  it("should detect call graph: info → log → emit", () => {
+  it("should detect call graph: info → log → emit", async () => {
     setup();
 
     // info calls log
-    let result = query('(callees "info")');
+    let result = await query('(callees "info")');
     expect(result.success).toBe(true);
     expect((result.value as Symbol[]).map((s) => s.name)).toContain("log");
 
     // log calls emit
-    result = query('(callees "log")');
+    result = await query('(callees "log")');
     expect(result.success).toBe(true);
     expect((result.value as Symbol[]).map((s) => s.name)).toContain("emit");
   });
 
-  it("should find who calls log", () => {
+  it("should find who calls log", async () => {
     setup();
-    const result = query('(callers "log")');
+    const result = await query('(callers "log")');
     expect(result.success).toBe(true);
     const callers = (result.value as Symbol[]).map((s) => s.name).sort();
     expect(callers).toContain("info");
     expect(callers).toContain("warn");
   });
 
-  it("should compose graph queries with count", () => {
+  it("should compose graph queries with count", async () => {
     setup();
-    const result = query('(count (callers "log"))');
+    const result = await query('(count (callers "log"))');
     expect(result.success).toBe(true);
     expect(result.value).toBe(2); // info and warn
   });
 
-  it("should get neighborhood of a symbol", () => {
+  it("should get neighborhood of a symbol", async () => {
     setup();
-    const result = query('(symbol_graph "Logger" 1)');
+    const result = await query('(symbol_graph "Logger" 1)');
     expect(result.success).toBe(true);
     const hood = result.value as { nodes: Symbol[]; edges: any[] };
     const names = hood.nodes.map((s) => s.name).sort();
@@ -183,7 +183,7 @@ function bootstrap(): void {
     expect(names).toContain("AppLogger");
   });
 
-  it("should report graph stats", () => {
+  it("should report graph stats", async () => {
     setup();
     const stats = graph.stats();
     expect(stats.nodes).toBe(12);
