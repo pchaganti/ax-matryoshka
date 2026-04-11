@@ -285,6 +285,34 @@ TRANSFORM (returns new handle):
 EXTRACT:
   (match str "pattern" 1)       Extract regex group from string
 
+LLM_QUERY (multi-turn — works with any MCP client, no sampling required):
+  (llm_query "prompt")                                     Ask a question, get your response
+  (llm_query "describe: {item}" (item x))                  With variable binding
+  (map RESULTS (lambda x (llm_query "tag: {item}" (item x))))  Per-item via map
+  (filter RESULTS (lambda x (match (llm_query "keep?: {item}" (item x)) "keep" 0)))  Per-item filter
+
+When a query contains (llm_query ...), execution SUSPENDS and returns a request like:
+  [LLM_QUERY_REQUEST id=q_abc] Please respond to: ...
+You MUST respond using lattice_llm_respond before the query can continue:
+  lattice_llm_respond id="q_abc" response="your answer"
+After responding, you either get the final result or another suspension (if the
+query has multiple llm_query calls, e.g. inside map over many items). Keep
+responding until you get a handle stub or scalar result — that's the final output.
+
+LLM_QUERY WORKFLOW:
+1. lattice_query '(llm_query "classify this")'
+   → [LLM_QUERY_REQUEST id=q_abc] Please respond to: classify this
+2. lattice_llm_respond id="q_abc" response="It's a technical document"
+   → "It's a technical document"  (final result)
+
+LLM_QUERY MAP WORKFLOW (OOLONG pattern — one suspension per item):
+1. lattice_query '(map RESULTS (lambda x (llm_query "tag: {item}" (item x))))'
+   → [LLM_QUERY_REQUEST id=q_1] ... tag: item1 ...
+2. lattice_llm_respond id="q_1" response="bug"
+   → [LLM_QUERY_REQUEST id=q_2] ... tag: item2 ...  (next item)
+3. lattice_llm_respond id="q_2" response="feature"
+   → $res1: Array(2) ["bug", "feature"]  (final result)
+
 EXAMPLE WORKFLOW:
 1. (grep "ERROR")                    → Returns: $res1: Array(500) [preview]
 2. (filter RESULTS (lambda x ...))   → Returns: $res2: Array(50) [preview]
