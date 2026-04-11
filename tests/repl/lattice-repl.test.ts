@@ -5,47 +5,47 @@ import { describe, it, expect } from "vitest";
 import { HandleSession } from "../../src/engine/handle-session.js";
 
 describe("REPL underlying engine", () => {
-  it("should process commands sequentially", () => {
+  it("should process commands sequentially", async () => {
     const engine = new HandleSession();
     // Use unique pattern that won't match INFO, etc
     engine.loadContent("FATAL: test error\nINFO: test info\nFATAL: another error");
 
     // Simulate REPL session
-    const r1 = engine.execute('(grep "FATAL")');
+    const r1 = await engine.execute('(grep "FATAL")');
     expect(r1.success).toBe(true);
     expect(r1.handle).toBeDefined();
     const expanded = engine.expand(r1.handle!);
     expect(expanded.success).toBe(true);
     expect(expanded.data?.length).toBe(2);
 
-    const r2 = engine.execute('(count RESULTS)');
+    const r2 = await engine.execute('(count RESULTS)');
     expect(r2.success).toBe(true);
     expect(r2.value).toBe(2);
   });
 
-  it("should maintain state across commands", () => {
+  it("should maintain state across commands", async () => {
     const engine = new HandleSession();
     engine.loadContent("line1\nline2\nline3");
 
-    engine.execute('(grep "line")');
+    await engine.execute('(grep "line")');
     const bindings = engine.getBindings();
 
     expect(bindings.RESULTS).toBe("-> $res1");
     expect(bindings.$res1).toContain("Array(3)");
   });
 
-  it("should reset state on command", () => {
+  it("should reset state on command", async () => {
     const engine = new HandleSession();
     engine.loadContent("test");
 
-    engine.execute('(grep "test")');
+    await engine.execute('(grep "test")');
     expect(Object.keys(engine.getBindings()).length).toBeGreaterThan(0);
 
     engine.reset();
     expect(Object.keys(engine.getBindings()).length).toBe(0);
   });
 
-  it("should provide command reference", () => {
+  it("should provide command reference", async () => {
     const ref = HandleSession.getCommandReference();
 
     expect(ref).toContain("grep");
@@ -65,7 +65,7 @@ defmodule Greeter do
 end
 `, "test.ex");
 
-    const result = engine.execute('(list_symbols)');
+    const result = await engine.execute('(list_symbols)');
     expect(result.success).toBe(true);
     expect(result.handle).toBeDefined();
     const expanded = engine.expand(result.handle!);
@@ -75,7 +75,7 @@ end
 });
 
 describe("REPL command patterns", () => {
-  it("should handle typical grep -> count workflow", () => {
+  it("should handle typical grep -> count workflow", async () => {
     const engine = new HandleSession();
     engine.loadContent(`
 [2024-01-15 10:30:00] FATAL: Connection timeout
@@ -86,19 +86,19 @@ describe("REPL command patterns", () => {
     `.trim());
 
     // Step 1: Find all fatal errors
-    const grep = engine.execute('(grep "FATAL")');
+    const grep = await engine.execute('(grep "FATAL")');
     expect(grep.success).toBe(true);
     const expanded = engine.expand(grep.handle!);
     expect(expanded.success).toBe(true);
     expect(expanded.data?.length).toBe(3);
 
     // Step 2: Count
-    const count = engine.execute('(count RESULTS)');
+    const count = await engine.execute('(count RESULTS)');
     expect(count.success).toBe(true);
     expect(count.value).toBe(3);
   });
 
-  it("should handle grep -> sum workflow for numeric data", () => {
+  it("should handle grep -> sum workflow for numeric data", async () => {
     const engine = new HandleSession();
     // Use $ prefix so sum can identify currency values
     engine.loadContent(`
@@ -109,14 +109,14 @@ Sales: $175,000
     `.trim());
 
     // Find sales lines
-    const grep = engine.execute('(grep "Sales")');
+    const grep = await engine.execute('(grep "Sales")');
     expect(grep.success).toBe(true);
     const expanded = engine.expand(grep.handle!);
     expect(expanded.success).toBe(true);
     expect(expanded.data?.length).toBe(4);
 
     // Sum them - sum extracts $ amounts from line content
-    const sum = engine.execute('(sum RESULTS)');
+    const sum = await engine.execute('(sum RESULTS)');
     expect(sum.success).toBe(true);
     expect(sum.value).toBe(550000);
   });

@@ -42,7 +42,7 @@ const testContext = `[10:00] INFO: System started
 [10:04] INFO: Connection established`;
 
 describe("rerank Parser", () => {
-  it("should parse rerank with collection", () => {
+  it("should parse rerank with collection", async () => {
     const result = parse('(rerank (bm25 "error"))');
     expect(result.success).toBe(true);
     expect(result.term?.tag).toBe("rerank");
@@ -51,7 +51,7 @@ describe("rerank Parser", () => {
     }
   });
 
-  it("should parse rerank with variable", () => {
+  it("should parse rerank with variable", async () => {
     const result = parse("(rerank RESULTS)");
     expect(result.success).toBe(true);
     if (result.term?.tag === "rerank") {
@@ -59,13 +59,13 @@ describe("rerank Parser", () => {
     }
   });
 
-  it("should fail on empty rerank", () => {
+  it("should fail on empty rerank", async () => {
     expect(parse("(rerank)").success).toBe(false);
   });
 });
 
 describe("rerank prettyPrint", () => {
-  it("should round-trip", () => {
+  it("should round-trip", async () => {
     const result = parse('(rerank (bm25 "error"))');
     expect(result.success).toBe(true);
     expect(prettyPrint(result.term!)).toBe('(rerank (bm25 "error"))');
@@ -73,7 +73,7 @@ describe("rerank prettyPrint", () => {
 });
 
 describe("rerank Type Inference", () => {
-  it("should infer array type", () => {
+  it("should infer array type", async () => {
     const result = parse('(rerank (bm25 "error"))');
     expect(result.success).toBe(true);
     const typeResult = inferType(result.term!);
@@ -83,14 +83,14 @@ describe("rerank Type Inference", () => {
 });
 
 describe("rerank Solver", () => {
-  it("should rerank bm25 results", () => {
+  it("should rerank bm25 results", async () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
     bindings.set("_qstore", new QValueStore());
 
     const result = parse('(rerank (bm25 "error connection"))');
     expect(result.success).toBe(true);
-    const solveResult = solve(result.term!, tools, bindings);
+    const solveResult = await solve(result.term!, tools, bindings);
     expect(solveResult.success).toBe(true);
     expect(Array.isArray(solveResult.value)).toBe(true);
     const results = solveResult.value as Array<{ line: string; score: number }>;
@@ -101,51 +101,51 @@ describe("rerank Solver", () => {
     }
   });
 
-  it("should work without explicit QValueStore (creates one)", () => {
+  it("should work without explicit QValueStore (creates one)", async () => {
     const tools = createMockTools(testContext);
     const result = parse('(rerank (bm25 "error"))');
     expect(result.success).toBe(true);
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     expect(Array.isArray(solveResult.value)).toBe(true);
   });
 
-  it("should compose with filter", () => {
+  it("should compose with filter", async () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
 
     const rerankParse = parse('(rerank (bm25 "error"))');
-    const rerankResult = solve(rerankParse.term!, tools);
+    const rerankResult = await solve(rerankParse.term!, tools);
     expect(rerankResult.success).toBe(true);
     bindings.set("RESULTS", rerankResult.value);
 
     const filterParse = parse('(filter RESULTS (lambda x (match x "timeout" 0)))');
-    const filterResult = solve(filterParse.term!, tools, bindings);
+    const filterResult = await solve(filterParse.term!, tools, bindings);
     expect(filterResult.success).toBe(true);
   });
 
-  it("should auto-reward previous RESULTS lines", () => {
+  it("should auto-reward previous RESULTS lines", async () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
 
     const bm25Parse = parse('(bm25 "error")');
-    const bm25Result = solve(bm25Parse.term!, tools, bindings);
+    const bm25Result = await solve(bm25Parse.term!, tools, bindings);
     bindings.set("RESULTS", bm25Result.value);
 
     const rerankParse = parse('(rerank (bm25 "error connection"))');
     expect(rerankParse.success).toBe(true);
-    const rerankResult = solve(rerankParse.term!, tools, bindings);
+    const rerankResult = await solve(rerankParse.term!, tools, bindings);
     expect(rerankResult.success).toBe(true);
 
     const reranked = rerankResult.value as Array<{ lineNum: number }>;
     expect(reranked.length).toBeGreaterThan(0);
   });
 
-  it("should compose with fuse then rerank", () => {
+  it("should compose with fuse then rerank", async () => {
     const tools = createMockTools(testContext);
     const result = parse('(rerank (fuse (grep "ERROR") (bm25 "error")))');
     expect(result.success).toBe(true);
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     expect(Array.isArray(solveResult.value)).toBe(true);
   });

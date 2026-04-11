@@ -57,7 +57,7 @@ describe("LC Solver Bindings", () => {
 [10:04] INFO: Connection established`;
 
   describe("basic binding lookup", () => {
-    it("should resolve RESULTS from bindings", () => {
+    it("should resolve RESULTS from bindings", async () => {
       const tools = createMockTools(testContext);
       const bindings: Bindings = new Map();
 
@@ -69,7 +69,7 @@ describe("LC Solver Bindings", () => {
       const parseResult = parse('(filter RESULTS (lambda line (match line "timeout" 0)))');
       expect(parseResult.success).toBe(true);
 
-      const result = solve(parseResult.term!, tools, bindings);
+      const result = await solve(parseResult.term!, tools, bindings);
       console.log("Result error:", result.error);
       console.log("Result logs:", result.logs);
       expect(result.success).toBe(true);
@@ -78,7 +78,7 @@ describe("LC Solver Bindings", () => {
       expect((result.value as Array<{ line: string }>)[0].line).toContain("timeout");
     });
 
-    it("should resolve turn-specific bindings like _1", () => {
+    it("should resolve turn-specific bindings like _1", async () => {
       const tools = createMockTools(testContext);
       const bindings: Bindings = new Map();
 
@@ -90,33 +90,33 @@ describe("LC Solver Bindings", () => {
       const parseResult = parse('(filter _1 (lambda line (match line "started" 0)))');
       expect(parseResult.success).toBe(true);
 
-      const result = solve(parseResult.term!, tools, bindings);
+      const result = await solve(parseResult.term!, tools, bindings);
       expect(result.success).toBe(true);
       expect((result.value as Array<{ line: string }>).length).toBe(1);
     });
 
-    it("should throw error for unbound variable when not in bindings", () => {
+    it("should throw error for unbound variable when not in bindings", async () => {
       const tools = createMockTools(testContext);
       const bindings: Bindings = new Map();
 
       const parseResult = parse('(filter UNKNOWN_VAR (lambda line (match line "test" 0)))');
       expect(parseResult.success).toBe(true);
 
-      const result = solve(parseResult.term!, tools, bindings);
+      const result = await solve(parseResult.term!, tools, bindings);
       expect(result.success).toBe(false);
       expect(result.error).toContain("Unbound variable");
     });
   });
 
   describe("multi-turn workflow simulation", () => {
-    it("should support search → filter → extract workflow", () => {
+    it("should support search → filter → extract workflow", async () => {
       const tools = createMockTools(testContext);
       const bindings: Bindings = new Map();
 
       // Turn 1: Search
       const turn1 = parse('(grep "ERROR")');
       expect(turn1.success).toBe(true);
-      const result1 = solve(turn1.term!, tools, bindings);
+      const result1 = await solve(turn1.term!, tools, bindings);
       expect(result1.success).toBe(true);
       expect((result1.value as Array<unknown>).length).toBe(2);
 
@@ -127,7 +127,7 @@ describe("LC Solver Bindings", () => {
       // Turn 2: Filter
       const turn2 = parse('(filter RESULTS (lambda line (match line "timeout" 0)))');
       expect(turn2.success).toBe(true);
-      const result2 = solve(turn2.term!, tools, bindings);
+      const result2 = await solve(turn2.term!, tools, bindings);
       expect(result2.success).toBe(true);
       expect((result2.value as Array<unknown>).length).toBe(1);
 
@@ -138,12 +138,12 @@ describe("LC Solver Bindings", () => {
       // Turn 3: Can still access _1 (original grep results)
       const turn3 = parse('(filter _1 (lambda line (match line "database" 0)))');
       expect(turn3.success).toBe(true);
-      const result3 = solve(turn3.term!, tools, bindings);
+      const result3 = await solve(turn3.term!, tools, bindings);
       expect(result3.success).toBe(true);
       expect((result3.value as Array<{ line: string }>)[0].line).toContain("database");
     });
 
-    it("should allow chaining map after filter", () => {
+    it("should allow chaining map after filter", async () => {
       const tools = createMockTools(`Total: $100
 Total: $250
 Total: $75`);
@@ -151,24 +151,24 @@ Total: $75`);
 
       // Turn 1: Search for totals
       const turn1 = parse('(grep "Total")');
-      const result1 = solve(turn1.term!, tools, bindings);
+      const result1 = await solve(turn1.term!, tools, bindings);
       bindings.set("RESULTS", result1.value);
 
       // Turn 2: Extract numeric values
       const turn2 = parse('(map RESULTS (lambda line (parseFloat (match line "[0-9]+" 0))))');
-      const result2 = solve(turn2.term!, tools, bindings);
+      const result2 = await solve(turn2.term!, tools, bindings);
       expect(result2.success).toBe(true);
       expect(result2.value).toEqual([100, 250, 75]);
     });
   });
 
   describe("binding log messages", () => {
-    it("should log when resolving from bindings", () => {
+    it("should log when resolving from bindings", async () => {
       const tools = createMockTools(testContext);
       const bindings: Bindings = new Map([["RESULTS", [{ line: "test", lineNum: 1 }]]]);
 
       const parseResult = parse('(filter RESULTS (lambda line (match line "test" 0)))');
-      const result = solve(parseResult.term!, tools, bindings);
+      const result = await solve(parseResult.term!, tools, bindings);
 
       expect(result.logs.some(log => log.includes("Available bindings"))).toBe(true);
       expect(result.logs.some(log => log.includes("Resolved variable RESULTS"))).toBe(true);

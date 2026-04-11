@@ -38,7 +38,7 @@ describe("Audit25 #2: grep empty pattern guard", () => {
       grep: null as any,
     };
     // Create solver tools by calling solve with a grep on empty pattern
-    const result = mod.solve(
+    const result = await mod.solve(
       { tag: "grep" as const, pattern: "" },
       { context: "hello\nworld", grep: () => [], fuzzy_search: () => [], text_stats: () => ({}) },
       new Map()
@@ -163,7 +163,7 @@ describe("Audit25 #8: grep groups filter undefined", () => {
       text_stats: () => ({}),
     };
     // A pattern with an optional group: (foo)?(hello)
-    const result = mod.solve(
+    const result = await mod.solve(
       { tag: "grep" as const, pattern: "(foo)?(hello)" },
       tools,
       new Map()

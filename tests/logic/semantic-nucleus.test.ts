@@ -49,7 +49,7 @@ const testContext = `[10:00] INFO: System started
 [10:04] INFO: Connection established`;
 
 describe("semantic Parser", () => {
-  it("should parse semantic with query", () => {
+  it("should parse semantic with query", async () => {
     const result = parse('(semantic "database error")');
     expect(result.success).toBe(true);
     expect(result.term?.tag).toBe("semantic");
@@ -59,7 +59,7 @@ describe("semantic Parser", () => {
     }
   });
 
-  it("should parse semantic with query and limit", () => {
+  it("should parse semantic with query and limit", async () => {
     const result = parse('(semantic "database error" 5)');
     expect(result.success).toBe(true);
     if (result.term?.tag === "semantic") {
@@ -68,23 +68,23 @@ describe("semantic Parser", () => {
     }
   });
 
-  it("should fail on empty semantic", () => {
+  it("should fail on empty semantic", async () => {
     expect(parse("(semantic)").success).toBe(false);
   });
 
-  it("should fail on non-string query", () => {
+  it("should fail on non-string query", async () => {
     expect(parse("(semantic 42)").success).toBe(false);
   });
 });
 
 describe("semantic prettyPrint", () => {
-  it("should round-trip without limit", () => {
+  it("should round-trip without limit", async () => {
     const result = parse('(semantic "database error")');
     expect(result.success).toBe(true);
     expect(prettyPrint(result.term!)).toBe('(semantic "database error")');
   });
 
-  it("should round-trip with limit", () => {
+  it("should round-trip with limit", async () => {
     const result = parse('(semantic "database error" 5)');
     expect(result.success).toBe(true);
     expect(prettyPrint(result.term!)).toBe('(semantic "database error" 5)');
@@ -92,7 +92,7 @@ describe("semantic prettyPrint", () => {
 });
 
 describe("semantic Type Inference", () => {
-  it("should infer array type", () => {
+  it("should infer array type", async () => {
     const result = parse('(semantic "database")');
     expect(result.success).toBe(true);
     const typeResult = inferType(result.term!);
@@ -102,34 +102,34 @@ describe("semantic Type Inference", () => {
 });
 
 describe("semantic Solver", () => {
-  it("should return ranked results", () => {
+  it("should return ranked results", async () => {
     const tools = createMockTools(testContext);
     const result = parse('(semantic "database error")');
     expect(result.success).toBe(true);
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
     expect(Array.isArray(solveResult.value)).toBe(true);
     const results = solveResult.value as Array<{ line: string; score: number }>;
     expect(results.length).toBeGreaterThan(0);
   });
 
-  it("should compose with fuse", () => {
+  it("should compose with fuse", async () => {
     const tools = createMockTools(testContext);
     const result = parse('(fuse (semantic "database error") (bm25 "database"))');
     expect(result.success).toBe(true);
-    const solveResult = solve(result.term!, tools);
+    const solveResult = await solve(result.term!, tools);
     expect(solveResult.success).toBe(true);
   });
 
-  it("should compose with filter", () => {
+  it("should compose with filter", async () => {
     const tools = createMockTools(testContext);
     const bindings: Bindings = new Map();
     const semParse = parse('(semantic "error")');
-    const semResult = solve(semParse.term!, tools);
+    const semResult = await solve(semParse.term!, tools);
     bindings.set("RESULTS", semResult.value);
 
     const filterParse = parse('(filter RESULTS (lambda x (match x "timeout" 0)))');
-    const filterResult = solve(filterParse.term!, tools, bindings);
+    const filterResult = await solve(filterParse.term!, tools, bindings);
     expect(filterResult.success).toBe(true);
   });
 });

@@ -88,7 +88,7 @@ describe("--dangerously-skip-cwd-checking", () => {
         const tool = new LatticeTool({ skipCwdChecking: true });
         await tool.loadAsync(outsideFile);
 
-        const result = tool.execute({ type: "query", command: '(grep "ERROR")' });
+        const result = await tool.execute({ type: "query", command: '(grep "ERROR")' });
 
         expect(result.success).toBe(true);
         expect(result.message).toContain("Found 1 result");
@@ -207,25 +207,25 @@ describe("--dangerously-skip-cwd-checking", () => {
       "utf-8"
     );
 
-    it("should parse --dangerously-skip-cwd-checking from process.argv", () => {
+    it("should parse --dangerously-skip-cwd-checking from process.argv", async () => {
       expect(serverSource).toContain('process.argv.includes("--dangerously-skip-cwd-checking")');
     });
 
-    it("should wrap CWD check in skipCwdChecking conditional", () => {
+    it("should wrap CWD check in skipCwdChecking conditional", async () => {
       // The path validation block should be inside an if (!skipCwdChecking) guard
       expect(serverSource).toMatch(/if\s*\(\s*!skipCwdChecking\s*\)/);
     });
 
-    it("should still contain the original path-outside-CWD error message", () => {
+    it("should still contain the original path-outside-CWD error message", async () => {
       // The error message should still exist (just conditionally reached)
       expect(serverSource).toContain("Path outside working directory is not allowed");
     });
 
-    it("should still contain the path traversal error message", () => {
+    it("should still contain the path traversal error message", async () => {
       expect(serverSource).toContain("Path traversal (..) is not allowed");
     });
 
-    it("should log a warning when CWD checking is disabled", () => {
+    it("should log a warning when CWD checking is disabled", async () => {
       expect(serverSource).toMatch(/WARNING.*CWD.*checking.*DISABLED|CWD.*path.*checking.*DISABLED/i);
     });
   });

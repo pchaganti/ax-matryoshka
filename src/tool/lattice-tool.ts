@@ -53,8 +53,13 @@ export class LatticeTool {
 
   /**
    * Execute a command
+   *
+   * Became async when the underlying NucleusEngine.execute() became
+   * async (the sub-LLM symbolic-recursion refactor). Non-query commands
+   * (load, reset, stats, help) don't actually do async work but return
+   * via an awaited path for uniform callers.
    */
-  execute(command: LatticeCommand): LatticeResponse {
+  async execute(command: LatticeCommand): Promise<LatticeResponse> {
     switch (command.type) {
       case "load":
         return this.load(command.filePath);
@@ -196,7 +201,7 @@ export class LatticeTool {
   /**
    * Execute a Nucleus query
    */
-  private query(command: string): LatticeResponse {
+  private async query(command: string): Promise<LatticeResponse> {
     if (!this.engine.isLoaded()) {
       return {
         success: false,
@@ -204,7 +209,7 @@ export class LatticeTool {
       };
     }
 
-    const result = this.engine.execute(command);
+    const result = await this.engine.execute(command);
 
     if (!result.success) {
       return {

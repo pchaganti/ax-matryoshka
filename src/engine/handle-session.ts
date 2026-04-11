@@ -333,12 +333,12 @@ export class HandleSession {
    * Arrays are stored in SQLite and a handle stub is returned.
    * Scalars are returned directly.
    */
-  execute(command: string): HandleResult {
+  async execute(command: string): Promise<HandleResult> {
     this.lastAccessedAt = new Date();
     this.queryCount++;
 
     // Execute via NucleusEngine
-    const result = this.engine.execute(command);
+    const result = await this.engine.execute(command);
 
     if (!result.success) {
       return {

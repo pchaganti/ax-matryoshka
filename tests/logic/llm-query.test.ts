@@ -14,7 +14,7 @@
  *   5. `solveAsync` propagates errors thrown by the underlying
  *      `tools.llmQuery` callback.
  *   6. Nested `(llm_query …)` inside a `filter`/`map`/etc. throws a
- *      clear "top-level only" error via the sync `solve()` path.
+ *      clear "top-level only" error via the sync `await solve()` path.
  *   7. Bindings inside a `(llm_query …)` are evaluated via the sync
  *      solver and respect cross-turn variables (`RESULTS`, `_N`).
  */
@@ -50,7 +50,7 @@ function makeTools(overrides: Partial<SolverTools> = {}): SolverTools {
 }
 
 describe("llm_query parser", () => {
-  it("parses the zero-binding form", () => {
+  it("parses the zero-binding form", async () => {
     const result = parse('(llm_query "summarize the document")');
     expect(result.success).toBe(true);
     expect(result.term?.tag).toBe("llm_query");
@@ -60,7 +60,7 @@ describe("llm_query parser", () => {
     }
   });
 
-  it("parses a single-binding form", () => {
+  it("parses a single-binding form", async () => {
     const result = parse(
       '(llm_query "Classify these errors: {errors}" (errors RESULTS))'
     );
@@ -73,7 +73,7 @@ describe("llm_query parser", () => {
     }
   });
 
-  it("parses a multi-binding form", () => {
+  it("parses a multi-binding form", async () => {
     const result = parse(
       '(llm_query "Apply {rules} to {data}" (rules _1) (data _2))'
     );
@@ -84,21 +84,21 @@ describe("llm_query parser", () => {
     }
   });
 
-  it("rejects a malformed binding that lacks parens", () => {
+  it("rejects a malformed binding that lacks parens", async () => {
     // `(llm_query "prompt" data _1)` is ambiguous — not a (name value)
     // pair. The parser should fail cleanly rather than partially consume.
     const result = parse('(llm_query "prompt" data _1)');
     expect(result.success).toBe(false);
   });
 
-  it("rejects a binding with an unsafe placeholder name", () => {
+  it("rejects a binding with an unsafe placeholder name", async () => {
     const result = parse('(llm_query "prompt" ("bad name" _1))');
     expect(result.success).toBe(false);
   });
 });
 
 describe("llm_query type inference", () => {
-  it("infers string", () => {
+  it("infers string", async () => {
     const result = parse('(llm_query "summarize")');
     expect(result.success).toBe(true);
     const type = inferType(result.term!);
@@ -210,8 +210,8 @@ describe("llm_query solver — error paths", () => {
     expect(result.error).toMatch(/quota exceeded/);
   });
 
-  it("rejects nested llm_query inside a filter lambda (top-level only)", () => {
-    // This is the POC's deliberate limitation — the sync `solve()` path
+  it("rejects nested llm_query inside a filter lambda (top-level only)", async () => {
+    // This is the POC's deliberate limitation — the sync `await solve()` path
     // refuses to dispatch `llm_query` when encountered inside another
     // term. The error message should explicitly say "top level".
     const parsed = parse(
@@ -220,11 +220,11 @@ describe("llm_query solver — error paths", () => {
     expect(parsed.success).toBe(true);
 
     // Feed through the sync solver directly — the FSM's solveAsync
-    // routes to solve() for anything that isn't a top-level llm_query,
+    // routes to await solve() for anything that isn't a top-level llm_query,
     // so nesting trips the sync path's error case.
     const bindings: Bindings = new Map();
     bindings.set("RESULTS", ["a", "b"]);
-    const result = solve(parsed.term!, makeTools({ llmQuery: async () => "x" }), bindings);
+    const result = await solve(parsed.term!, makeTools({ llmQuery: async () => "x" }), bindings);
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/top level/i);
   });

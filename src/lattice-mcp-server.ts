@@ -564,7 +564,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
         resetInactivityTimer();
 
-        const result = session.execute(command);
+        const result = await session.execute(command);
         return { content: [{ type: "text", text: formatHandleResult(result) }] };
       }
 

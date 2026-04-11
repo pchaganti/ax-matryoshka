@@ -90,7 +90,7 @@ describe("Audit17 #3: find_references validateRegex", () => {
       tag: "find_references",
       name: longName,
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     // Should succeed (returning empty array) without hanging
     expect(result.success).toBe(true);
   });
@@ -108,7 +108,7 @@ describe("Audit17 #3: find_references validateRegex", () => {
       tag: "find_references",
       name: "test",
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     expect(grepCalled).toBe(true);
   });

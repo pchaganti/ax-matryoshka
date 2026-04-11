@@ -263,10 +263,14 @@ export class NucleusEngine {
   /**
    * Execute a Nucleus command
    *
+   * Became async in the chunked refactor that made `solve()` return
+   * `Promise<SolveResult>`. Callers that previously did
+   * `const r = engine.execute(cmd)` must now `await` it.
+   *
    * @param command - Nucleus S-expression (e.g., "(grep \"pattern\")")
    * @returns Execution result with value, logs, and any errors
    */
-  execute(command: string): ExecutionResult {
+  async execute(command: string): Promise<ExecutionResult> {
     if (!this.solverTools) {
       return {
         success: false,
@@ -299,7 +303,7 @@ export class NucleusEngine {
     }
 
     // Execute the term
-    const solverResult = solveTerm(parseResult.term, this.solverTools, this.bindings);
+    const solverResult = await solveTerm(parseResult.term, this.solverTools, this.bindings);
 
     // Update bindings for cross-query state
     this.turnCounter++;
@@ -369,11 +373,19 @@ export class NucleusEngine {
   /**
    * Execute multiple commands in sequence
    *
+   * Must be sequential, not parallel (`Promise.all(map(execute))`),
+   * because each command may mutate cross-turn bindings (`_1`, `_2`,
+   * `RESULTS`) that a later command reads.
+   *
    * @param commands - Array of Nucleus commands
    * @returns Array of execution results
    */
-  executeAll(commands: string[]): ExecutionResult[] {
-    return commands.map(cmd => this.execute(cmd));
+  async executeAll(commands: string[]): Promise<ExecutionResult[]> {
+    const results: ExecutionResult[] = [];
+    for (const cmd of commands) {
+      results.push(await this.execute(cmd));
+    }
+    return results;
   }
 
   /**

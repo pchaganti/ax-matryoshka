@@ -57,7 +57,7 @@ describe("Audit19 #2: parseDate natural language day validation", () => {
       tag: "parseDate",
       str: { tag: "lit", value: "February 31, 2024" },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     expect(result.value).toBe(null);  // Invalid date should return null
   });
@@ -74,7 +74,7 @@ describe("Audit19 #2: parseDate natural language day validation", () => {
       tag: "parseDate",
       str: { tag: "lit", value: "31 February 2024" },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     expect(result.value).toBe(null);
   });
@@ -91,7 +91,7 @@ describe("Audit19 #2: parseDate natural language day validation", () => {
       tag: "parseDate",
       str: { tag: "lit", value: "April 31, 2024" },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     expect(result.value).toBe(null);
   });
@@ -108,7 +108,7 @@ describe("Audit19 #2: parseDate natural language day validation", () => {
       tag: "parseDate",
       str: { tag: "lit", value: "January 15, 2024" },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     expect(result.value).toBe("2024-01-15");
   });
@@ -132,7 +132,7 @@ describe("Audit19 #3: lc-solver classify empty string filter", () => {
         { input: "ok", output: false },
       ],
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     // The classifier should be a function
     const classifyFn = result.value;
@@ -245,7 +245,7 @@ describe("Audit19 #6: match group index bounds", () => {
       pattern: "(\\d+)",
       group: 5,
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
     expect(result.value).toBe(null);
   });

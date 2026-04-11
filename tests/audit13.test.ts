@@ -112,17 +112,17 @@ describe("Issue #2: evaluateWithBinding depth should propagate", () => {
 // Issue #5 — canProduceType misses null for parseInt/parseFloat/add
 // =========================================================================
 describe("Issue #5: canProduceType should return true for null on parseInt/parseFloat/add", () => {
-  it("canProduceType(parseInt, null) should be true", () => {
+  it("canProduceType(parseInt, null) should be true", async () => {
     const e: Extractor = { tag: "parseInt", str: { tag: "input" } };
     expect(canProduceType(e, "null")).toBe(true);
   });
 
-  it("canProduceType(parseFloat, null) should be true", () => {
+  it("canProduceType(parseFloat, null) should be true", async () => {
     const e: Extractor = { tag: "parseFloat", str: { tag: "input" } };
     expect(canProduceType(e, "null")).toBe(true);
   });
 
-  it("canProduceType(add, null) should be true", () => {
+  it("canProduceType(add, null) should be true", async () => {
     const e: Extractor = {
       tag: "add",
       left: { tag: "input" },
@@ -136,7 +136,7 @@ describe("Issue #5: canProduceType should return true for null on parseInt/parse
 // Issue #9 — parseDate uses local-time accessors not UTC
 // =========================================================================
 describe("Issue #9: parseDate should use UTC accessors", () => {
-  it("parseDate fallback should produce consistent date regardless of timezone", () => {
+  it("parseDate fallback should produce consistent date regardless of timezone", async () => {
     // "December 25, 2024" is a natural language date that hits the JS Date fallback path
     // With local time, getMonth()/getDate() can shift to a different day depending on TZ
     const tools = createMockTools("");
@@ -145,7 +145,7 @@ describe("Issue #9: parseDate should use UTC accessors", () => {
     // (parseDate "December 25, 2024")
     const parsed = parse('(parseDate "December 25, 2024")');
     expect(parsed.success).toBe(true);
-    const result = solve(parsed.term!, tools, bindings);
+    const result = await solve(parsed.term!, tools, bindings);
     expect(result.success).toBe(true);
     // Should always be 2024-12-25 regardless of timezone
     expect(result.value).toBe("2024-12-25");
@@ -156,25 +156,25 @@ describe("Issue #9: parseDate should use UTC accessors", () => {
 // Issue #10 — parseCurrencyImpl double-negative wrong sign
 // =========================================================================
 describe("Issue #10: parseCurrency double-negative produces wrong sign", () => {
-  it("should correctly parse negative with minus sign: -$1,234", () => {
+  it("should correctly parse negative with minus sign: -$1,234", async () => {
     const tools = createMockTools("");
     const bindings: Bindings = new Map();
 
     const parsed = parse('(parseCurrency "-$1,234")');
     expect(parsed.success).toBe(true);
-    const result = solve(parsed.term!, tools, bindings);
+    const result = await solve(parsed.term!, tools, bindings);
     expect(result.success).toBe(true);
     // Should be -1234, not 1234 (the minus should be preserved)
     expect(result.value).toBe(-1234);
   });
 
-  it("should correctly parse negative parens: ($1,234)", () => {
+  it("should correctly parse negative parens: ($1,234)", async () => {
     const tools = createMockTools("");
     const bindings: Bindings = new Map();
 
     const parsed = parse('(parseCurrency "($1,234)")');
     expect(parsed.success).toBe(true);
-    const result = solve(parsed.term!, tools, bindings);
+    const result = await solve(parsed.term!, tools, bindings);
     expect(result.success).toBe(true);
     // Should be -1234
     expect(result.value).toBe(-1234);
@@ -203,7 +203,7 @@ describe("Issue #11: buildQuarterMapper parseInt with NaN guard", () => {
 // Issue #12 — Percentage parser returns raw value not /100
 // =========================================================================
 describe("Issue #12: percentage parser should return raw value (not /100)", () => {
-  it("synthesized percentage extractor should match examples exactly", () => {
+  it("synthesized percentage extractor should match examples exactly", async () => {
     const integrator = new SynthesisIntegrator();
     // When examples say 25.5% -> 25.5, the parser should return 25.5 (not 0.255)
     const result = integrator.synthesizeOnFailure({
@@ -240,7 +240,7 @@ describe("Issue #14: lattice-tool path traversal check", () => {
 // Issue #15 — --port/--timeout accept NaN silently
 // =========================================================================
 describe("Issue #15: HTTP adapter should reject NaN port/timeout", () => {
-  it("parseInt with no radix should still work for valid numbers", () => {
+  it("parseInt with no radix should still work for valid numbers", async () => {
     // This is tested via reading the source - the fix adds NaN validation
     // We verify NaN detection works
     const portStr = "notanumber";

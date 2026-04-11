@@ -260,7 +260,7 @@ export class HttpAdapter {
           break;
 
         case "/bindings":
-          response = this.handleWithSession((session) => session.tool.execute({ type: "bindings" }));
+          response = await this.handleWithSession((session) => session.tool.execute({ type: "bindings" }));
           break;
 
         case "/reset":
@@ -268,16 +268,16 @@ export class HttpAdapter {
             this.sendError(res, 405, "Method not allowed");
             return;
           }
-          response = this.handleWithSession((session) => session.tool.execute({ type: "reset" }));
+          response = await this.handleWithSession((session) => session.tool.execute({ type: "reset" }));
           break;
 
         case "/stats":
-          response = this.handleWithSession((session) => session.tool.execute({ type: "stats" }));
+          response = await this.handleWithSession((session) => session.tool.execute({ type: "stats" }));
           break;
 
         case "/help":
           if (!this.helpResponse) {
-            this.helpResponse = new LatticeTool().execute({ type: "help" });
+            this.helpResponse = await new LatticeTool().execute({ type: "help" });
           }
           response = this.helpResponse;
           break;
@@ -325,7 +325,7 @@ export class HttpAdapter {
     if (typeof body.filePath === "string") {
       response = await tool.executeAsync({ type: "load", filePath: body.filePath });
     } else if (typeof body.content === "string") {
-      response = tool.execute({
+      response = await tool.execute({
         type: "loadContent",
         content: body.content,
         name: typeof body.name === "string" ? body.name : undefined,
@@ -387,7 +387,7 @@ export class HttpAdapter {
   /**
    * Handle request that requires an active session
    */
-  private handleWithSession(fn: (session: Session) => LatticeResponse): LatticeResponse {
+  private async handleWithSession(fn: (session: Session) => Promise<LatticeResponse>): Promise<LatticeResponse> {
     if (!this.session) {
       return { success: false, error: "No active session. POST /load first." };
     }

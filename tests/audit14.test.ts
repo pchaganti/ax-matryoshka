@@ -14,7 +14,7 @@ import { formatValue, evaluate, type SandboxTools } from "../src/logic/lc-interp
 // Issue #1 — evalo.ts: evalExtractor uses new RegExp without validateRegex
 // =========================================================================
 describe("Issue #1: evalExtractor should validate regex patterns", () => {
-  it("should return null for ReDoS pattern in match", () => {
+  it("should return null for ReDoS pattern in match", async () => {
     const e: Extractor = {
       tag: "match",
       str: { tag: "input" },
@@ -27,7 +27,7 @@ describe("Issue #1: evalExtractor should validate regex patterns", () => {
     expect(result).toBeNull();
   });
 
-  it("should return null for ReDoS pattern in replace", () => {
+  it("should return null for ReDoS pattern in replace", async () => {
     const e: Extractor = {
       tag: "replace",
       str: { tag: "input" },
@@ -45,7 +45,7 @@ describe("Issue #1: evalExtractor should validate regex patterns", () => {
 // Issue #2 — compile.ts: compiled code embeds regex without ReDoS check
 // =========================================================================
 describe("Issue #2: compile should validate regex patterns", () => {
-  it("compiled match with ReDoS pattern should return null", () => {
+  it("compiled match with ReDoS pattern should return null", async () => {
     const e: Extractor = {
       tag: "match",
       str: { tag: "input" },
@@ -104,7 +104,7 @@ describe("Issue #4: coordinator should validate knowledge base regex", () => {
 // Issue #5 — lc-interpreter.ts: formatValue no depth limit
 // =========================================================================
 describe("Issue #5: formatValue should have depth limit", () => {
-  it("should not stack overflow on deeply nested object", () => {
+  it("should not stack overflow on deeply nested object", async () => {
     // Build deeply nested object
     let obj: any = { value: "leaf" };
     for (let i = 0; i < 200; i++) {
@@ -121,7 +121,7 @@ describe("Issue #5: formatValue should have depth limit", () => {
 // Issue #6 — lc-interpreter.ts:242: replace backreference injection
 // =========================================================================
 describe("Issue #6: interpreter replace should escape replacement backreferences", () => {
-  it("should treat $1 in replacement as literal, not backreference", () => {
+  it("should treat $1 in replacement as literal, not backreference", async () => {
     const tools: SandboxTools = {
       grep: () => [],
       fuzzy_search: () => [],
@@ -211,7 +211,7 @@ describe("Issue #9: split with empty delimiter should be bounded", () => {
     // (split "aaa..." "" 0) — empty delimiter splits into per-character array
     const parsed = parse(`(split "${bigString.slice(0, 50)}" "" 0)`);
     expect(parsed.success).toBe(true);
-    const result = solverMod.solve(parsed.term!, tools);
+    const result = await solverMod.solve(parsed.term!, tools);
     // Should either return "a" (first char) or handle the split safely
     // The key check is it shouldn't create a 100K element array
     expect(result.success).toBe(true);
@@ -235,7 +235,7 @@ describe("Issue #10: solver replace should escape replacement backreferences", (
 
     const parsed = parse('(replace "hello world" "(\\\\w+)" "$1-test")');
     expect(parsed.success).toBe(true);
-    const result = solverMod2.solve(parsed.term!, tools);
+    const result = await solverMod2.solve(parsed.term!, tools);
     expect(result.success).toBe(true);
     // Should contain literal "$1-test", not a backreference substitution
     expect(String(result.value)).toContain("$1-test");
@@ -292,7 +292,7 @@ describe("Issue #13: lattice-tool should use path.basename", () => {
 // Issue #14 — lc-interpreter.ts:251: negative split index not validated
 // =========================================================================
 describe("Issue #14: interpreter split should reject negative index", () => {
-  it("should return null for negative split index", () => {
+  it("should return null for negative split index", async () => {
     const tools: SandboxTools = {
       grep: () => [],
       fuzzy_search: () => [],
@@ -317,7 +317,7 @@ describe("Issue #14: interpreter split should reject negative index", () => {
 // Issue #15 — typeo.ts: inferType missing default case
 // =========================================================================
 describe("Issue #15: inferType should return unknown for unrecognized tags", () => {
-  it("should return 'unknown' for a made-up tag", () => {
+  it("should return 'unknown' for a made-up tag", async () => {
     const e = { tag: "nonexistent" } as unknown as Extractor;
     const result = inferType(e);
     // Should return "unknown", not undefined

@@ -32,7 +32,7 @@ describe("Audit15 #1: regex case consistency", () => {
       context: "",
     };
     const term: any = { tag: "match", str: { tag: "lit", value: "ABC" }, pattern: "abc", group: 0 };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     // Should match — solver uses "i" flag for consistency with grep
     expect(result.value).toBe("ABC");
   });
@@ -128,7 +128,7 @@ describe("Audit15 #6: evaluateWithBinding match group<0", () => {
         body: { tag: "match", str: { tag: "var", name: "x" }, pattern: "hello", group: -1 },
       },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     // Each result should be null because group is negative
     expect(result.success).toBe(true);
     const arr = result.value as any[];
@@ -232,7 +232,7 @@ describe("Audit15 #11: parseCurrency $-1234 negative", () => {
       tag: "parseCurrency",
       str: { tag: "lit", value: "$-1,234" },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.value).toBe(-1234);
   });
 });
@@ -287,7 +287,7 @@ describe("Audit15 #14: sum regex multi-number lines", () => {
       tag: "sum",
       collection: { tag: "grep", pattern: "Item" },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     // Currently matches first number only ($100, $200) which is actually correct for the "dollar amount" case
     expect(typeof result.value).toBe("number");
     expect(result.value as number).toBeGreaterThan(0);

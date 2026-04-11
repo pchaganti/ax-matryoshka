@@ -73,7 +73,7 @@ function createMockTools(content: string): SolverTools {
 /**
  * Helper to parse and solve
  */
-function parseAndSolve(query: string, tools: SolverTools, bindings: Bindings = new Map()) {
+async function parseAndSolve(query: string, tools: SolverTools, bindings: Bindings = new Map()) {
   const parseResult = parse(query);
   if (!parseResult.success || !parseResult.term) {
     throw new Error(`Parse failed: ${parseResult.error}`);
@@ -83,12 +83,12 @@ function parseAndSolve(query: string, tools: SolverTools, bindings: Bindings = n
 
 describe("LC Solver with Synthesis Fallback", () => {
   describe("parseCurrency synthesis", () => {
-    it("auto-synthesizes when built-in fails on EU format", () => {
+    it("auto-synthesizes when built-in fails on EU format", async () => {
       const tools = createMockTools("Price: 1.234,56€\nPrice: 500,00€");
 
       // EU format with trailing euro sign - built-in should handle this
       // but with examples, it should use synthesis for complex formats
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Price")
            (lambda x
              (parseCurrency (match x "([0-9.,]+€)" 1)
@@ -100,11 +100,11 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(result.value).toEqual([1234.56, 500]);
     });
 
-    it("synthesizes currency parser for unfamiliar format", () => {
+    it("synthesizes currency parser for unfamiliar format", async () => {
       const tools = createMockTools("Amount: CHF 1'234.50\nAmount: CHF 500.00");
 
       // Swiss format with apostrophe thousand separator
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Amount")
            (lambda x
              (parseCurrency (match x "CHF ([0-9'.,]+)" 1)
@@ -116,11 +116,11 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(result.value).toEqual([1234.5, 500]);
     });
 
-    it("uses built-in parser when no examples and format is standard", () => {
+    it("uses built-in parser when no examples and format is standard", async () => {
       const tools = createMockTools("Price: $1,234.56\nPrice: $500.00");
 
       // Standard US format - should work without examples
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Price")
            (lambda x
              (parseCurrency (match x "\\$([0-9,.]+)" 1))))`,
@@ -133,10 +133,10 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("parseDate synthesis", () => {
-    it("synthesizes date parser for DD-Mon-YYYY format", () => {
+    it("synthesizes date parser for DD-Mon-YYYY format", async () => {
       const tools = createMockTools("Date: 15-Jan-2024\nDate: 20-Feb-2024");
 
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Date")
            (lambda x
              (parseDate (match x "Date: (.+)" 1)
@@ -148,10 +148,10 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(result.value).toEqual(["2024-01-15", "2024-02-20"]);
     });
 
-    it("synthesizes date parser for short year format", () => {
+    it("synthesizes date parser for short year format", async () => {
       const tools = createMockTools("Date: 15/01/24\nDate: 28/02/24");
 
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Date")
            (lambda x
              (parseDate (match x "Date: (.+)" 1)
@@ -165,10 +165,10 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("parseNumber synthesis", () => {
-    it("synthesizes number extractor from text", () => {
+    it("synthesizes number extractor from text", async () => {
       const tools = createMockTools("Total: 1,234 units\nTotal: 500 units");
 
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Total")
            (lambda x
              (parseNumber (match x "Total: ([0-9,]+)" 1)
@@ -180,12 +180,12 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(result.value).toEqual([1234, 500]);
     });
 
-    it("extracts percentages and handles numeric values", () => {
+    it("extracts percentages and handles numeric values", async () => {
       const tools = createMockTools("Growth: 25.5%\nGrowth: 10%");
 
       // parseNumber with % converts to decimals (0.255, 0.10)
       // To get raw numbers, extract without the % and parse as number
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Growth")
            (lambda x
              (parseNumber (match x "Growth: ([0-9.]+)" 1)
@@ -200,12 +200,12 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("predicate synthesis", () => {
-    it("synthesizes predicate from true/false examples", () => {
+    it("synthesizes predicate from true/false examples", async () => {
       const tools = createMockTools(
         "ERROR: Connection failed\nINFO: Started\nERROR: Timeout\nDEBUG: trace"
       );
 
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(filter (grep "")
            (lambda x
              (predicate x
@@ -225,12 +225,12 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(lines.every((l) => l.includes("ERROR"))).toBe(true);
     });
 
-    it("synthesizes predicate for log levels (ERROR or WARN)", () => {
+    it("synthesizes predicate for log levels (ERROR or WARN)", async () => {
       const tools = createMockTools(
         "[ERROR] Failed to connect\n[WARN] High memory\n[INFO] Server started\n[DEBUG] Query"
       );
 
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(filter (grep "")
            (lambda x
              (predicate x
@@ -252,13 +252,13 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("extract with examples", () => {
-    it("synthesizes extractor from examples", () => {
+    it("synthesizes extractor from examples", async () => {
       const tools = createMockTools(
         "Order #1234: $500.00\nOrder #5678: $1,200.00"
       );
 
       // Use :type "number" for type coercion
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Order")
            (lambda x
              (extract x "Order #(\\d+)" 1 "number"
@@ -270,12 +270,12 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(result.value).toEqual([1234, 5678]);
     });
 
-    it("synthesizes extractor with type coercion", () => {
+    it("synthesizes extractor with type coercion", async () => {
       const tools = createMockTools(
         "Revenue: $1,234.56\nRevenue: $500.00"
       );
 
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Revenue")
            (lambda x
              (extract x "\\$([\\d,\\.]+)" 1 "currency"
@@ -289,11 +289,11 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("define-fn and apply-fn", () => {
-    it("defines and applies a synthesized function", () => {
+    it("defines and applies a synthesized function", async () => {
       const tools = createMockTools("€100\n€200\n€300");
 
       // Define the function
-      const defineResult = parseAndSolve(
+      const defineResult = await parseAndSolve(
         `(define-fn "euro-parser" :examples [("€100" 100) ("€200" 200)])`,
         tools
       );
@@ -307,7 +307,7 @@ describe("LC Solver with Synthesis Fallback", () => {
       }
 
       // Apply the function
-      const applyResult = parseAndSolve(
+      const applyResult = await parseAndSolve(
         `(apply-fn "euro-parser" "€300")`,
         tools,
         bindings
@@ -317,12 +317,12 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(applyResult.value).toBe(300);
     });
 
-    it("applies synthesized function in map", () => {
+    it("applies synthesized function in map", async () => {
       const tools = createMockTools("€100\n€200\n€300");
 
       // Define first
       const bindings: Bindings = new Map();
-      const defineResult = parseAndSolve(
+      const defineResult = await parseAndSolve(
         `(define-fn "euro-parser" :examples [("€100" 100) ("€200" 200)])`,
         tools
       );
@@ -331,7 +331,7 @@ describe("LC Solver with Synthesis Fallback", () => {
       }
 
       // Now map over lines using the defined function
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "€")
            (lambda x
              (apply-fn "euro-parser" x)))`,
@@ -345,7 +345,7 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("chained synthesis operations", () => {
-    it("synthesizes multiple extractors in pipeline", () => {
+    it("synthesizes multiple extractors in pipeline", async () => {
       const tools = createMockTools(
         "Order #1234: $1,500.00 - Status: SHIPPED\n" +
         "Order #5678: $250.00 - Status: PENDING\n" +
@@ -353,7 +353,7 @@ describe("LC Solver with Synthesis Fallback", () => {
       );
 
       // Extract order numbers - use :type "number" for coercion
-      const orderNumsResult = parseAndSolve(
+      const orderNumsResult = await parseAndSolve(
         `(map (grep "Order")
            (lambda line
              (extract line "Order #(\\d+)" 1 "number"
@@ -365,7 +365,7 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(orderNumsResult.value).toEqual([1234, 5678, 9012]);
 
       // Extract amounts
-      const amountsResult = parseAndSolve(
+      const amountsResult = await parseAndSolve(
         `(map (grep "Order")
            (lambda line
              (parseCurrency (match line "\\$([\\d,\\.]+)" 1)
@@ -379,10 +379,10 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("synthesis with constraints", () => {
-    it("respects type constraints during synthesis", () => {
+    it("respects type constraints during synthesis", async () => {
       const tools = createMockTools("Temperature: 72.5°F\nTemperature: 68.0°F");
 
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(map (grep "Temperature")
            (lambda x
              (extract x "([0-9.]+)°F" 1
@@ -398,11 +398,11 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("synthesis caching", () => {
-    it("caches synthesized functions for reuse", () => {
+    it("caches synthesized functions for reuse", async () => {
       const tools = createMockTools("€100\n€200\n€100");
 
       // First call synthesizes
-      const result1 = parseAndSolve(
+      const result1 = await parseAndSolve(
         `(parseCurrency "€100" :examples [("€100" 100) ("€200" 200)])`,
         tools
       );
@@ -410,7 +410,7 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(result1.value).toBe(100);
 
       // Second call with same pattern should reuse cached function
-      const result2 = parseAndSolve(
+      const result2 = await parseAndSolve(
         `(parseCurrency "€200" :examples [("€100" 100) ("€200" 200)])`,
         tools
       );
@@ -420,7 +420,7 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("classify with miniKanren", () => {
-    it("uses relational solver for pattern discovery", () => {
+    it("uses relational solver for pattern discovery", async () => {
       const tools = createMockTools(
         "2024-01-15 10:30:00 [ERROR] auth.service - Login failed\n" +
         "2024-01-15 10:30:05 [INFO] auth.service - Login successful\n" +
@@ -428,7 +428,7 @@ describe("LC Solver with Synthesis Fallback", () => {
       );
 
       // Use classify with examples
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(classify
            :examples [
              ("2024-01-15 10:30:00 [ERROR] auth.service - Login failed" true)
@@ -448,11 +448,11 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("error handling", () => {
-    it("falls back to built-in when conflicting examples provided", () => {
+    it("falls back to built-in when conflicting examples provided", async () => {
       const tools = createMockTools("random text");
 
       // Conflicting examples cause synthesis to fail, but solver falls back to built-in
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(parseCurrency "test" :examples [("test" 100) ("test" 200)])`,
         tools
       );
@@ -463,10 +463,10 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(result.value).toBe(null);
     });
 
-    it("falls back to null when no examples and parse fails", () => {
+    it("falls back to null when no examples and parse fails", async () => {
       const tools = createMockTools("gibberish: xyz");
 
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(parseCurrency "xyz")`,
         tools
       );
@@ -477,13 +477,13 @@ describe("LC Solver with Synthesis Fallback", () => {
   });
 
   describe("integration with existing solver features", () => {
-    it("combines synthesis with filter and count", () => {
+    it("combines synthesis with filter and count", async () => {
       const tools = createMockTools(
         "[ERROR] Failed\n[INFO] OK\n[ERROR] Timeout\n[WARN] Slow"
       );
 
       // Count errors using synthesized predicate
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(count
            (filter (grep "")
              (lambda x
@@ -499,13 +499,13 @@ describe("LC Solver with Synthesis Fallback", () => {
       expect(result.value).toBe(2); // Two ERROR lines
     });
 
-    it("combines synthesis with sum", () => {
+    it("combines synthesis with sum", async () => {
       const tools = createMockTools(
         "Sales: 1.234,56€\nSales: 500,00€\nSales: 750,00€"
       );
 
       // Sum EU-formatted currency using synthesis
-      const result = parseAndSolve(
+      const result = await parseAndSolve(
         `(sum
            (map (grep "Sales")
              (lambda x
@@ -522,10 +522,10 @@ describe("LC Solver with Synthesis Fallback", () => {
 });
 
 describe("Solver synthesis integration edge cases", () => {
-  it("handles empty examples array gracefully", () => {
+  it("handles empty examples array gracefully", async () => {
     const tools = createMockTools("$100");
 
-    const result = parseAndSolve(
+    const result = await parseAndSolve(
       `(parseCurrency "$100" :examples [])`,
       tools
     );
@@ -535,10 +535,10 @@ describe("Solver synthesis integration edge cases", () => {
     expect(result.value).toBe(100);
   });
 
-  it("handles single example", () => {
+  it("handles single example", async () => {
     const tools = createMockTools("€50");
 
-    const result = parseAndSolve(
+    const result = await parseAndSolve(
       `(parseCurrency "€50" :examples [("€50" 50)])`,
       tools
     );
@@ -547,11 +547,11 @@ describe("Solver synthesis integration edge cases", () => {
     expect(result.value).toBe(50);
   });
 
-  it("preserves bindings across synthesis operations", () => {
+  it("preserves bindings across synthesis operations", async () => {
     const tools = createMockTools("$100\n$200");
     const bindings: Bindings = new Map([["RESULTS", [{ line: "$100" }, { line: "$200" }]]]);
 
-    const result = parseAndSolve(
+    const result = await parseAndSolve(
       `(map RESULTS
          (lambda x
            (parseCurrency x :examples [("$100" 100)])))`,

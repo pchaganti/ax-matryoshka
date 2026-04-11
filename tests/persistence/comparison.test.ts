@@ -65,7 +65,7 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
   });
 
   describe("Document Loading", () => {
-    it("should capture same line count", () => {
+    it("should capture same line count", async () => {
       const tradStats = traditional.getStats();
       const handleStats = db.getLineCount();
 
@@ -74,7 +74,7 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
       expect(tradStats?.lineCount).toBe(handleStats);
     });
 
-    it("should capture same document length", () => {
+    it("should capture same document length", async () => {
       const tradStats = traditional.getStats();
       const handleStats = {
         length: SAMPLE_DOCUMENT.length,
@@ -86,9 +86,9 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
   });
 
   describe("Search Operations (grep)", () => {
-    it("should capture comparable grep results", () => {
+    it("should capture comparable grep results", async () => {
       // Traditional grep (case-insensitive by default in Nucleus)
-      const tradResult = traditional.execute('(grep "ERROR")');
+      const tradResult = await traditional.execute('(grep "ERROR")');
       const tradMatches = tradResult.value as Array<{
         match: string;
         line: string;
@@ -111,8 +111,8 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
       expect(handleHasError1).toBe(true);
     });
 
-    it("should capture same fields in grep results", () => {
-      const tradResult = traditional.execute('(grep "ERROR")');
+    it("should capture same fields in grep results", async () => {
+      const tradResult = await traditional.execute('(grep "ERROR")');
       const tradMatch = (tradResult.value as unknown[])[0] as {
         match: string;
         line: string;
@@ -149,10 +149,10 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
       // For regex group extraction, use grep() with the handle system
     });
 
-    it("should allow regex grep through traditional engine", () => {
+    it("should allow regex grep through traditional engine", async () => {
       // Handle-based system still supports regex grep through the engine
       // The FTS5 is an optimization for simple keyword searches
-      const tradResult = traditional.execute('(grep "Sales Q[1-4]")');
+      const tradResult = await traditional.execute('(grep "Sales Q[1-4]")');
       const tradCount = (tradResult.value as unknown[]).length;
       expect(tradCount).toBe(4);
 
@@ -165,10 +165,10 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
   });
 
   describe("Aggregation Operations", () => {
-    it("should produce consistent count behavior", () => {
+    it("should produce consistent count behavior", async () => {
       // Traditional - count specific pattern
-      traditional.execute('(grep "Sales Q")');
-      const tradCount = traditional.execute('(count RESULTS)');
+      await traditional.execute('(grep "Sales Q")');
+      const tradCount = await traditional.execute('(count RESULTS)');
 
       // Handle-based - count same pattern
       const searchResults = search.search("Sales");
@@ -184,13 +184,13 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
       console.log("Handle-based count:", handleCount);
     });
 
-    it("should produce identical sum results for same data", () => {
+    it("should produce identical sum results for same data", async () => {
       // Traditional - sum sales figures
-      traditional.execute('(grep "revenue")');
-      const tradSum = traditional.execute('(sum RESULTS)');
+      await traditional.execute('(grep "revenue")');
+      const tradSum = await traditional.execute('(sum RESULTS)');
 
       // Handle-based - use same data source (grep results converted to handle)
-      const grepResult = traditional.execute('(grep "revenue")');
+      const grepResult = await traditional.execute('(grep "revenue")');
       const grepData = grepResult.value as Array<{ line: string; lineNum: number }>;
       const handle = registry.store(grepData);
       const handleSum = ops.sumFromLine(handle);
@@ -207,10 +207,10 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
   });
 
   describe("Filter Operations", () => {
-    it("should produce equivalent filter results", () => {
+    it("should produce equivalent filter results", async () => {
       // Traditional filter
-      traditional.execute('(grep "ERROR")');
-      const tradFiltered = traditional.execute(
+      await traditional.execute('(grep "ERROR")');
+      const tradFiltered = await traditional.execute(
         '(filter RESULTS (lambda x (match x "timeout" 0)))'
       );
       const tradResult = tradFiltered.value as unknown[];
@@ -233,14 +233,14 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
   });
 
   describe("Map Operations", () => {
-    it("should produce equivalent map results for same data", () => {
+    it("should produce equivalent map results for same data", async () => {
       // Traditional map - extract item numbers from Customer lines
-      traditional.execute('(grep "Customer:")');  // More specific pattern
-      const tradMapped = traditional.execute('(map RESULTS (lambda x (match x "item #(\\\\d+)" 1)))');
+      await traditional.execute('(grep "Customer:")');  // More specific pattern
+      const tradMapped = await traditional.execute('(map RESULTS (lambda x (match x "item #(\\\\d+)" 1)))');
       const tradResult = tradMapped.value as string[];
 
       // Handle-based map - use same grep results
-      const grepResult = traditional.execute('(grep "Customer:")');
+      const grepResult = await traditional.execute('(grep "Customer:")');
       const grepData = grepResult.value as Array<{ line: string; lineNum: number }>;
       const handle = registry.store(grepData);
       const mappedHandle = ops.map(handle, "item.line.match(/item #(\\d+)/)?.[1]");
@@ -253,9 +253,9 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
   });
 
   describe("Bindings", () => {
-    it("should track bindings with similar information", () => {
+    it("should track bindings with similar information", async () => {
       // Traditional bindings
-      traditional.execute('(grep "ERROR")');
+      await traditional.execute('(grep "ERROR")');
       const tradBindings = traditional.getBindings();
 
       console.log("\n=== TRADITIONAL BINDINGS ===");
@@ -266,7 +266,7 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
       expect(tradBindings._1).toMatch(/^Array\[\d+\]$/);
 
       // Handle-based bindings - use same grep results for fair comparison
-      const grepResult = traditional.execute('(grep "ERROR")');
+      const grepResult = await traditional.execute('(grep "ERROR")');
       const grepData = grepResult.value as unknown[];
       const handle = registry.store(grepData);
       registry.setResults(handle);
@@ -281,9 +281,9 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
       expect(handleContext).toMatch(/Array\(\d+\)/);
     });
 
-    it("should provide more information in handle stubs", () => {
+    it("should provide more information in handle stubs", async () => {
       // Use grep results which have 'line' property
-      const grepResult = traditional.execute('(grep "ERROR")');
+      const grepResult = await traditional.execute('(grep "ERROR")');
       const grepData = grepResult.value as unknown[];
       const handle = registry.store(grepData);
       const stub = registry.getStub(handle);
@@ -300,7 +300,7 @@ describe("Data Comparison: Traditional vs Handle-Based", () => {
   });
 
   describe("Token Savings Verification", () => {
-    it("should demonstrate significant token savings", () => {
+    it("should demonstrate significant token savings", async () => {
       // Simulate large result set
       const largeResults = Array.from({ length: 1000 }, (_, i) => ({
         line: `2024-01-15 10:30:${String(i).padStart(2, "0")} ERROR: Some error message with details about failure ${i}`,
@@ -352,7 +352,7 @@ describe("Handle-Based Advantages (New Features)", () => {
   });
 
   describe("FTS5 Full-Text Search (New)", () => {
-    it("should support phrase queries (not in traditional)", () => {
+    it("should support phrase queries (not in traditional)", async () => {
       // FTS5 phrase query - exact phrase match
       const results = search.search('"connection failed"');
 
@@ -364,7 +364,7 @@ describe("Handle-Based Advantages (New Features)", () => {
       console.log("Result:", results[0].content);
     });
 
-    it("should support boolean operators (improved)", () => {
+    it("should support boolean operators (improved)", async () => {
       // FTS5 boolean - ERROR but not timeout
       const results = search.search("ERROR NOT timeout");
 
@@ -375,7 +375,7 @@ describe("Handle-Based Advantages (New Features)", () => {
       console.log("Results:", results.length);
     });
 
-    it("should support OR queries (improved)", () => {
+    it("should support OR queries (improved)", async () => {
       const results = search.search("WARNING OR DEBUG");
 
       expect(results.length).toBe(2);
@@ -385,7 +385,7 @@ describe("Handle-Based Advantages (New Features)", () => {
       console.log("Results:", results.length);
     });
 
-    it("should support prefix matching (new)", () => {
+    it("should support prefix matching (new)", async () => {
       const results = search.search("connect*");
 
       expect(results.length).toBeGreaterThan(1);
@@ -395,7 +395,7 @@ describe("Handle-Based Advantages (New Features)", () => {
       console.log("Results:", results.length);
     });
 
-    it("should provide highlighting (new)", () => {
+    it("should provide highlighting (new)", async () => {
       const results = search.searchWithHighlights("ERROR");
 
       expect(results[0].highlighted).toContain("<mark>ERROR</mark>");
@@ -405,7 +405,7 @@ describe("Handle-Based Advantages (New Features)", () => {
       console.log("Highlighted:", results[0].highlighted);
     });
 
-    it("should support relevance ranking (new)", () => {
+    it("should support relevance ranking (new)", async () => {
       const results = search.searchByRelevance("revenue customers");
 
       // Results should be ordered by relevance (most matches first)
@@ -418,7 +418,7 @@ describe("Handle-Based Advantages (New Features)", () => {
   });
 
   describe("Session Checkpoints (New)", () => {
-    it("should save and restore session state", () => {
+    it("should save and restore session state", async () => {
       // Build up state
       const results1 = search.search("ERROR");
       const h1 = registry.store(results1);
@@ -446,7 +446,7 @@ describe("Handle-Based Advantages (New Features)", () => {
   });
 
   describe("Server-Side Operations (New)", () => {
-    it("should sort without transferring data", () => {
+    it("should sort without transferring data", async () => {
       const results = search.search("Sales");
       const handle = registry.store(
         results.map((r) => ({
@@ -467,7 +467,7 @@ describe("Handle-Based Advantages (New Features)", () => {
       });
     });
 
-    it("should preview/sample without full transfer", () => {
+    it("should preview/sample without full transfer", async () => {
       const results = search.search("Customer");
       const handle = registry.store(results);
 
@@ -482,7 +482,7 @@ describe("Handle-Based Advantages (New Features)", () => {
       expect(sample.length).toBe(2);
     });
 
-    it("should describe data schema without full transfer", () => {
+    it("should describe data schema without full transfer", async () => {
       const results = search.search("Sales");
       const handle = registry.store(
         results.map((r) => ({
@@ -507,7 +507,7 @@ describe("Handle-Based Advantages (New Features)", () => {
 });
 
 describe("Feature Comparison Summary", () => {
-  it("should document feature comparison", () => {
+  it("should document feature comparison", async () => {
     console.log("\n" + "=".repeat(70));
     console.log("FEATURE COMPARISON: TRADITIONAL vs HANDLE-BASED");
     console.log("=".repeat(70));

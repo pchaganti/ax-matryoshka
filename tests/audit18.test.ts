@@ -168,7 +168,7 @@ describe("Audit18 #8: findDistinguishingPattern regex validation", () => {
         { input: "all good", output: false },
       ],
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.success).toBe(true);
   });
 });
@@ -187,7 +187,7 @@ describe("Audit18 #9: parseDate trailing text", () => {
       tag: "parseDate",
       str: { tag: "lit", value: "2024-01-15 extra garbage" },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     // Should not silently accept trailing text
     expect(result.value).toBe(null);
   });
@@ -237,7 +237,7 @@ describe("Audit18 #13: evaluateWithBinding depth constant", () => {
       left: { tag: "lit", value: 1 },
       right: { tag: "lit", value: 2 },
     };
-    const result = solve(term, tools);
+    const result = await solve(term, tools);
     expect(result.value).toBe(3);
   });
 });

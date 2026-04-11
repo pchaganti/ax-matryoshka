@@ -271,7 +271,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
 
         try {
           const engine = await getEngine(filePath, sessionId);
-          const result = engine.execute(command);
+          const result = await engine.execute(command);
 
           if (!result.success) {
             return {

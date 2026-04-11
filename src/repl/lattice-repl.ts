@@ -297,7 +297,7 @@ export async function startREPL(options: REPLOptions = {}): Promise<void> {
       return true;
     }
 
-    const result = session.execute(trimmed);
+    const result = await session.execute(trimmed);
 
     if (!result.success) {
       output.write(`Error: ${result.error}\n`);

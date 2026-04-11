@@ -7,9 +7,9 @@ import {
 
 describe("LatticeTool", () => {
   describe("loadContent", () => {
-    it("should load content from string", () => {
+    it("should load content from string", async () => {
       const tool = new LatticeTool();
-      const result = tool.execute({
+      const result = await tool.execute({
         type: "loadContent",
         content: "line1\nline2\nline3",
         name: "test-doc",
@@ -20,9 +20,9 @@ describe("LatticeTool", () => {
       expect(result.message).toContain("3 lines");
     });
 
-    it("should use default name for inline document", () => {
+    it("should use default name for inline document", async () => {
       const tool = new LatticeTool();
-      const result = tool.execute({
+      const result = await tool.execute({
         type: "loadContent",
         content: "test data",
       });
@@ -33,30 +33,30 @@ describe("LatticeTool", () => {
   });
 
   describe("query", () => {
-    it("should execute grep command", () => {
+    it("should execute grep command", async () => {
       const tool = new LatticeTool();
-      tool.execute({ type: "loadContent", content: "error line\nok line\nerror again" });
+      await tool.execute({ type: "loadContent", content: "error line\nok line\nerror again" });
 
-      const result = tool.execute({ type: "query", command: '(grep "error")' });
+      const result = await tool.execute({ type: "query", command: '(grep "error")' });
 
       expect(result.success).toBe(true);
       expect(result.message).toContain("Found 2 results");
     });
 
-    it("should return error when no document loaded", () => {
+    it("should return error when no document loaded", async () => {
       const tool = new LatticeTool();
-      const result = tool.execute({ type: "query", command: '(grep "test")' });
+      const result = await tool.execute({ type: "query", command: '(grep "test")' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("No document loaded");
     });
 
-    it("should maintain bindings across queries", () => {
+    it("should maintain bindings across queries", async () => {
       const tool = new LatticeTool();
-      tool.execute({ type: "loadContent", content: "a\nb\nc\nd\ne" });
-      tool.execute({ type: "query", command: '(grep "[a-z]")' }); // match all lines
+      await tool.execute({ type: "loadContent", content: "a\nb\nc\nd\ne" });
+      await tool.execute({ type: "query", command: '(grep "[a-z]")' }); // match all lines
 
-      const result = tool.execute({ type: "query", command: "(count RESULTS)" });
+      const result = await tool.execute({ type: "query", command: "(count RESULTS)" });
 
       expect(result.success).toBe(true);
       expect(result.data).toBe(5);
@@ -64,20 +64,20 @@ describe("LatticeTool", () => {
   });
 
   describe("bindings", () => {
-    it("should return current bindings", () => {
+    it("should return current bindings", async () => {
       const tool = new LatticeTool();
-      tool.execute({ type: "loadContent", content: "test" });
-      tool.execute({ type: "query", command: '(grep "test")' });
+      await tool.execute({ type: "loadContent", content: "test" });
+      await tool.execute({ type: "query", command: '(grep "test")' });
 
-      const result = tool.execute({ type: "bindings" });
+      const result = await tool.execute({ type: "bindings" });
 
       expect(result.success).toBe(true);
       expect(result.message).toContain("RESULTS");
     });
 
-    it("should report no bindings when empty", () => {
+    it("should report no bindings when empty", async () => {
       const tool = new LatticeTool();
-      const result = tool.execute({ type: "bindings" });
+      const result = await tool.execute({ type: "bindings" });
 
       expect(result.success).toBe(true);
       expect(result.message).toBe("No bindings");
@@ -85,13 +85,13 @@ describe("LatticeTool", () => {
   });
 
   describe("reset", () => {
-    it("should clear bindings", () => {
+    it("should clear bindings", async () => {
       const tool = new LatticeTool();
-      tool.execute({ type: "loadContent", content: "test" });
-      tool.execute({ type: "query", command: '(grep "test")' });
-      tool.execute({ type: "reset" });
+      await tool.execute({ type: "loadContent", content: "test" });
+      await tool.execute({ type: "query", command: '(grep "test")' });
+      await tool.execute({ type: "reset" });
 
-      const result = tool.execute({ type: "bindings" });
+      const result = await tool.execute({ type: "bindings" });
 
       expect(result.success).toBe(true);
       expect(result.message).toBe("No bindings");
@@ -99,20 +99,20 @@ describe("LatticeTool", () => {
   });
 
   describe("stats", () => {
-    it("should return document statistics", () => {
+    it("should return document statistics", async () => {
       const tool = new LatticeTool();
-      tool.execute({ type: "loadContent", content: "line1\nline2\nline3", name: "stats-test" });
+      await tool.execute({ type: "loadContent", content: "line1\nline2\nline3", name: "stats-test" });
 
-      const result = tool.execute({ type: "stats" });
+      const result = await tool.execute({ type: "stats" });
 
       expect(result.success).toBe(true);
       expect(result.message).toContain("stats-test");
       expect(result.message).toContain("3 lines");
     });
 
-    it("should return error when no document loaded", () => {
+    it("should return error when no document loaded", async () => {
       const tool = new LatticeTool();
-      const result = tool.execute({ type: "stats" });
+      const result = await tool.execute({ type: "stats" });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("No document loaded");
@@ -120,9 +120,9 @@ describe("LatticeTool", () => {
   });
 
   describe("help", () => {
-    it("should return help text", () => {
+    it("should return help text", async () => {
       const tool = new LatticeTool();
-      const result = tool.execute({ type: "help" });
+      const result = await tool.execute({ type: "help" });
 
       expect(result.success).toBe(true);
       expect(result.message).toContain("grep");
@@ -131,65 +131,65 @@ describe("LatticeTool", () => {
   });
 
   describe("isLoaded", () => {
-    it("should return false initially", () => {
+    it("should return false initially", async () => {
       const tool = new LatticeTool();
       expect(tool.isLoaded()).toBe(false);
     });
 
-    it("should return true after loading", () => {
+    it("should return true after loading", async () => {
       const tool = new LatticeTool();
-      tool.execute({ type: "loadContent", content: "test" });
+      await tool.execute({ type: "loadContent", content: "test" });
       expect(tool.isLoaded()).toBe(true);
     });
   });
 
   describe("getDocumentName", () => {
-    it("should return null initially", () => {
+    it("should return null initially", async () => {
       const tool = new LatticeTool();
       expect(tool.getDocumentName()).toBeNull();
     });
 
-    it("should return document name after loading", () => {
+    it("should return document name after loading", async () => {
       const tool = new LatticeTool();
-      tool.execute({ type: "loadContent", content: "test", name: "my-doc" });
+      await tool.execute({ type: "loadContent", content: "test", name: "my-doc" });
       expect(tool.getDocumentName()).toBe("my-doc");
     });
   });
 });
 
 describe("parseCommand", () => {
-  it("should parse :load command", () => {
+  it("should parse :load command", async () => {
     const cmd = parseCommand(":load ./file.txt");
     expect(cmd).toEqual({ type: "load", filePath: "./file.txt" });
   });
 
-  it("should parse :bindings command", () => {
+  it("should parse :bindings command", async () => {
     expect(parseCommand(":bindings")).toEqual({ type: "bindings" });
     expect(parseCommand(":vars")).toEqual({ type: "bindings" });
   });
 
-  it("should parse :reset command", () => {
+  it("should parse :reset command", async () => {
     expect(parseCommand(":reset")).toEqual({ type: "reset" });
     expect(parseCommand(":clear")).toEqual({ type: "reset" });
   });
 
-  it("should parse :stats command", () => {
+  it("should parse :stats command", async () => {
     expect(parseCommand(":stats")).toEqual({ type: "stats" });
     expect(parseCommand(":info")).toEqual({ type: "stats" });
   });
 
-  it("should parse :help command", () => {
+  it("should parse :help command", async () => {
     expect(parseCommand(":help")).toEqual({ type: "help" });
     expect(parseCommand(":h")).toEqual({ type: "help" });
     expect(parseCommand(":?")).toEqual({ type: "help" });
   });
 
-  it("should parse S-expression queries", () => {
+  it("should parse S-expression queries", async () => {
     const cmd = parseCommand('(grep "error")');
     expect(cmd).toEqual({ type: "query", command: '(grep "error")' });
   });
 
-  it("should return null for invalid commands", () => {
+  it("should return null for invalid commands", async () => {
     expect(parseCommand("")).toBeNull();
     expect(parseCommand("   ")).toBeNull();
     expect(parseCommand("invalid")).toBeNull();
@@ -199,17 +199,17 @@ describe("parseCommand", () => {
 });
 
 describe("formatResponse", () => {
-  it("should format success message", () => {
+  it("should format success message", async () => {
     const output = formatResponse({ success: true, message: "Test message" });
     expect(output).toBe("Test message");
   });
 
-  it("should format error", () => {
+  it("should format error", async () => {
     const output = formatResponse({ success: false, error: "Something failed" });
     expect(output).toBe("Error: Something failed");
   });
 
-  it("should format array results", () => {
+  it("should format array results", async () => {
     const output = formatResponse({
       success: true,
       message: "Found 2 results",
@@ -224,7 +224,7 @@ describe("formatResponse", () => {
     expect(output).toContain("[5]");
   });
 
-  it("should truncate long arrays", () => {
+  it("should truncate long arrays", async () => {
     const items = Array.from({ length: 20 }, (_, i) => ({
       line: `line ${i}`,
       lineNum: i,

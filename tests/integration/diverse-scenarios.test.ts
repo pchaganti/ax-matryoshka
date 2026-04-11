@@ -72,25 +72,25 @@ SALES_DATA_EAST: $2,890,000
 SALES_DATA_WEST: $2,670,000
 SALES_DATA_CENTRAL: $1,980,000`;
 
-    it("should find sales data lines", () => {
+    it("should find sales data lines", async () => {
       const tools = createMockTools(salesData);
       const bindings: Bindings = new Map();
 
-      const result = solve(parse('(grep "SALES_DATA")').term!, tools, bindings);
+      const result = await solve(parse('(grep "SALES_DATA")').term!, tools, bindings);
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(5);
     });
 
-    it("should filter to specific regions", () => {
+    it("should filter to specific regions", async () => {
       const tools = createMockTools(salesData);
       const bindings: Bindings = new Map();
 
       // First grep
-      const grepResult = solve(parse('(grep "SALES_DATA")').term!, tools, bindings);
+      const grepResult = await solve(parse('(grep "SALES_DATA")').term!, tools, bindings);
       bindings.set("RESULTS", grepResult.value);
 
       // Then filter
-      const filterResult = solve(
+      const filterResult = await solve(
         parse('(filter RESULTS (lambda x (match x "NORTH" 0)))').term!,
         tools,
         bindings
@@ -99,16 +99,16 @@ SALES_DATA_CENTRAL: $1,980,000`;
       expect((filterResult.value as unknown[]).length).toBe(1);
     });
 
-    it("should extract and sum numeric values", () => {
+    it("should extract and sum numeric values", async () => {
       const tools = createMockTools(salesData);
       const bindings: Bindings = new Map();
 
       // Grep for sales data
-      const grepResult = solve(parse('(grep "SALES_DATA")').term!, tools, bindings);
+      const grepResult = await solve(parse('(grep "SALES_DATA")').term!, tools, bindings);
       bindings.set("RESULTS", grepResult.value);
 
       // Map to extract amounts
-      const mapResult = solve(
+      const mapResult = await solve(
         parse('(map RESULTS (lambda x (match x "[0-9,]+" 0)))').term!,
         tools,
         bindings
@@ -116,7 +116,7 @@ SALES_DATA_CENTRAL: $1,980,000`;
       bindings.set("RESULTS", mapResult.value);
 
       // Sum the values
-      const sumResult = solve(parse('(sum RESULTS)').term!, tools, bindings);
+      const sumResult = await solve(parse('(sum RESULTS)').term!, tools, bindings);
       expect(sumResult.success).toBe(true);
       // 2340000 + 3120000 + 2890000 + 2670000 + 1980000 = 13000000
       expect(sumResult.value).toBe(13000000);
@@ -130,25 +130,25 @@ SALES_DATA_CENTRAL: $1,980,000`;
 [06:16:04] ERROR: Webhook delivery failed - webhook_id=WH-001
 [06:16:05] INFO: Request completed successfully`;
 
-    it("should find error lines", () => {
+    it("should find error lines", async () => {
       const tools = createMockTools(serverLogs);
       const bindings: Bindings = new Map();
 
-      const result = solve(parse('(grep "ERROR")').term!, tools, bindings);
+      const result = await solve(parse('(grep "ERROR")').term!, tools, bindings);
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(3);
     });
 
-    it("should filter for specific error types", () => {
+    it("should filter for specific error types", async () => {
       const tools = createMockTools(serverLogs);
       const bindings: Bindings = new Map();
 
       // Grep for errors
-      const grepResult = solve(parse('(grep "ERROR")').term!, tools, bindings);
+      const grepResult = await solve(parse('(grep "ERROR")').term!, tools, bindings);
       bindings.set("RESULTS", grepResult.value);
 
       // Filter for payment errors
-      const filterResult = solve(
+      const filterResult = await solve(
         parse('(filter RESULTS (lambda x (match x "Payment" 0)))').term!,
         tools,
         bindings
@@ -157,14 +157,14 @@ SALES_DATA_CENTRAL: $1,980,000`;
       expect((filterResult.value as unknown[]).length).toBe(1);
     });
 
-    it("should count errors", () => {
+    it("should count errors", async () => {
       const tools = createMockTools(serverLogs);
       const bindings: Bindings = new Map();
 
-      const grepResult = solve(parse('(grep "ERROR")').term!, tools, bindings);
+      const grepResult = await solve(parse('(grep "ERROR")').term!, tools, bindings);
       bindings.set("RESULTS", grepResult.value);
 
-      const countResult = solve(parse('(count RESULTS)').term!, tools, bindings);
+      const countResult = await solve(parse('(count RESULTS)').term!, tools, bindings);
       expect(countResult.success).toBe(true);
       expect(countResult.value).toBe(3);
     });
@@ -177,34 +177,34 @@ TEMP_READING_LAB_003: 21.5°C | Status: NORMAL
 TEMP_READING_COLD_001: -15.2°C | Status: CRITICAL_HIGH
 TEMP_READING_COLD_002: -18.4°C | Status: NORMAL`;
 
-    it("should find critical readings", () => {
+    it("should find critical readings", async () => {
       const tools = createMockTools(sensorData);
       const bindings: Bindings = new Map();
 
-      const result = solve(parse('(grep "CRITICAL")').term!, tools, bindings);
+      const result = await solve(parse('(grep "CRITICAL")').term!, tools, bindings);
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(1);
     });
 
-    it("should find warning readings", () => {
+    it("should find warning readings", async () => {
       const tools = createMockTools(sensorData);
       const bindings: Bindings = new Map();
 
-      const result = solve(parse('(grep "WARNING")').term!, tools, bindings);
+      const result = await solve(parse('(grep "WARNING")').term!, tools, bindings);
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(1);
     });
 
-    it("should filter lab vs cold readings", () => {
+    it("should filter lab vs cold readings", async () => {
       const tools = createMockTools(sensorData);
       const bindings: Bindings = new Map();
 
       // Grep all temp readings
-      const grepResult = solve(parse('(grep "TEMP_READING")').term!, tools, bindings);
+      const grepResult = await solve(parse('(grep "TEMP_READING")').term!, tools, bindings);
       bindings.set("RESULTS", grepResult.value);
 
       // Filter for LAB readings
-      const filterResult = solve(
+      const filterResult = await solve(
         parse('(filter RESULTS (lambda x (match x "LAB" 0)))').term!,
         tools,
         bindings
@@ -220,34 +220,34 @@ SKU: ELEC-PHONE-002 | Galaxy S24 | PRICE: $849.00 | QTY: 12 | STATUS: LOW_STOCK
 SKU: ELEC-LAPTOP-001 | MacBook Air | PRICE: $1099.00 | QTY: 78 | STATUS: IN_STOCK
 SKU: ELEC-TABLET-001 | iPad Pro | PRICE: $799.00 | QTY: 0 | STATUS: OUT_OF_STOCK`;
 
-    it("should find low stock items", () => {
+    it("should find low stock items", async () => {
       const tools = createMockTools(inventoryData);
       const bindings: Bindings = new Map();
 
-      const result = solve(parse('(grep "LOW_STOCK")').term!, tools, bindings);
+      const result = await solve(parse('(grep "LOW_STOCK")').term!, tools, bindings);
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(1);
     });
 
-    it("should find out of stock items", () => {
+    it("should find out of stock items", async () => {
       const tools = createMockTools(inventoryData);
       const bindings: Bindings = new Map();
 
-      const result = solve(parse('(grep "OUT_OF_STOCK")').term!, tools, bindings);
+      const result = await solve(parse('(grep "OUT_OF_STOCK")').term!, tools, bindings);
       expect(result.success).toBe(true);
       expect((result.value as unknown[]).length).toBe(1);
     });
 
-    it("should filter by product category", () => {
+    it("should filter by product category", async () => {
       const tools = createMockTools(inventoryData);
       const bindings: Bindings = new Map();
 
       // Grep all items
-      const grepResult = solve(parse('(grep "SKU:")').term!, tools, bindings);
+      const grepResult = await solve(parse('(grep "SKU:")').term!, tools, bindings);
       bindings.set("RESULTS", grepResult.value);
 
       // Filter for phones
-      const filterResult = solve(
+      const filterResult = await solve(
         parse('(filter RESULTS (lambda x (match x "PHONE" 0)))').term!,
         tools,
         bindings
@@ -266,33 +266,33 @@ SALES_TOTAL: $750,000
 INFO: System recovered at 10:30
 SALES_TOTAL: $250,000`;
 
-    it("should complete grep -> filter -> count workflow", () => {
+    it("should complete grep -> filter -> count workflow", async () => {
       const tools = createMockTools(mixedData);
       const bindings: Bindings = new Map();
 
       // Turn 1: Grep
-      const t1 = solve(parse('(grep "ERROR")').term!, tools, bindings);
+      const t1 = await solve(parse('(grep "ERROR")').term!, tools, bindings);
       bindings.set("RESULTS", t1.value);
       bindings.set("_1", t1.value);
       expect((t1.value as unknown[]).length).toBe(2);
 
       // Turn 2: Count
-      const t2 = solve(parse('(count RESULTS)').term!, tools, bindings);
+      const t2 = await solve(parse('(count RESULTS)').term!, tools, bindings);
       expect(t2.value).toBe(2);
     });
 
-    it("should complete grep -> map -> sum workflow", () => {
+    it("should complete grep -> map -> sum workflow", async () => {
       const tools = createMockTools(mixedData);
       const bindings: Bindings = new Map();
 
       // Turn 1: Grep sales
-      const t1 = solve(parse('(grep "SALES_TOTAL")').term!, tools, bindings);
+      const t1 = await solve(parse('(grep "SALES_TOTAL")').term!, tools, bindings);
       bindings.set("RESULTS", t1.value);
       bindings.set("_1", t1.value);
       expect((t1.value as unknown[]).length).toBe(3);
 
       // Turn 2: Map to extract amounts
-      const t2 = solve(
+      const t2 = await solve(
         parse('(map RESULTS (lambda x (match x "[0-9,]+" 0)))').term!,
         tools,
         bindings
@@ -301,50 +301,50 @@ SALES_TOTAL: $250,000`;
       bindings.set("_2", t2.value);
 
       // Turn 3: Sum
-      const t3 = solve(parse('(sum RESULTS)').term!, tools, bindings);
+      const t3 = await solve(parse('(sum RESULTS)').term!, tools, bindings);
       expect(t3.value).toBe(1500000); // 500000 + 750000 + 250000
     });
 
-    it("should allow referencing previous turn results", () => {
+    it("should allow referencing previous turn results", async () => {
       const tools = createMockTools(mixedData);
       const bindings: Bindings = new Map();
 
       // Turn 1: Grep errors
-      const t1 = solve(parse('(grep "ERROR")').term!, tools, bindings);
+      const t1 = await solve(parse('(grep "ERROR")').term!, tools, bindings);
       bindings.set("RESULTS", t1.value);
       bindings.set("_1", t1.value);
 
       // Turn 2: Grep sales (overwrites RESULTS)
-      const t2 = solve(parse('(grep "SALES")').term!, tools, bindings);
+      const t2 = await solve(parse('(grep "SALES")').term!, tools, bindings);
       bindings.set("RESULTS", t2.value);
       bindings.set("_2", t2.value);
 
       // Turn 3: Reference _1 (original error results)
-      const t3 = solve(parse('(count _1)').term!, tools, bindings);
+      const t3 = await solve(parse('(count _1)').term!, tools, bindings);
       expect(t3.value).toBe(2);
 
       // Turn 4: Reference _2 (sales results)
-      const t4 = solve(parse('(count _2)').term!, tools, bindings);
+      const t4 = await solve(parse('(count _2)').term!, tools, bindings);
       expect(t4.value).toBe(3);
     });
   });
 
   describe("Edge Cases", () => {
-    it("should handle empty search results", () => {
+    it("should handle empty search results", async () => {
       const tools = createMockTools("No matching data here");
       const bindings: Bindings = new Map();
 
-      const result = solve(parse('(grep "NONEXISTENT")').term!, tools, bindings);
+      const result = await solve(parse('(grep "NONEXISTENT")').term!, tools, bindings);
       expect(result.success).toBe(true);
       expect(result.value).toEqual([]);
     });
 
-    it("should handle filter on empty results", () => {
+    it("should handle filter on empty results", async () => {
       const tools = createMockTools("Some data");
       const bindings: Bindings = new Map();
       bindings.set("RESULTS", []);
 
-      const result = solve(
+      const result = await solve(
         parse('(filter RESULTS (lambda x (match x "test" 0)))').term!,
         tools,
         bindings
@@ -353,26 +353,26 @@ SALES_TOTAL: $250,000`;
       expect(result.value).toEqual([]);
     });
 
-    it("should handle sum of empty array", () => {
+    it("should handle sum of empty array", async () => {
       const tools = createMockTools("Some data");
       const bindings: Bindings = new Map();
       bindings.set("RESULTS", []);
 
-      const result = solve(parse('(sum RESULTS)').term!, tools, bindings);
+      const result = await solve(parse('(sum RESULTS)').term!, tools, bindings);
       expect(result.success).toBe(true);
       expect(result.value).toBe(0);
     });
 
-    it("should handle mixed valid/null values from map", () => {
+    it("should handle mixed valid/null values from map", async () => {
       const tools = createMockTools("Data: 100\nText only\nData: 200");
       const bindings: Bindings = new Map();
 
       // Grep all lines (use pattern that matches all lines)
-      const grepResult = solve(parse('(grep "Data|Text")').term!, tools, bindings);
+      const grepResult = await solve(parse('(grep "Data|Text")').term!, tools, bindings);
       bindings.set("RESULTS", grepResult.value);
 
       // Map to extract numbers (some will be null)
-      const mapResult = solve(
+      const mapResult = await solve(
         parse('(map RESULTS (lambda x (match x "[0-9]+" 0)))').term!,
         tools,
         bindings
@@ -380,7 +380,7 @@ SALES_TOTAL: $250,000`;
       bindings.set("RESULTS", mapResult.value);
 
       // Sum should handle nulls gracefully
-      const sumResult = solve(parse('(sum RESULTS)').term!, tools, bindings);
+      const sumResult = await solve(parse('(sum RESULTS)').term!, tools, bindings);
       expect(sumResult.success).toBe(true);
       expect(sumResult.value).toBe(300);
     });
