@@ -796,12 +796,24 @@ async function main() {
   samplingBridge = async (prompt: string): Promise<string> => {
     const caps = server.getClientCapabilities();
     if (!caps?.sampling) {
+      // Client compatibility (empirically tested 2026-04-11):
+      //   - Claude Code CLI: does NOT advertise `sampling` as of this
+      //     writing — `(llm_query ...)` will always hit this error.
+      //   - Claude Desktop: supports sampling via the per-tool allowlist
+      //     UI (check the server's sampling permissions in settings).
+      //   - Custom MCP clients: must set `capabilities.sampling` in
+      //     their initialize request and implement the
+      //     `sampling/createMessage` handler.
+      // If your client is in the first group, compose your query
+      // without `(llm_query ...)` — grep/filter/map/chunk are all
+      // available and cover most deterministic workflows.
       throw new Error(
         "llm_query is not available: the connected MCP client did not " +
-        "advertise `sampling` capability. Clients that support sampling " +
-        "(e.g. Claude Desktop, Claude Code) will route the sub-LLM call " +
-        "back to their own model; other clients must pre-compute the " +
-        "result or disable the primitive."
+        "advertise `sampling` capability. Claude Code CLI does not " +
+        "currently support MCP sampling — use Claude Desktop or a custom " +
+        "client that implements `sampling/createMessage`. Alternatively, " +
+        "rewrite the query without `(llm_query ...)` — deterministic " +
+        "primitives (grep, filter, map, chunk_by_*) cover most workflows."
       );
     }
     const result = await server.createMessage({

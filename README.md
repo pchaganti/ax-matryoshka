@@ -261,6 +261,51 @@ The key advantage is **handle-based results**: query results are stored server-s
 - Use `RESULTS` in queries (always points to last result)
 - Use `$res1`, `$res2` etc. with `lattice_expand` to inspect specific results
 
+#### Chunking and Sub-LLM Recursion
+
+Two primitive families power the paper's `Ω(|P|²)` semantic-horizon pattern:
+
+**Chunking** — pre-slice a document that's too big to map over directly:
+
+```scheme
+(chunk_by_size 2000)                ; 2000-character slices
+(chunk_by_lines 100)                ; 100-line slices
+(chunk_by_regex "\\n\\n")           ; Split on blank lines; capture groups ignored
+```
+
+**Sub-LLM calls** — `(llm_query ...)` invokes a sub-LLM with an
+interpolated prompt. Works at the top level and nested inside
+`map` / `filter` / `reduce` lambdas:
+
+```scheme
+(llm_query "Summarize this")                                         ; bare
+(llm_query "Classify: {items}" (items RESULTS))                      ; with binding
+(map (chunk_by_lines 100)
+     (lambda c (llm_query "summarize: {chunk}" (chunk c))))           ; OOLONG
+(filter RESULTS (lambda x (match (llm_query "keep?: {item}" (item x)) "keep" 0)))
+```
+
+The last two patterns fire **one sub-LLM call per item** — classification
+or summarization over an entire document, one chunk at a time, without
+pulling any of it into the root model's context.
+
+**MCP client compatibility (as of 2026-04-11):**
+
+| Client | `(llm_query ...)` via lattice-mcp | Notes |
+|---|---|---|
+| **Claude Code CLI** | ❌ not supported | Does not advertise `sampling` capability. Use deterministic primitives only. |
+| **Claude Desktop** | ✅ supported | Gated by per-server permission setting — enable sampling for lattice-mcp in server settings. |
+| Custom MCP client | ✅ if implemented | Must set `capabilities.sampling` in initialize and handle `sampling/createMessage`. |
+
+When the connected client doesn't advertise `sampling`, the bridge
+returns a clear "not available" error naming the missing capability.
+Compose the query with deterministic primitives (grep, filter, map,
+chunk_by_*) and it works on any client.
+
+For the native recursive sub-RLM implementation (Claude Code independent),
+use `runRLMFromContent(query, content, { subRLMMaxDepth: 1 })` directly
+from the programmatic API — see the Programmatic section below.
+
 #### Memory Pad Usage
 
 ```
