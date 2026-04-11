@@ -176,61 +176,24 @@ The total sales are $5,000,000
     });
   });
 
-  describe("Self-correction feedback", () => {
-    // SKIP: Self-correction is based on JavaScript runtime errors
-    // LC execution uses parse-time validation, not runtime error feedback
-    it.skip("should record failures and provide self-correction hints", async () => {
-      const manager = getRAGManager();
-      const sessionId = `test-session-${Date.now()}`;
-
-      // Clear any existing failures for this session
-      manager.clearFailureMemory(sessionId);
-
-      let turnCount = 0;
-      const promptsSeen: string[] = [];
-
-      const mockLLM = async (prompt: string) => {
-        promptsSeen.push(prompt);
-        turnCount++;
-
-        if (turnCount === 1) {
-          // First turn: code with error
-          return `\`\`\`javascript
-const x = undefined.length;
-\`\`\``;
-        }
-
-        if (turnCount === 2) {
-          // Second turn: Should have error feedback
-          return `\`\`\`javascript
-const hits = grep("SALES");
-console.log(JSON.stringify(hits, null, 2));
-\`\`\``;
-        }
-
-        return `\`\`\`javascript
-console.log("Total: 5000000");
-\`\`\`
-<<<FINAL>>>
-$5,000,000
-<<<END>>>`;
-      };
-
-      await runRLM("sum sales", testFile, {
-        llmClient: mockLLM,
-        maxTurns: 5,
-        ragEnabled: true,
-        sessionId,
-      });
-
-      // Check that an error was encountered
-      expect(turnCount).toBeGreaterThanOrEqual(2);
-
-      // The error from turn 1 should have been recorded
-      // (Note: session is cleared at the end, so we check the prompts)
-      expect(promptsSeen[1]).toContain("Error");
-    });
-  });
+  // Self-correction feedback test removed:
+  //   1. Wrong feature model. It expected turn-level self-correction
+  //      (turn 1 error → turn 2 prompt contains RAG feedback). In reality
+  //      generateSelfCorrectionFeedback is called once at the start of a
+  //      run (rlm.ts:330), reading failure memory from *prior runs* with
+  //      the same sessionId — it's a cross-run feature, not cross-turn.
+  //   2. Wrong error source. The mock emitted JS code blocks expecting
+  //      runtime errors in a JS sandbox that no longer runs. Under
+  //      nucleus, only LC solver errors flow through recordFailure
+  //      (rlm-states.ts:421); parse and type errors go straight to
+  //      history feedback.
+  // The RAG self-correction pipeline is covered directly by unit tests in
+  // tests/rag/manager.test.ts (20+ assertions on recordFailure /
+  // generateSelfCorrectionFeedback) and by tests/rag/integration.test.ts
+  // (which populates failure memory and asserts the self-correction text
+  // output). A cross-run self-correction e2e test would be a reasonable
+  // future addition but would require two sequential runRLM calls with
+  // shared sessionId, which is orthogonal to this file's focus.
 
   describe("Hint relevance", () => {
     it("should retrieve aggregation hints for sum queries", async () => {
