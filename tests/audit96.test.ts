@@ -31,6 +31,9 @@
  *     should throw so the caller sees an explicit "too large" error
  * 13. LOW lc-solver.ts — findDistinguishingPattern fallback word bypasses
  *     validateRegex (defensive structural guard, not exploitable today)
+ * 14. LOW nucleus-engine.ts — setBinding regex rejects hyphens, but auto-
+ *     registration of synthesized functions emits `_fn_parse-date`-style
+ *     keys; unify on the hyphen-allowing regex
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -605,6 +608,32 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       // and parse() wraps it in a failed ParseResult.
       expect(result.success).toBe(false);
       expect(result.error).toMatch(/too large|too many tokens|MAX_TOKENS/i);
+    });
+  });
+
+  // =========================================================================
+  // #14 LOW — setBinding must accept hyphens (matches auto-register regex)
+  // =========================================================================
+  describe("#14 — setBinding and synthesized-fn auto-register use one regex", () => {
+    it("setBinding accepts hyphenated names so `_fn_parse-date` round-trips", () => {
+      const engine = new NucleusEngine();
+      engine.loadContent("anything");
+      // Before the fix: setBinding rejects hyphens via
+      // /^[a-zA-Z_][a-zA-Z0-9_]*$/, even though the synthesized-function
+      // auto-register path emits `_fn_parse-date`-style keys via direct
+      // bindings.set. After the fix, the two paths use the same regex
+      // and setBinding works with the auto-generated keys.
+      expect(() => engine.setBinding("_fn_parse-date", { foo: 1 })).not.toThrow();
+      expect(engine.getBinding("_fn_parse-date")).toEqual({ foo: 1 });
+    });
+
+    it("setBinding still rejects other invalid characters", () => {
+      const engine = new NucleusEngine();
+      engine.loadContent("anything");
+      // Quick sanity: things that should still be invalid stay invalid.
+      expect(() => engine.setBinding("has space", 1)).toThrow();
+      expect(() => engine.setBinding("has$dollar", 1)).toThrow();
+      expect(() => engine.setBinding("__proto__", 1)).toThrow();
     });
   });
 });

@@ -406,10 +406,17 @@ export class NucleusEngine {
   }
 
   /**
-   * Set a binding manually
+   * Set a binding manually.
+   *
+   * The name regex must match the one used at the auto-registration site
+   * in execute() (where `_fn_${fnObj.name}` keys are built for synthesized
+   * functions). If they diverge, setBinding rejects names that the engine
+   * itself generates — a surprising asymmetry. Keep both on the hyphen-
+   * allowing regex so Lisp-style names like `parse-date` round-trip
+   * through both code paths.
    */
   setBinding(name: string, value: unknown): void {
-    if (!name || name.length > 256 || !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    if (!name || name.length > 256 || !/^[a-zA-Z_][a-zA-Z0-9_-]*$/.test(name)) {
       throw new Error("Invalid binding name");
     }
     if (NucleusEngine.DANGEROUS_KEYS.has(name)) {
