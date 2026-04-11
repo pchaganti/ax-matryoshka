@@ -31,7 +31,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { stat } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import { HandleSession } from "./engine/handle-session.js";
+import { HandleSession, type HandleResult } from "./engine/handle-session.js";
 import { getVersion } from "./version.js";
 import { hasTraversalSegment } from "./utils/path-safety.js";
 
@@ -58,6 +58,31 @@ const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB limit
 let session: HandleSession | null = null;
 let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 
+// Multi-turn LLM query protocol — Promise-based suspension for clients
+// without MCP sampling support. When the solver hits (llm_query ...) and
+// the client doesn't advertise sampling, the bridge creates a pending
+// Promise and signals the tool handler to return a suspension request.
+// The LLM client then calls lattice_llm_respond to provide the response,
+// which resolves the Promise and lets the solver continue. This works with
+// any MCP client (Claude Code, opencode, custom clients) — no special
+// capabilities required. Session timeout rejects all pending queries, so
+// there's no memory leak beyond the session lifetime.
+interface PendingQuery {
+  id: string;
+  prompt: string;
+  resolve: (response: string) => void;
+  reject: (error: Error) => void;
+  createdAt: number;
+}
+
+const pendingQueries = new Map<string, PendingQuery>();
+let suspensionCallback: ((info: { id: string; prompt: string }) => void) | null = null;
+let activeExecution: Promise<HandleResult> | null = null;
+// For top-level llm_query: the bridge fires synchronously inside
+// session.execute() before raceExecution() installs the callback.
+// The bridge stores the suspension here so raceExecution() can pick it up.
+let earlySuspension: { id: string; prompt: string } | null = null;
+
 function resetInactivityTimer(): void {
   if (timeoutHandle) {
     clearTimeout(timeoutHandle);
@@ -77,6 +102,8 @@ function resetInactivityTimer(): void {
 }
 
 function closeSession(reason: string): void {
+  rejectAllPendingQueries(reason);
+
   if (session) {
     const info = session.getSessionInfo();
     const duration = info.loadedAt ? Date.now() - info.loadedAt.getTime() : 0;
@@ -95,6 +122,66 @@ function closeSession(reason: string): void {
     clearTimeout(timeoutHandle);
     timeoutHandle = null;
   }
+}
+
+type RaceResult =
+  | { type: "completed"; result: HandleResult }
+  | { type: "suspended"; id: string; prompt: string };
+
+async function raceExecution(): Promise<RaceResult> {
+  if (!activeExecution) {
+    throw new Error("No active execution");
+  }
+
+  // Check for early suspension: when (llm_query ...) is at the top level,
+  // the bridge fires synchronously inside session.execute() — before this
+  // function was called. The bridge stores the info in earlySuspension.
+  if (earlySuspension) {
+    const info = earlySuspension;
+    earlySuspension = null;
+    return { type: "suspended", ...info };
+  }
+
+  let resolveSuspension: (info: { id: string; prompt: string }) => void;
+  const suspensionPromise = new Promise<RaceResult>((resolve) => {
+    resolveSuspension = (info) => resolve({ type: "suspended", ...info });
+  });
+
+  // Install callback for nested llm_query calls (e.g., inside map/filter).
+  // These fire on a microtask after the collection evaluation yields, so
+  // the callback is installed before they run.
+  suspensionCallback = resolveSuspension!;
+
+  return Promise.race([
+    activeExecution.then((result): RaceResult => {
+      suspensionCallback = null;
+      activeExecution = null;
+      return { type: "completed", result };
+    }),
+    suspensionPromise,
+  ]);
+}
+
+function formatSuspensionRequest(id: string, prompt: string): string {
+  return (
+    `[LLM_QUERY_REQUEST id=${id}]\n\n` +
+    `Please respond to the following prompt:\n\n  ${prompt}\n\n` +
+    `Respond using lattice_llm_respond:\n` +
+    `  id: "${id}"\n` +
+    `  response: "your response here"`
+  );
+}
+
+function rejectAllPendingQueries(reason: string): void {
+  for (const [id, entry] of pendingQueries) {
+    try {
+      entry.reject(new Error(`Session closed: ${reason}`));
+    } catch { /* ignore double-reject */ }
+    pendingQueries.delete(id);
+  }
+  activeExecution = null;
+  suspensionCallback = null;
+  earlySuspension = null;
 }
 
 function getSessionInfo(): string {
@@ -390,6 +477,39 @@ Check lattice_bindings to see current memos and their handles.`,
       required: [],
     },
   },
+  {
+    name: "lattice_llm_respond",
+    description: `Respond to a pending (llm_query ...) request from a Nucleus query.
+
+When a query containing (llm_query "prompt" ...) is executed and the MCP client
+doesn't support sampling, the server suspends execution and returns a pending
+request instead of a result. Use this tool to provide the LLM response and
+continue execution.
+
+The execution resumes from where it left off. If the query contains multiple
+llm_query calls (e.g., inside a map over many items), you may receive another
+pending request after responding — this is normal for the OOLONG pattern.
+
+WORKFLOW:
+1. lattice_query returns: "[LLM_QUERY_REQUEST id=q_abc] Please respond to: ..."
+2. You respond: lattice_llm_respond id="q_abc" response="your answer"
+3. If more llm_query calls follow, you get another request (repeat step 2)
+4. When all llm_query calls are answered, you get the final query result`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: {
+          type: "string",
+          description: "The query ID from the LLM_QUERY_REQUEST message",
+        },
+        response: {
+          type: "string",
+          description: "Your response to the prompt",
+        },
+      },
+      required: ["id", "response"],
+    },
+  },
 ];
 
 function formatHandleResult(result: {
@@ -582,10 +702,38 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           return { content: [{ type: "text", text: "Error: command is required" }] };
         }
 
+        // Guard: if there's a pending LLM query, the client must respond first
+        if (activeExecution && pendingQueries.size > 0) {
+          const pending = pendingQueries.values().next().value as PendingQuery;
+          resetInactivityTimer();
+          return {
+            content: [{
+              type: "text",
+              text: `There is a pending LLM query that must be answered first.\n\n` +
+                formatSuspensionRequest(pending.id, pending.prompt),
+            }],
+          };
+        }
+
         resetInactivityTimer();
 
-        const result = await session.execute(command);
-        return { content: [{ type: "text", text: formatHandleResult(result) }] };
+        // Clear stale suspension state before starting a new execution
+        earlySuspension = null;
+
+        activeExecution = session.execute(command);
+
+        const raceResult = await raceExecution();
+
+        if (raceResult.type === "completed") {
+          return { content: [{ type: "text", text: formatHandleResult(raceResult.result) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: formatSuspensionRequest(raceResult.id, raceResult.prompt),
+          }],
+        };
       }
 
       case "lattice_expand": {
@@ -728,6 +876,54 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         };
       }
 
+      case "lattice_llm_respond": {
+        const id = args.id as string;
+        const response = args.response as string;
+
+        if (!id || response === undefined || response === null) {
+          return { content: [{ type: "text", text: "Error: id and response are required" }] };
+        }
+
+        if (!activeExecution) {
+          return {
+            content: [{
+              type: "text",
+              text: "Error: No active execution to continue. Start with lattice_query.",
+            }],
+          };
+        }
+
+        const entry = pendingQueries.get(id);
+        if (!entry) {
+          return {
+            content: [{
+              type: "text",
+              text: `Error: Unknown or expired query ID: ${id}. The session may have timed out.`,
+            }],
+          };
+        }
+
+        // Resolve the pending query — this unblocks the solver
+        pendingQueries.delete(id);
+        entry.resolve(response);
+
+        resetInactivityTimer();
+
+        // Race for completion or next suspension (e.g., next item in a map)
+        const raceResult = await raceExecution();
+
+        if (raceResult.type === "completed") {
+          return { content: [{ type: "text", text: formatHandleResult(raceResult.result) }] };
+        }
+
+        return {
+          content: [{
+            type: "text",
+            text: formatSuspensionRequest(raceResult.id, raceResult.prompt),
+          }],
+        };
+      }
+
       default:
         return { content: [{ type: "text", text: `Unknown tool: ${name}` }] };
     }
@@ -795,46 +991,48 @@ async function main() {
   // check sees the right capabilities.
   samplingBridge = async (prompt: string): Promise<string> => {
     const caps = server.getClientCapabilities();
-    if (!caps?.sampling) {
-      // Client compatibility (empirically tested 2026-04-11):
-      //   - Claude Code CLI: does NOT advertise `sampling` as of this
-      //     writing — `(llm_query ...)` will always hit this error.
-      //   - Claude Desktop: supports sampling via the per-tool allowlist
-      //     UI (check the server's sampling permissions in settings).
-      //   - Custom MCP clients: must set `capabilities.sampling` in
-      //     their initialize request and implement the
-      //     `sampling/createMessage` handler.
-      // If your client is in the first group, compose your query
-      // without `(llm_query ...)` — grep/filter/map/chunk are all
-      // available and cover most deterministic workflows.
-      throw new Error(
-        "llm_query is not available: the connected MCP client did not " +
-        "advertise `sampling` capability. Claude Code CLI does not " +
-        "currently support MCP sampling — use Claude Desktop or a custom " +
-        "client that implements `sampling/createMessage`. Alternatively, " +
-        "rewrite the query without `(llm_query ...)` — deterministic " +
-        "primitives (grep, filter, map, chunk_by_*) cover most workflows."
-      );
+    if (caps?.sampling) {
+      // Native MCP sampling path — client supports sampling/createMessage.
+      const result = await server.createMessage({
+        messages: [{ role: "user", content: { type: "text", text: prompt } }],
+        maxTokens: SAMPLING_MAX_TOKENS,
+        includeContext: "none",
+      });
+      if (result.content?.type === "text") {
+        return result.content.text;
+      }
+      return `[sub-LLM returned non-text content: ${result.content?.type ?? "unknown"}]`;
     }
-    const result = await server.createMessage({
-      messages: [{ role: "user", content: { type: "text", text: prompt } }],
-      maxTokens: SAMPLING_MAX_TOKENS,
-      // `none` keeps the sub-LLM isolated from the parent conversation —
-      // the paper's sub-RLM model spins up a fresh context per sub-call.
-      includeContext: "none",
+
+    // Fallback: multi-turn protocol for clients without sampling.
+    // Create a pending Promise that the tool handler will return as a
+    // suspension request. The LLM client calls lattice_llm_respond to
+    // resolve it and continue execution. Works with any MCP client.
+    const id = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    const promise = new Promise<string>((resolve, reject) => {
+      pendingQueries.set(id, { id, prompt, resolve, reject, createdAt: Date.now() });
     });
-    // CreateMessageResult.content is a single block for the no-tools path.
-    if (result.content?.type === "text") {
-      return result.content.text;
+
+    // Signal the tool handler that we've suspended.
+    //
+    // Two paths:
+    // 1. Nested llm_query (inside map/filter): fires on a microtask AFTER
+    //    raceExecution() installed suspensionCallback. Call it directly.
+    // 2. Top-level llm_query: fires synchronously inside session.execute()
+    //    BEFORE raceExecution() runs. Store in earlySuspension for pickup.
+    if (suspensionCallback) {
+      suspensionCallback({ id, prompt });
+    } else {
+      earlySuspension = { id, prompt };
     }
-    // Image / audio content blocks are not useful for string interpolation;
-    // return a visible placeholder so the solver doesn't crash.
-    return `[sub-LLM returned non-text content: ${result.content?.type ?? "unknown"}]`;
+
+    return promise;
   };
 
   await server.connect(transport);
 
-  console.error("[Lattice] Sampling bridge installed — (llm_query ...) will route via MCP sampling when client supports it");
+  console.error("[Lattice] LLM query bridge installed — (llm_query ...) uses MCP sampling when available, multi-turn protocol otherwise");
 
   console.error("[Lattice] MCP server started (handle-based mode)");
   console.error(`[Lattice] Session timeout: ${SESSION_TIMEOUT_MS / 1000}s`);
