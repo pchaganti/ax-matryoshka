@@ -27,6 +27,8 @@
  *     output unescaped
  * 11. LOW lc-parser.ts — parseAll tracks a single depth counter across
  *     `()`, `[]`, `{}` so mismatched brackets yield confusing slices
+ * 12. LOW lc-parser.ts — tokenize silently drops tokens past MAX_TOKENS;
+ *     should throw so the caller sees an explicit "too large" error
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -38,7 +40,7 @@ import { SessionDB } from "../src/persistence/session-db.js";
 import { SymbolGraph } from "../src/graph/symbol-graph.js";
 import type { Symbol } from "../src/treesitter/types.js";
 import { FTS5Search } from "../src/persistence/fts5-search.js";
-import { parseAll } from "../src/logic/lc-parser.js";
+import { parseAll, parse } from "../src/logic/lc-parser.js";
 
 describe("Audit #96 — Chiasmus review round 2", () => {
   // =========================================================================
@@ -579,6 +581,28 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(results.length).toBe(3);
       expect(results[0].success).toBe(true);
       expect(results[2].success).toBe(true);
+    });
+  });
+
+  // =========================================================================
+  // #12 LOW — tokenize must error instead of silently truncating
+  // =========================================================================
+  describe("#12 — parse() errors out on oversize input, doesn't silently truncate", () => {
+    it("an input with > MAX_TOKENS tokens produces a parse failure, not a partial success", () => {
+      // MAX_TOKENS = 100_000. Generate a list with enough tokens to blow
+      // through the cap. Each `a` symbol is ~1 token, plus whitespace.
+      const tokens = Array.from({ length: 120_000 }, () => "a").join(" ");
+      const input = `(list ${tokens})`;
+
+      const result = parse(input);
+
+      // Before the fix: tokenize silently stops at 100k tokens, parse()
+      // then processes whatever it has — possibly returning success for
+      // a truncated prefix, or returning a misleading syntax error.
+      // After the fix: tokenize throws an explicit "too large" error
+      // and parse() wraps it in a failed ParseResult.
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/too large|too many tokens|MAX_TOKENS/i);
     });
   });
 });

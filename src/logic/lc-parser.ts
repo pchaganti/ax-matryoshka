@@ -62,7 +62,14 @@ function tokenize(input: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
 
-  while (i < input.length && tokens.length < MAX_TOKENS) {
+  while (i < input.length) {
+    if (tokens.length >= MAX_TOKENS) {
+      // Never silently drop the tail of the input — a truncated token
+      // stream would otherwise produce a "successful" parse of a prefix
+      // or a misleading syntax error that gives no hint about the real
+      // cause. Throw so parse() surfaces an explicit size-limit error.
+      throw new Error(`Input too large: exceeded ${MAX_TOKENS} tokens`);
+    }
     const ch = input[i];
 
     // Skip whitespace
