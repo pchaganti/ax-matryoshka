@@ -147,7 +147,6 @@ describe.skipIf(!hasRealLLM)("E2E Integration (Real LLM)", () => {
         {
           llmClient,
           maxTurns: 10,
-          turnTimeoutMs: 60000,
         }
       );
 
@@ -168,7 +167,6 @@ describe.skipIf(!hasRealLLM)("E2E Integration (Real LLM)", () => {
         {
           llmClient,
           maxTurns: 10,
-          turnTimeoutMs: 60000,
         }
       );
 
@@ -188,7 +186,6 @@ describe.skipIf(!hasRealLLM)("E2E Integration (Real LLM)", () => {
         {
           llmClient,
           maxTurns: 10,
-          turnTimeoutMs: 60000,
         }
       );
 

@@ -48,11 +48,6 @@ function makeMockTools(content: string): SolverTools {
   };
 }
 
-const mockSandbox = {
-  execute: async () => ({ result: null, logs: [] }),
-  dispose: () => {},
-} as any;
-
 describe("RLM FSM States", () => {
   describe("basic query → answer flow", () => {
     it("should complete when LLM provides code then final answer", async () => {
@@ -69,7 +64,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What is the total revenue?",
         maxTurns: 5,
@@ -100,7 +94,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What is the value?",
         maxTurns: 5,
@@ -133,7 +126,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What is the data?",
         maxTurns: 10,
@@ -157,7 +149,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => '(grep "data")',
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What?",
         maxTurns: 3,
@@ -187,7 +178,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What?",
         maxTurns: 5,
@@ -225,7 +215,6 @@ describe("RLM FSM States", () => {
         adapter: makeMockAdapter(),
         llmClient: async () => llmResponses[turnNum++] || "",
         solverTools: makeMockTools(document),
-        sandbox: mockSandbox,
         systemPrompt: "system",
         userMessage: "Query: What?",
         maxTurns: 5,

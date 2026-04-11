@@ -22,7 +22,6 @@ interface CLIOptions {
   query: string;
   file: string;
   maxTurns: number;
-  timeout: number;
   model: string;
   provider: string;
   adapter: string;
@@ -43,7 +42,6 @@ Arguments:
 
 Options:
   --max-turns <n>    Maximum number of turns (default: 10)
-  --timeout <ms>     Timeout per turn in milliseconds (default: 30000)
   --model <name>     Override the LLM model name
   --provider <name>  Override the LLM provider (ollama, deepseek, openai)
   --adapter <name>   Override the model adapter (qwen, deepseek, base)
@@ -70,7 +68,6 @@ function parseArgs(args: string[]): CLIOptions {
     query: "",
     file: "",
     maxTurns: 10,
-    timeout: 30000,
     model: "",
     provider: "",
     adapter: "",
@@ -97,11 +94,6 @@ function parseArgs(args: string[]): CLIOptions {
       const val = parseInt(args[++i], 10);
       if (isNaN(val) || val < 1) throw new Error("--max-turns requires a positive integer");
       options.maxTurns = val;
-    } else if (arg === "--timeout") {
-      if (i + 1 >= args.length) throw new Error("--timeout requires a value");
-      const val = parseInt(args[++i], 10);
-      if (isNaN(val) || val < 1) throw new Error("--timeout requires a positive integer");
-      options.timeout = val;
     } else if (arg === "--model") {
       if (i + 1 >= args.length) throw new Error("--model requires a value");
       options.model = args[++i];
@@ -166,7 +158,6 @@ async function main(): Promise<void> {
     console.log(`Query: ${options.query}`);
     console.log(`File: ${filePath}`);
     console.log(`Max turns: ${options.maxTurns}`);
-    console.log(`Timeout: ${options.timeout}`);
     console.log(`Model: ${options.model || "(from config)"}`);
     console.log(`Provider: ${options.provider || "(from config)"}`);
     console.log(`Adapter: ${options.adapter || "(auto-detect)"}`);
@@ -232,7 +223,6 @@ async function main(): Promise<void> {
     console.log(`  Model: ${effectiveModel}`);
     console.log(`  Adapter: ${adapter.name}${explicitAdapter ? "" : " (auto-detected)"}`);
     console.log(`  Max turns: ${options.maxTurns}`);
-    console.log(`  Timeout: ${options.timeout}ms`);
     if (constraint) {
       console.log(`  Output constraint: ${JSON.stringify(constraint.output)}`);
     }
@@ -254,7 +244,6 @@ async function main(): Promise<void> {
       llmClient,
       adapter,
       maxTurns: options.maxTurns,
-      turnTimeoutMs: options.timeout,
       verbose: options.verbose,
       constraint,
     });

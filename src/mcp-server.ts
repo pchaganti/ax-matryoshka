@@ -93,10 +93,6 @@ const ANALYZE_DOCUMENT_TOOL: MCPTool = {
         type: "number",
         description: "Maximum number of exploration turns (default: 10)",
       },
-      timeoutMs: {
-        type: "number",
-        description: "Timeout per turn in milliseconds (default: 30000)",
-      },
     },
     required: ["query", "filePath"],
   },
@@ -326,11 +322,10 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
 
       // Handle analyze_document
       if (name === "analyze_document") {
-        const { query, filePath, maxTurns, timeoutMs } = args as {
+        const { query, filePath, maxTurns } = args as {
           query: string;
           filePath: string;
           maxTurns?: number;
-          timeoutMs?: number;
         };
 
         const analyzePathError = validateFilePath(filePath);
@@ -348,7 +343,6 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
           const result = await runRLM(query, filePath, {
             llmClient: client,
             maxTurns: maxTurns || 10,
-            turnTimeoutMs: timeoutMs || 30000,
           });
 
           const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);

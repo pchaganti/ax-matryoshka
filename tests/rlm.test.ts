@@ -128,22 +128,11 @@ describe("RLM Executor", () => {
       expect(secondCall).toMatch(/error|parse|syntax|argument/i);
     });
 
-    // SKIP: Infinite loop timeout test requires JavaScript execution
-    // LC execution doesn't support arbitrary code loops
-    it.skip("should respect turnTimeoutMs", async () => {
-      mockLLM.mockResolvedValueOnce("```typescript\nwhile(true){}\n```");
-
-      const start = Date.now();
-      await runRLM("test query", "./test-fixtures/small.txt", {
-        llmClient: mockLLM,
-        maxTurns: 1,
-        turnTimeoutMs: 200,
-      });
-      const elapsed = Date.now() - start;
-
-      expect(elapsed).toBeLessThan(1000);
-    });
-
+    // turnTimeoutMs test removed: the option was dead in the RLM path
+    // (runRLM created a sandbox but never executed it), and the option
+    // has been removed from RLMOptions. The FSM still has a 5-minute
+    // hard ceiling in rlm.ts via Promise.race.
+    //
     // FINAL_VAR resolution test removed: legacy marker deleted along with the
     // JS-sandbox memory buffer. Nucleus adapter returns answers via <<<FINAL>>>
     // delimiters only.
@@ -165,47 +154,11 @@ describe("RLM Executor", () => {
       expect(thirdCall).toContain("Turn"); // Should reference earlier turns
     });
 
-    // SKIP: maxSubCalls test doesn't apply to LC execution
-    // LC terms don't make sub-LLM calls - they get compiled to JS
-    it.skip("should enforce maxSubCalls per turn", async () => {
-      // Create a separate mock for sub-LLM calls
-      let subCallCount = 0;
-      const trackingLLM = vi.fn().mockImplementation((prompt: string) => {
-        // First call is the main RLM turn
-        if (prompt.includes("SYSTEM:")) {
-          subCallCount = 0;
-          return Promise.resolve(`\`\`\`typescript
-          // Try to make 100 sub-calls
-          for (let i = 0; i < 100; i++) {
-            await llm_query("call " + i);
-          }
-        \`\`\``);
-        }
-        // Second main call (after error)
-        if (prompt.includes("Turn 1 Sandbox")) {
-          return Promise.resolve("<<<FINAL>>>\nlimited\n<<<END>>>");
-        }
-        // Sub-LLM calls
-        subCallCount++;
-        return Promise.resolve(`sub-response ${subCallCount}`);
-      });
-
-      await runRLM("test query", "./test-fixtures/small.txt", {
-        llmClient: trackingLLM,
-        maxTurns: 5,
-        maxSubCalls: 5,
-      });
-
-      // Find the call that contains the error message
-      const callWithError = trackingLLM.mock.calls.find(
-        (call) =>
-          call[0] &&
-          (call[0].includes("limit") ||
-            call[0].includes("exceeded") ||
-            call[0].includes("Max"))
-      );
-      expect(callWithError).toBeDefined();
-    });
+    // maxSubCalls test removed: the option was dead in the RLM path (the
+    // sandbox-tools sub-call limiter only fires inside sandbox.execute(),
+    // which runRLM never invokes). The option has been removed from
+    // RLMOptions. Sub-call limiting is still tested directly against
+    // createSandboxWithSynthesis in tests/synthesis/sandbox-tools.test.ts.
 
     it("should handle file read errors", async () => {
       const result = await runRLM("test query", "./nonexistent-file.txt", {

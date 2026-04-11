@@ -7,7 +7,6 @@
 
 import type { ModelAdapter } from "../adapters/types.js";
 import type { SynthesisConstraint } from "../constraints/types.js";
-import type { SandboxWithSynthesis } from "../synthesis/sandbox-tools.js";
 import type { RAGManager } from "../rag/manager.js";
 import type { SolverTools, Bindings } from "../logic/lc-solver.js";
 import type { FSMSpec, State } from "repl-sandbox";
@@ -29,7 +28,6 @@ export interface RLMContext {
   adapter: ModelAdapter;
   llmClient: LLMQueryFn;
   solverTools: SolverTools;
-  sandbox: SandboxWithSynthesis;
   constraint?: SynthesisConstraint;
   ragManager?: RAGManager;
   sessionId: string;
@@ -601,7 +599,6 @@ export function createInitialContext(opts: {
   adapter: ModelAdapter;
   llmClient: LLMQueryFn;
   solverTools: SolverTools;
-  sandbox: SandboxWithSynthesis;
   systemPrompt: string;
   userMessage: string;
   constraint?: SynthesisConstraint;
@@ -615,7 +612,6 @@ export function createInitialContext(opts: {
     adapter: opts.adapter,
     llmClient: opts.llmClient,
     solverTools: opts.solverTools,
-    sandbox: opts.sandbox,
     constraint: opts.constraint,
     ragManager: opts.ragManager,
     sessionId: opts.sessionId,

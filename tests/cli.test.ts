@@ -46,12 +46,9 @@ describe("CLI", () => {
       expect(output).toContain("Max turns: 5");
     });
 
-    it("should accept --timeout option", () => {
-      const output = cli(
-        '"query" ./test-fixtures/small.txt --timeout 60000 --dry-run'
-      );
-      expect(output).toContain("Timeout: 60000");
-    });
+    // --timeout option removed: the underlying turnTimeoutMs was dead in
+    // the RLM path (sandbox was created but never executed). Removed from
+    // CLI, RLMOptions, and the MCP server input schema.
 
     it("should accept --model option", () => {
       const output = cli(

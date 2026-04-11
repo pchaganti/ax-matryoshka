@@ -7,8 +7,6 @@
  */
 
 import { readFile } from "node:fs/promises";
-import { createSandboxWithSynthesis, type SandboxWithSynthesis } from "./synthesis/sandbox-tools.js";
-import { SynthesisCoordinator } from "./synthesis/coordinator.js";
 import { createToolRegistry, getToolInterfaces } from "./tools.js";
 import type { LLMQueryFn } from "./llm/types.js";
 import type { ModelAdapter, RAGHints } from "./adapters/types.js";
@@ -262,8 +260,6 @@ export interface RLMOptions {
   /** Model adapter for prompt/response handling. Uses base adapter if not specified. */
   adapter?: ModelAdapter;
   maxTurns?: number;
-  turnTimeoutMs?: number;
-  maxSubCalls?: number;
   verbose?: boolean;
   /** Output constraint for verification (Barliman-style constraint-first synthesis) */
   constraint?: SynthesisConstraint;
@@ -303,8 +299,6 @@ export async function runRLM(
     llmClient,
     adapter = createNucleusAdapter(),
     maxTurns: rawMaxTurns = 10,
-    turnTimeoutMs: rawTurnTimeoutMs = 30000,
-    maxSubCalls: rawMaxSubCalls = 10,
     verbose = false,
     constraint,
     ragEnabled = true,
@@ -318,10 +312,7 @@ export async function runRLM(
   const sessionId = safeSessionId;
 
   // Validate numeric config parameters
-  const MAX_TIMEOUT = 300_000; // 5 minutes
   const maxTurns = Number.isFinite(rawMaxTurns) && rawMaxTurns >= 1 ? Math.floor(rawMaxTurns) : 10;
-  const turnTimeoutMs = Number.isFinite(rawTurnTimeoutMs) && rawTurnTimeoutMs >= 100 && rawTurnTimeoutMs <= MAX_TIMEOUT ? Math.floor(rawTurnTimeoutMs) : 30000;
-  const maxSubCalls = Number.isFinite(rawMaxSubCalls) && rawMaxSubCalls >= 1 ? Math.floor(rawMaxSubCalls) : 10;
 
   const log = (msg: string) => {
     if (verbose) console.log(msg);
@@ -381,21 +372,6 @@ export async function runRLM(
     log(`  4. If synthesis fails, LLM gets feedback and refines constraints`);
   }
 
-  // Create synthesis coordinator and sandbox with synthesis tools
-  const coordinator = new SynthesisCoordinator();
-  const sandbox: SandboxWithSynthesis = await createSandboxWithSynthesis(
-    documentContent,
-    llmClient,
-    coordinator,
-    {
-      maxSubCalls,
-      timeoutMs: turnTimeoutMs,
-      verbose,
-    }
-  );
-
-  log(`[RLM] Sandbox created with synthesis tools (maxSubCalls: ${maxSubCalls}, timeout: ${turnTimeoutMs}ms)`);
-
   // Create solver tools for document operations
   const solverTools = createSolverTools(documentContent);
 
@@ -431,7 +407,6 @@ export async function runRLM(
       adapter,
       llmClient,
       solverTools,
-      sandbox,
       systemPrompt,
       userMessage,
       constraint,
@@ -458,13 +433,6 @@ export async function runRLM(
     log(`\n[RLM] Max turns (${maxTurns}) reached without final answer`);
     return `Max turns (${maxTurns}) reached without final answer.`;
   } finally {
-    try {
-      sandbox.dispose();
-      log(`\n[RLM] Sandbox disposed`);
-    } catch (disposeErr) {
-      log(`\n[RLM] Warning: sandbox dispose failed: ${disposeErr instanceof Error ? disposeErr.message : String(disposeErr)}`);
-    }
-
     try {
       if (ragManager) {
         ragManager.clearFailureMemory(sessionId);
