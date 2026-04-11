@@ -25,6 +25,8 @@
  * 10. LOW fts5-search.ts — searchWithHighlights passes raw content through to
  *     the highlighted field, allowing HTML in the document to leak into the
  *     output unescaped
+ * 11. LOW lc-parser.ts — parseAll tracks a single depth counter across
+ *     `()`, `[]`, `{}` so mismatched brackets yield confusing slices
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -36,6 +38,7 @@ import { SessionDB } from "../src/persistence/session-db.js";
 import { SymbolGraph } from "../src/graph/symbol-graph.js";
 import type { Symbol } from "../src/treesitter/types.js";
 import { FTS5Search } from "../src/persistence/fts5-search.js";
+import { parseAll } from "../src/logic/lc-parser.js";
 
 describe("Audit #96 — Chiasmus review round 2", () => {
   // =========================================================================
@@ -522,6 +525,60 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(ampLine!.highlighted).toMatch(/&amp;amp;/);
 
       db.close();
+    });
+  });
+
+  // =========================================================================
+  // #11 LOW — parseAll must track ()/[]/{} as independent bracket kinds
+  // =========================================================================
+  describe("#11 — parseAll separates paren/bracket/brace depth", () => {
+    it("two top-level s-expressions back to back are split correctly", () => {
+      const results = parseAll('(grep "foo") (grep "bar")');
+      expect(results.length).toBe(2);
+      expect(results[0].success).toBe(true);
+      expect(results[1].success).toBe(true);
+    });
+
+    it("does not split mid-expression on a brace inside a string", () => {
+      // `(grep "}")` — the closing brace is inside a string, so parseAll's
+      // depth counter must not touch it. Already handled by the inString
+      // check. Keep this as a regression guard.
+      const results = parseAll('(grep "}")');
+      expect(results.length).toBe(1);
+      expect(results[0].success).toBe(true);
+    });
+
+    it("stray `)` without matching `(` is ignored, not treated as expression close", () => {
+      // `[x) (grep "foo")`:
+      //
+      // Buggy behavior (single depth counter):
+      //   `[` → depth 1, start=0
+      //   `x`
+      //   `)` → depth 0, emits slice `[x)` (which parse() will fail on),
+      //         then `(grep "foo")` → second slice emitted successfully.
+      //   Result: [fail, success], length 2. The `)` was treated as a
+      //   matching close for the `[`, which is nonsense.
+      //
+      // Fixed behavior (per-kind depth, stray closes ignored):
+      //   `[` → bracketDepth 1, start=0
+      //   `)` → parenDepth can't go below 0, no-op
+      //   `(grep "foo")` enters before bracketDepth returns to 0, so the
+      //   whole span is never "all-zero" → no slice emitted mid-stream.
+      //   Falls through to the one-expression fallback parse, which
+      //   fails cleanly. length 1.
+      const results = parseAll('[x) (grep "foo")');
+      expect(results.length).toBe(1);
+      expect(results[0].success).toBe(false);
+    });
+
+    it("valid consecutive expressions with different bracket shapes", () => {
+      // `(grep "foo") [list] (grep "bar")` — three top-level forms.
+      // Note: `[list]` won't parse as a valid LC term (no leading op),
+      // but parseAll should still emit three slices, not two.
+      const results = parseAll('(grep "foo") [list] (grep "bar")');
+      expect(results.length).toBe(3);
+      expect(results[0].success).toBe(true);
+      expect(results[2].success).toBe(true);
     });
   });
 });
