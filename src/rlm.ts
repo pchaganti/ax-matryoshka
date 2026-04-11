@@ -23,10 +23,22 @@ import { buildRLMSpec, createInitialContext, type RLMContext } from "./fsm/rlm-s
 /**
  * Create SolverTools from document content
  * These are the same tools the sandbox provides, but standalone for the solver
+ *
+ * @param context - Document content
+ * @param llmClient - Optional flat LLM entry point for the sub-LLM hook.
+ *   Used for the default (depth=0) fast path where llm_query delegates
+ *   to one round-trip through the parent's llmClient.
+ * @param subRLMSpawner - Optional recursive sub-RLM spawner. When present,
+ *   llm_query routes to this callback instead of the flat llmClient,
+ *   allowing sub-calls to run their own FSM loops with their own
+ *   Nucleus code execution. The spawner receives the already-interpolated
+ *   prompt and is responsible for depth tracking, maxTurns scaling, and
+ *   returning a string result. See `runRLM`'s sub-RLM wiring below.
  */
 function createSolverTools(
   context: string,
-  llmClient?: LLMQueryFn
+  llmClient?: LLMQueryFn,
+  subRLMSpawner?: (prompt: string) => Promise<string>
 ): SolverTools {
   const MAX_SOLVER_LINES = 500_000;
   let lines = context.split("\n");
@@ -165,26 +177,36 @@ function createSolverTools(
 
     text_stats: () => ({ ...textStats }),
 
-    // Optional symbolic-recursion hook — threaded through only when
-    // the caller (runRLM) provides an llmClient. Other consumers that
-    // build a solver tools instance without an llmClient get undefined
-    // here, and `(llm_query …)` at solve time throws a clear error.
+    // Symbolic-recursion hook. Three modes, in priority order:
     //
-    // The sub-LLM is invoked with a standalone prompt that prefixes a
-    // brief role-setting sentence so it doesn't try to act like a root
-    // RLM (which would emit S-expressions, <<<FINAL>>> tags, etc.).
-    llmQuery: llmClient
-      ? async (subPrompt: string) => {
-          const framedPrompt =
-            "You are a sub-LLM invoked by a parent RLM run. Answer the " +
-            "prompt concisely and directly. Do not emit control tags " +
-            "like <<<FINAL>>> or S-expressions — your caller uses your " +
-            "response as a plain string.\n\n" +
-            subPrompt;
-          const response = await llmClient(framedPrompt);
-          return String(response ?? "");
-        }
-      : undefined,
+    //   1. subRLMSpawner given (P3 sub-RLM recursion) — routes the
+    //      interpolated prompt through a full sub-RLM with its own FSM
+    //      loop, Nucleus code execution, and depth tracking. The
+    //      spawner is responsible for enforcing the depth cap; past
+    //      the cap it should fall back to mode 2 internally.
+    //
+    //   2. llmClient given, no spawner (legacy flat sub-LLM) — one
+    //      round-trip through the parent's llmClient with a role-framing
+    //      prefix telling the model to answer as plain text. This is the
+    //      pre-P3 behavior and stays the default when subRLMMaxDepth=0.
+    //
+    //   3. Neither given (standalone NucleusEngine / lattice-mcp without
+    //      a sampling bridge) — undefined, so the solver's llm_query
+    //      case throws a clear "not available" error.
+    llmQuery: subRLMSpawner
+      ? subRLMSpawner
+      : llmClient
+        ? async (subPrompt: string) => {
+            const framedPrompt =
+              "You are a sub-LLM invoked by a parent RLM run. Answer the " +
+              "prompt concisely and directly. Do not emit control tags " +
+              "like <<<FINAL>>> or S-expressions — your caller uses your " +
+              "response as a plain string.\n\n" +
+              subPrompt;
+            const response = await llmClient(framedPrompt);
+            return String(response ?? "");
+          }
+        : undefined,
   };
 }
 
@@ -291,16 +313,73 @@ export interface RLMOptions {
   ragEnabled?: boolean;
   /** Session ID for tracking failures (default: auto-generated) */
   sessionId?: string;
+  /**
+   * Maximum recursive depth for `(llm_query …)` sub-RLM spawning
+   * (P3 in the paper-vs-project gap list — the paper's "symbolic
+   * recursion" feature). Default 0, which preserves the pre-P3 flat
+   * sub-LLM behavior: every `(llm_query …)` call dispatches exactly
+   * one round-trip through `llmClient`. When set to N ≥ 1, each
+   * `(llm_query …)` invocation spawns a sub-RLM whose document is
+   * the interpolated prompt and whose FSM loop can itself run
+   * Nucleus code (grep, chunking, even further sub-RLMs) up to
+   * depth N. Past depth N, sub-RLMs fall back to flat calls so
+   * recursion can't run away. Sub-RLMs inherit the parent's
+   * llmClient and adapter and halve the parent's maxTurns.
+   */
+  subRLMMaxDepth?: number;
+  /**
+   * Internal — current sub-RLM depth. Automatically incremented by
+   * the sub-RLM spawner each time a `(llm_query …)` call recurses.
+   * Never set this manually from user code; it's a private parameter
+   * threaded through the recursive invocation chain.
+   */
+  _subRLMDepth?: number;
 }
+
+/**
+ * Default maximum sub-RLM recursion depth cap, enforced independent
+ * of whatever the caller passes as `subRLMMaxDepth`. Paper Alg. 1 in
+ * principle allows unbounded recursion; in practice a hard cap keeps
+ * pathological programs from infinitely recursing and exhausting
+ * resources. Tuned conservatively — raise in CLAUDE.md if needed.
+ */
+const ABSOLUTE_MAX_SUB_RLM_DEPTH = 5;
 
 // verifyAndReturnResult has moved to fsm/rlm-states.ts
 
 /**
- * Run the RLM execution loop
+ * Run the RLM execution loop against a file on disk.
+ *
+ * Thin wrapper — reads the file and delegates to `runRLMFromContent`,
+ * which contains the actual loop and is reused by the sub-RLM spawner
+ * when `subRLMMaxDepth > 0`.
  */
 export async function runRLM(
   query: string,
   filePath: string,
+  options: RLMOptions
+): Promise<unknown> {
+  let documentContent: string;
+  try {
+    documentContent = await readFile(filePath, "utf-8");
+  } catch (err) {
+    const error = err as Error;
+    return `Error loading file: ${error.message}`;
+  }
+  return runRLMFromContent(query, documentContent, options);
+}
+
+/**
+ * Run the RLM execution loop against in-memory document content.
+ *
+ * Exported as a public entry point — called directly by tests and by
+ * the P3 sub-RLM spawner (which builds a sub-RLM over the interpolated
+ * prompt rather than a file). Behaviorally identical to `runRLM` except
+ * for the file-read step.
+ */
+export async function runRLMFromContent(
+  query: string,
+  documentContent: string,
   options: RLMOptions
 ): Promise<unknown> {
   const {
@@ -311,6 +390,8 @@ export async function runRLM(
     constraint,
     ragEnabled = true,
     sessionId: rawSessionId = `session-${Date.now()}`,
+    subRLMMaxDepth = 0,
+    _subRLMDepth = 0,
   } = options;
 
   // Validate sessionId
@@ -321,6 +402,15 @@ export async function runRLM(
 
   // Validate numeric config parameters
   const maxTurns = Number.isFinite(rawMaxTurns) && rawMaxTurns >= 1 ? Math.floor(rawMaxTurns) : 10;
+
+  // Clamp subRLMMaxDepth to the hard cap.
+  const effectiveMaxDepth = Math.max(
+    0,
+    Math.min(
+      Number.isFinite(subRLMMaxDepth) ? Math.floor(subRLMMaxDepth) : 0,
+      ABSOLUTE_MAX_SUB_RLM_DEPTH
+    )
+  );
 
   const log = (msg: string) => {
     if (verbose) console.log(msg);
@@ -353,16 +443,7 @@ export async function runRLM(
     }
   }
 
-  // Load document
-  let documentContent: string;
-  try {
-    documentContent = await readFile(filePath, "utf-8");
-  } catch (err) {
-    const error = err as Error;
-    return `Error loading file: ${error.message}`;
-  }
-
-  log(`\n[RLM] Loaded document: ${documentContent.length.toLocaleString()} characters`);
+  log(`\n[RLM] Loaded document: ${documentContent.length.toLocaleString()} characters (depth=${_subRLMDepth})`);
 
   // Build system prompt using the adapter (with RAG hints if enabled)
   const registry = createToolRegistry();
@@ -380,10 +461,54 @@ export async function runRLM(
     log(`  4. If synthesis fails, LLM gets feedback and refines constraints`);
   }
 
+  // Build the sub-RLM spawner for P3 symbolic recursion.
+  //
+  // When the current depth is still below the configured max, each
+  // `(llm_query …)` call spawns a full sub-RLM whose document is the
+  // interpolated prompt. The sub-RLM runs its own FSM loop with half
+  // the parent's turn budget and increments the depth counter. When
+  // the depth is at or above max, the spawner is undefined — the
+  // llmQuery code path falls back to the flat `llmClient(framedPrompt)`
+  // call built inside `createSolverTools`, terminating the recursion
+  // with a single round-trip.
+  const subRLMSpawner = llmClient && _subRLMDepth < effectiveMaxDepth
+    ? async (interpolatedPrompt: string): Promise<string> => {
+        const childMaxTurns = Math.max(1, Math.floor(maxTurns / 2));
+        const childDepth = _subRLMDepth + 1;
+        log(`[RLM] Spawning sub-RLM (depth ${childDepth}/${effectiveMaxDepth}) with ${interpolatedPrompt.length} chars of input`);
+        // The sub-RLM's "query" is fixed framing text; the "document"
+        // is the interpolated prompt, so the sub-RLM can grep/chunk/map
+        // over the parent's payload without the parent having to
+        // pre-process it.
+        const childQuery =
+          "Analyze and answer based on the following input: " +
+          interpolatedPrompt.slice(0, 500) +
+          (interpolatedPrompt.length > 500 ? "…" : "");
+        const childResult = await runRLMFromContent(
+          childQuery,
+          interpolatedPrompt,
+          {
+            llmClient,
+            adapter,
+            maxTurns: childMaxTurns,
+            verbose,
+            // Sub-RLMs skip RAG — hint retrieval on every nested call
+            // would be expensive and the hints are tuned for top-level
+            // queries, not recursive payloads.
+            ragEnabled: false,
+            sessionId: `${sessionId}-sub${childDepth}`,
+            subRLMMaxDepth: effectiveMaxDepth,
+            _subRLMDepth: childDepth,
+          }
+        );
+        return typeof childResult === "string" ? childResult : JSON.stringify(childResult);
+      }
+    : undefined;
+
   // Create solver tools for document operations. Passing llmClient here
-  // enables the `(llm_query …)` LC primitive — the symbolic-recursion
-  // entry point used by solve() when the FSM's handleExecute dispatches.
-  const solverTools = createSolverTools(documentContent, llmClient);
+  // enables the `(llm_query …)` LC primitive; passing subRLMSpawner
+  // upgrades it from flat to recursive.
+  const solverTools = createSolverTools(documentContent, llmClient, subRLMSpawner);
 
   // Build user message with optional constraints
   let userMessage = `Query: ${query}`;
