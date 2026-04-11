@@ -152,6 +152,17 @@ export async function solve(
 
 const MAX_EVAL_DEPTH = 200;
 
+function toItemString(item: unknown): string {
+  if (typeof item === "string") return item;
+  if (item == null) return "";
+  if (typeof item === "object") {
+    if ("line" in item) return (item as { line: string }).line;
+    if ("name" in item) return (item as { name: string }).name;
+    try { return JSON.stringify(item); } catch { return String(item); }
+  }
+  return String(item);
+}
+
 /**
  * Evaluate an LC term
  * Impure operations execute directly, pure operations use miniKanren
@@ -483,14 +494,11 @@ async function evaluate(
       log(`[Solver] Converting ${collection.length} items to filter`);
 
       // Evaluate predicate for each item
-      // Handle both grep results (objects with .line) and raw values
       const results: unknown[] = [];
 
       for (let idx = 0; idx < collection.length; idx++) {
         const item = collection[idx];
-        const itemValue = typeof item === "object" && item !== null && "line" in item
-          ? (item as { line: string }).line
-          : String(item ?? "");
+        const itemValue = toItemString(item);
 
         const matches = await evaluatePredicate(predBody, predLambda.param, itemValue, tools, bindings, log, depth + 1);
         if (matches) {
@@ -527,10 +535,7 @@ async function evaluate(
       // still on the table.
       const results: unknown[] = [];
       for (const item of collection) {
-        // Handle both grep results (objects with .line) and raw values
-        const itemValue = typeof item === "object" && item !== null && "line" in item
-          ? (item as { line: string }).line
-          : String(item ?? "");
+        const itemValue = toItemString(item);
 
         const value = await evaluateTransform(
           transformLambda.body,
