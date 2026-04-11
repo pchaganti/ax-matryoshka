@@ -34,6 +34,9 @@
  * 14. LOW nucleus-engine.ts — setBinding regex rejects hyphens, but auto-
  *     registration of synthesized functions emits `_fn_parse-date`-style
  *     keys; unify on the hyphen-allowing regex
+ * 15. LOW lattice-mcp-server.ts, mcp-server.ts, config.ts — `.includes("..")`
+ *     path-traversal guards false-positive on legitimate filenames like
+ *     `readme..txt`; should be segment-aware
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
@@ -46,6 +49,7 @@ import { SymbolGraph } from "../src/graph/symbol-graph.js";
 import type { Symbol } from "../src/treesitter/types.js";
 import { FTS5Search } from "../src/persistence/fts5-search.js";
 import { parseAll, parse } from "../src/logic/lc-parser.js";
+import { hasTraversalSegment } from "../src/utils/path-safety.js";
 
 describe("Audit #96 — Chiasmus review round 2", () => {
   // =========================================================================
@@ -634,6 +638,37 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       expect(() => engine.setBinding("has space", 1)).toThrow();
       expect(() => engine.setBinding("has$dollar", 1)).toThrow();
       expect(() => engine.setBinding("__proto__", 1)).toThrow();
+    });
+  });
+
+  // =========================================================================
+  // #15 LOW — hasTraversalSegment replaces .includes("..") guards
+  // =========================================================================
+  describe("#15 — path-traversal check is segment-aware", () => {
+    it("rejects true parent-directory traversal", () => {
+      expect(hasTraversalSegment("../etc/passwd")).toBe(true);
+      expect(hasTraversalSegment("..")).toBe(true);
+      expect(hasTraversalSegment("foo/../bar")).toBe(true);
+      expect(hasTraversalSegment("foo/bar/..")).toBe(true);
+      expect(hasTraversalSegment("..\\windows\\path")).toBe(true);
+      expect(hasTraversalSegment("a/b/../c/d")).toBe(true);
+    });
+
+    it("accepts legitimate filenames containing the `..` substring", () => {
+      // Before the fix these would have been rejected as path traversal.
+      expect(hasTraversalSegment("readme..txt")).toBe(false);
+      expect(hasTraversalSegment("foo..bar.md")).toBe(false);
+      expect(hasTraversalSegment("sub/dir/file..backup")).toBe(false);
+      expect(hasTraversalSegment("weird...name")).toBe(false); // 3 dots, no `..` segment
+      expect(hasTraversalSegment("my.file..v2")).toBe(false);
+    });
+
+    it("accepts normal relative paths and edge cases", () => {
+      expect(hasTraversalSegment("")).toBe(false);
+      expect(hasTraversalSegment(".")).toBe(false);
+      expect(hasTraversalSegment("./file.txt")).toBe(false);
+      expect(hasTraversalSegment("a/b/c.ts")).toBe(false);
+      expect(hasTraversalSegment("/absolute/path/x.md")).toBe(false);
     });
   });
 });

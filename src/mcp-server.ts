@@ -24,6 +24,7 @@ import { createLLMClient } from "./llm/index.js";
 import type { LLMQueryFn } from "./llm/types.js";
 import { NucleusEngine } from "./engine/nucleus-engine.js";
 import { getVersion } from "./version.js";
+import { hasTraversalSegment } from "./utils/path-safety.js";
 
 export interface MCPTool {
   name: string;
@@ -49,8 +50,8 @@ function validateFilePath(filePath: string): string | null {
   if (skipCwdChecking) {
     return null;
   }
-  // Reject path traversal
-  if (filePath.includes("..")) {
+  // Reject path traversal (segment-aware — allows legitimate `foo..bar`)
+  if (hasTraversalSegment(filePath)) {
     return "Path traversal (..) is not allowed";
   }
   // Resolve to absolute path

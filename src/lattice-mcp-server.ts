@@ -33,6 +33,7 @@ import { stat } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { HandleSession } from "./engine/handle-session.js";
 import { getVersion } from "./version.js";
+import { hasTraversalSegment } from "./utils/path-safety.js";
 
 // Configuration — timeout is configurable via env var for long sessions
 const SESSION_TIMEOUT_MS = parseInt(process.env.LATTICE_TIMEOUT_MS || "") || 10 * 60 * 1000;
@@ -463,7 +464,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
         // Validate path - reject traversal and paths outside CWD
         if (!skipCwdChecking) {
-          if (filePath.includes("..")) {
+          if (hasTraversalSegment(filePath)) {
             return { content: [{ type: "text", text: "Error: Path traversal (..) is not allowed" }] };
           }
           const resolvedPath = resolve(filePath);
