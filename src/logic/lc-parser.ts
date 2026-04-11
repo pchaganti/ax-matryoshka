@@ -543,6 +543,30 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       return { tag: "lines", start: startTerm.value, end: endTerm.value };
     }
 
+    case "chunk_by_size": {
+      const sizeTerm = parseTerm(state, d);
+      if (!sizeTerm || sizeTerm.tag !== "lit" || typeof sizeTerm.value !== "number") {
+        return null;
+      }
+      return { tag: "chunk_by_size", size: sizeTerm.value };
+    }
+
+    case "chunk_by_lines": {
+      const nTerm = parseTerm(state, d);
+      if (!nTerm || nTerm.tag !== "lit" || typeof nTerm.value !== "number") {
+        return null;
+      }
+      return { tag: "chunk_by_lines", lineCount: nTerm.value };
+    }
+
+    case "chunk_by_regex": {
+      const patTerm = parseTerm(state, d);
+      if (!patTerm || patTerm.tag !== "lit" || typeof patTerm.value !== "string") {
+        return null;
+      }
+      return { tag: "chunk_by_regex", pattern: patTerm.value };
+    }
+
     case "filter": {
       const collection = parseTerm(state, d);
       if (!collection) return null;
@@ -1094,6 +1118,12 @@ export function prettyPrint(term: LCTerm): string {
       return "(text_stats)";
     case "lines":
       return `(lines ${term.start} ${term.end})`;
+    case "chunk_by_size":
+      return `(chunk_by_size ${term.size})`;
+    case "chunk_by_lines":
+      return `(chunk_by_lines ${term.lineCount})`;
+    case "chunk_by_regex":
+      return `(chunk_by_regex "${escapeForPrint(term.pattern)}")`;
     case "filter":
       return `(filter ${prettyPrint(term.collection)} ${prettyPrint(term.predicate)})`;
     case "map":

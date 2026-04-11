@@ -197,6 +197,12 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
       // lines returns array of strings
       return { tag: "array", element: { tag: "string" } };
 
+    case "chunk_by_size":
+    case "chunk_by_lines":
+    case "chunk_by_regex":
+      // All three chunking primitives return array<string>.
+      return { tag: "array", element: { tag: "string" } };
+
     case "sum":
       return { tag: "number" };
 

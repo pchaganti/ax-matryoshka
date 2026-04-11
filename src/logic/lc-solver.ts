@@ -355,6 +355,78 @@ async function evaluate(
       return selectedLines;
     }
 
+    case "chunk_by_size": {
+      // Split the document context into fixed-size character chunks. The
+      // last chunk may be shorter than `size`. The primary use-case is
+      // feeding each chunk into a per-chunk sub-LLM call via a map lambda.
+      const size = term.size;
+      if (!Number.isFinite(size) || size <= 0) {
+        throw new Error(`chunk_by_size: size must be a positive finite number, got ${size}`);
+      }
+      const intSize = Math.floor(size);
+      // Cap at MAX_CHUNKS to prevent an adversarial `(chunk_by_size 1)` over
+      // a 10MB document from producing a 10M-element array that blows up
+      // downstream handle storage. This is large enough that real use-cases
+      // (2KB chunks of a 50MB file = 25_000 chunks) stay well under it.
+      const MAX_CHUNKS = 100_000;
+      const ctx = tools.context;
+      if (ctx.length === 0) return [];
+      const chunks: string[] = [];
+      for (let i = 0; i < ctx.length && chunks.length < MAX_CHUNKS; i += intSize) {
+        chunks.push(ctx.slice(i, i + intSize));
+      }
+      log(`[Solver] chunk_by_size(${intSize}): produced ${chunks.length} chunks`);
+      return chunks;
+    }
+
+    case "chunk_by_lines": {
+      // Split the document into N-line chunks. Trailing remainder (<N lines)
+      // becomes its own chunk.
+      const n = term.lineCount;
+      if (!Number.isFinite(n) || n <= 0) {
+        throw new Error(`chunk_by_lines: lineCount must be a positive finite number, got ${n}`);
+      }
+      const intN = Math.floor(n);
+      const MAX_CHUNKS = 100_000;
+      const allLines = tools.lines;
+      if (allLines.length === 0) return [];
+      const chunks: string[] = [];
+      for (let i = 0; i < allLines.length && chunks.length < MAX_CHUNKS; i += intN) {
+        chunks.push(allLines.slice(i, i + intN).join("\n"));
+      }
+      log(`[Solver] chunk_by_lines(${intN}): produced ${chunks.length} chunks`);
+      return chunks;
+    }
+
+    case "chunk_by_regex": {
+      // Split the document wherever `pattern` matches. Empty chunks
+      // produced by adjacent delimiters are dropped — the paper's OOLONG
+      // pattern wants "substantive" chunks to feed to sub-LLMs, not empty
+      // strings between `\n\n\n\n` sequences.
+      const pat = term.pattern;
+      if (typeof pat !== "string" || pat.length === 0) {
+        throw new Error("chunk_by_regex: pattern must be a non-empty string");
+      }
+      // Route through the shared regex validator so a bad pattern errors
+      // cleanly rather than throwing from deep inside String.prototype.split.
+      const validation = validateRegex(pat);
+      if (!validation.valid) {
+        throw new Error(`chunk_by_regex: invalid pattern "${pat}" — ${validation.error}`);
+      }
+      const regex = new RegExp(pat);
+      const ctx = tools.context;
+      if (ctx.length === 0) return [];
+      const MAX_CHUNKS = 100_000;
+      const rawChunks = ctx.split(regex);
+      const chunks: string[] = [];
+      for (const c of rawChunks) {
+        if (c.length > 0) chunks.push(c);
+        if (chunks.length >= MAX_CHUNKS) break;
+      }
+      log(`[Solver] chunk_by_regex(/${pat}/): produced ${chunks.length} chunks from ${rawChunks.length} raw pieces`);
+      return chunks;
+    }
+
     // ==========================
     // PURE OPERATIONS - Use miniKanren for filtering/classification
     // ==========================
