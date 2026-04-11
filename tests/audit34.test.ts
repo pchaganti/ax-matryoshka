@@ -43,22 +43,7 @@ describe("Audit #34", () => {
       });
     });
 
-    // #2 — sandbox.ts vm escape + missing eval override
-    describe("#2 — sandbox should block constructor chain escape", () => {
-      it("should block eval in sandbox globals", () => {
-        const source = readFileSync("src/sandbox.ts", "utf-8");
-        // Should override eval to prevent sandbox escape
-        expect(source).toMatch(/eval.*not allowed|eval.*throw|eval.*blocked|eval:\s*\(\)/i);
-      });
-
-      it("should freeze or block constructor access", () => {
-        const source = readFileSync("src/sandbox.ts", "utf-8");
-        // Should have some prototype chain protection
-        expect(source).toMatch(
-          /Object\.freeze|Object\.defineProperty.*constructor|__proto__|getPrototypeOf.*null|Object\.create\(null\)/
-        );
-      });
-    });
+    // #2 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
   });
 
   // =============================================================

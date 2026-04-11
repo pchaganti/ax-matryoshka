@@ -88,16 +88,7 @@ describe("Audit #32", () => {
   // =============================================================
 
   describe("Round 2: Sandbox", () => {
-    // Issue: Declaration scripts run without timeout
-    describe("#5 — declaration scripts should have timeout", () => {
-      it("should pass timeout to declScript.runInContext", () => {
-        const source = readFileSync("src/sandbox.ts", "utf-8");
-        const declSection = source.match(/declScript\.runInContext\(vmContext[^)]*\)/);
-        expect(declSection).not.toBeNull();
-        // Should have timeout option
-        expect(declSection![0]).toMatch(/timeout/);
-      });
-    });
+    // #5 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
     // Issue: verifier.ts new Function deny-list is fragile
     describe("#6 — verifier should use allowlist, not deny-list for invariants", () => {

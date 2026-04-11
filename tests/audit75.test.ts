@@ -71,18 +71,7 @@ describe("Audit #75", () => {
     });
   });
 
-  // =========================================================================
-  // #6 MEDIUM — sandbox locate_line missing isSafeInteger validation
-  // =========================================================================
-  describe("#6 — sandbox locate_line should validate integer inputs", () => {
-    it("should check isInteger or isSafeInteger on start/end", () => {
-      const source = readFileSync("src/sandbox.ts", "utf-8");
-      const locateFn = source.indexOf("function locate_line(");
-      expect(locateFn).toBeGreaterThan(-1);
-      const block = source.slice(locateFn, locateFn + 400);
-      expect(block).toMatch(/isInteger|isSafeInteger/);
-    });
-  });
+  // #6 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
   // =========================================================================
   // #7 MEDIUM — evalo parseFloat missing input string length check

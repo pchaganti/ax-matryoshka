@@ -18,17 +18,7 @@ describe("Audit #50", () => {
     });
   });
 
-  // =========================================================================
-  // #2 HIGH — sandbox.ts: grep missing pattern length limit
-  // =========================================================================
-  describe("#2 — sandbox grep should limit pattern length", () => {
-    it("should check pattern length before RegExp construction", () => {
-      const source = readFileSync("src/sandbox.ts", "utf-8");
-      const grepFn = source.match(/function grep\(pattern, flags\)[\s\S]*?new RegExp\(pattern/);
-      expect(grepFn).not.toBeNull();
-      expect(grepFn![0]).toMatch(/pattern\.length|MAX_PATTERN/);
-    });
-  });
+  // #2 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
   // =========================================================================
   // #3 HIGH — relational/interpreter.ts: match group not validated
@@ -93,17 +83,7 @@ describe("Audit #50", () => {
     });
   });
 
-  // =========================================================================
-  // #8 MEDIUM — sandbox.ts: grep flags not whitelist-filtered
-  // =========================================================================
-  describe("#8 — sandbox grep should whitelist-filter flags", () => {
-    it("should strip unsafe characters from flags parameter", () => {
-      const source = readFileSync("src/sandbox.ts", "utf-8");
-      const grepFn = source.match(/function grep\(pattern, flags\)[\s\S]*?new RegExp\(pattern/);
-      expect(grepFn).not.toBeNull();
-      expect(grepFn![0]).toMatch(/replace\([^)]*\[^gimsuy\]|replace\([^)]*\/\[/);
-    });
-  });
+  // #8 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
   // =========================================================================
   // #9 MEDIUM — nucleus.ts: group index not clamped in S-expression

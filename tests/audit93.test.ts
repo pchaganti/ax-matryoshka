@@ -59,16 +59,8 @@ describe("Audit #93", () => {
     });
   });
 
-  // =========================================================================
-  // #4 MEDIUM — sessions Map grows unbounded
-  // =========================================================================
-  describe("#4 — session manager should cap sessions", () => {
-    it("should have a MAX_SESSIONS limit", () => {
-      const source = readFileSync("src/session.ts", "utf-8");
-      // Should have a max sessions cap (either local or via repl-sandbox's maxSessions option)
-      expect(source).toMatch(/MAX_SESSIONS|maxSessions|sessions\.size\s*>=|sessions\.size\s*>/);
-    });
-  });
+  // #4 removed: exclusively tested src/session.ts (deleted with the orphaned
+  // SessionManager — no production code imported it).
 
   // =========================================================================
   // #5 MEDIUM — filePath not length-validated

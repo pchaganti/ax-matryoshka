@@ -80,17 +80,7 @@ describe("Audit #52", () => {
     });
   });
 
-  // =========================================================================
-  // #7 MEDIUM — sandbox.ts: locate_line negative index not clamped
-  // =========================================================================
-  describe("#7 — sandbox locate_line should clamp negative indices", () => {
-    it("should use Math.max to clamp negative index results", () => {
-      const source = readFileSync("src/sandbox.ts", "utf-8");
-      const locateFn = source.match(/function locate_line[\s\S]*?let startIdx[\s\S]*?totalLines \+ start/);
-      expect(locateFn).not.toBeNull();
-      expect(locateFn![0]).toMatch(/Math\.max\(0/);
-    });
-  });
+  // #7 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
   // =========================================================================
   // #8 MEDIUM — nucleus.ts: DANGEROUS_VAR_NAMES is case-sensitive

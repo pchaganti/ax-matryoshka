@@ -13,79 +13,10 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #35", () => {
-  // =============================================================
-  // ROUND 1: Critical
-  // =============================================================
-
-  describe("Round 1: Critical", () => {
-    // #1 — sandbox.ts createTextStats middle slice can go negative
-    describe("#1 — createTextStats should handle small documents", () => {
-      it("should not crash on 1-line documents", async () => {
-        const { createTextStats } = await import("../src/sandbox.js");
-        const stats = createTextStats("hello");
-        expect(stats.lineCount).toBe(1);
-        expect(stats.sample.middle).toBeDefined();
-      });
-
-      it("should not crash on 2-line documents", async () => {
-        const { createTextStats } = await import("../src/sandbox.js");
-        const stats = createTextStats("line1\nline2");
-        expect(stats.lineCount).toBe(2);
-        expect(stats.sample.middle).toBeDefined();
-      });
-
-      it("should not crash on 3-line documents", async () => {
-        const { createTextStats } = await import("../src/sandbox.js");
-        const stats = createTextStats("a\nb\nc");
-        expect(stats.lineCount).toBe(3);
-        expect(stats.sample.middle).toBeDefined();
-      });
-
-      it("should not crash on empty documents", async () => {
-        const { createTextStats } = await import("../src/sandbox.js");
-        const stats = createTextStats("");
-        expect(stats.lineCount).toBe(1);
-        expect(stats.sample.middle).toBeDefined();
-      });
-    });
-
-    // #1b — sandbox createSandbox has same issue inline
-    describe("#1b — sandbox createSandbox middle slice should use Math.max", () => {
-      it("should have Math.max(0,...) for middle slice start index", () => {
-        const source = readFileSync("src/sandbox.ts", "utf-8");
-        // Find the inline middle slice in createSandbox
-        const middleSlice = source.match(/middle:\s*lines[\s\S]*?\.slice\(\s*Math\.max\(0/);
-        expect(middleSlice).not.toBeNull();
-      });
-    });
-
-    // #2 — sandbox Object constructor escape
-    describe("#2 — sandbox should block Object.constructor escape", () => {
-      it("should not allow Object.constructor to access Function", async () => {
-        const { createSandbox } = await import("../src/sandbox.js");
-        const sb = await createSandbox("test doc", async () => "mock");
-        const result = await sb.execute("Object.constructor");
-        // Either the result should not be Function, or it should error
-        if (!result.error) {
-          expect(result.result).not.toBe(Function);
-        }
-        sb.dispose();
-      });
-
-      it("should not allow constructor chain to reach process", async () => {
-        const { createSandbox } = await import("../src/sandbox.js");
-        const sb = await createSandbox("test doc", async () => "mock");
-        const result = await sb.execute(
-          'typeof Object.constructor'
-        );
-        // Object.constructor should be undefined (blocked) or error
-        if (!result.error) {
-          expect(result.result).not.toBe("function");
-        }
-        sb.dispose();
-      });
-    });
-  });
+  // Round 1 (critical) removed: exclusively tested src/sandbox.ts, which was
+  // deleted when the JS-sandbox path was retired in favor of the nucleus
+  // adapter. The bugs it guarded (negative slice in createTextStats, Object
+  // constructor escape) no longer have a production surface.
 
   // =============================================================
   // ROUND 2: High
@@ -111,16 +42,7 @@ describe("Audit #35", () => {
       });
     });
 
-    // #4 — sandbox grep has no MAX_GREP_MATCHES limit
-    describe("#4 — sandbox grep should have match limit", () => {
-      it("should have MAX_GREP_MATCHES or similar limit in grep function", () => {
-        const source = readFileSync("src/sandbox.ts", "utf-8");
-        const grepFn = source.match(/function grep\(pattern[\s\S]*?return results;/);
-        expect(grepFn).not.toBeNull();
-        // Should have some kind of limit check
-        expect(grepFn![0]).toMatch(/MAX_GREP|results\.length\s*>=|results\.length\s*>/);
-      });
-    });
+    // #4 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
     // #5 — sum silently ignores non-numeric values
     describe("#5 — sum should log skipped non-numeric values", () => {
@@ -237,14 +159,7 @@ describe("Audit #35", () => {
       });
     });
 
-    // #14 — sandbox declaration timeout uses same timeout as main code
-    describe("#14 — sandbox declaration timeout", () => {
-      it("should use a fraction of main timeout for declaration script", () => {
-        const source = readFileSync("src/sandbox.ts", "utf-8");
-        // Should have a DECL_TIMEOUT or Math.min for declarations
-        expect(source).toMatch(/DECL_TIMEOUT|Math\.min.*decl/i);
-      });
-    });
+    // #14 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
     // #15 — Object blocklist in evolutionary too aggressive
     describe("#15 — evolutionary Object blocklist should allow Object.keys etc", () => {
