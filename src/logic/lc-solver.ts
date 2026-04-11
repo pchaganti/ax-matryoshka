@@ -544,7 +544,8 @@ function evaluate(
       if (!matchValidation.valid) {
         throw new Error(`match: ${matchValidation.error}`);
       }
-      const regex = new RegExp(term.pattern);
+      // Case-insensitive for consistency with grep and extract
+      const regex = new RegExp(term.pattern, "i");
       const result = str.match(regex);
       if (!result) return null;
       if (term.group >= result.length) {
@@ -1075,7 +1076,8 @@ function evaluatePredicate(
     const str = body.str.tag === "var" && body.str.name === param ? value : String(evaluate(body.str, tools, bindings, log, depth + 1));
     const patternValidation = validateRegex(body.pattern);
     if (!patternValidation.valid) return false;
-    const regex = new RegExp(body.pattern);
+    // Case-insensitive for consistency with grep and extract
+    const regex = new RegExp(body.pattern, "i");
     const result = str.match(regex);
     return result !== null && body.group < result.length && result[body.group] !== undefined;
   }
@@ -1181,7 +1183,8 @@ function evaluateWithBinding(
         throw new Error(`match: ${matchVal.error}`);
       }
       if (!Number.isInteger(body.group) || body.group < 0) return null;
-      const regex = new RegExp(body.pattern);
+      // Case-insensitive for consistency with grep and extract
+      const regex = new RegExp(body.pattern, "i");
       const result = str.match(regex);
       return result ? (result[body.group] ?? null) : null;
     }

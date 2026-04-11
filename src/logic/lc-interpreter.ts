@@ -240,7 +240,8 @@ export function evaluate(
       }
       const matchValidation = validateRegex(term.pattern);
       if (!matchValidation.valid) return null;
-      const regex = new RegExp(term.pattern);
+      // Case-insensitive for consistency with grep and extract
+      const regex = new RegExp(term.pattern, "i");
       const result = str.match(regex);
       if (!result) return null;
       if (term.group >= result.length) {
@@ -599,7 +600,8 @@ export function evaluate(
       log(`Extracting pattern from string`);
       const extractValidation = validateRegex(term.pattern);
       if (!extractValidation.valid) return null;
-      const regex = new RegExp(term.pattern);
+      // Case-insensitive for consistency with grep and solver's extract
+      const regex = new RegExp(term.pattern, "i");
       const m = str.match(regex);
       if (!m || term.group >= m.length) return null;
       return m[term.group] ?? null;
