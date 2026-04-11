@@ -440,21 +440,23 @@ function evaluate(
           }
           return acc + num;
         }
-        // Handle grep result objects - extract number from line
+        // Handle grep result objects - extract first number from line.
+        // Prefer a $-prefixed value (e.g. "Sales: $1,500") if present, else
+        // fall back to the first numeric token. Summing ALL numbers per line
+        // silently conflates unrelated values (e.g. "Error 500: timeout 30s"
+        // would contribute 530 instead of 500), which is a data-corruption
+        // footgun for log and report analysis.
         if (typeof val === "object" && val !== null && "line" in val) {
           const line = (val as { line: string }).line;
-          const numMatches = line.matchAll(/\$?([\d,]+(?:\.\d+)?)/g);
-          let lineAcc = 0;
-          let found = false;
-          for (const numMatch of numMatches) {
-            const cleaned = numMatch[1].replace(/,/g, "");
+          const dollarMatch = line.match(/\$([\d,]+(?:\.\d+)?)/);
+          const firstMatch = dollarMatch ?? line.match(/([\d,]+(?:\.\d+)?)/);
+          if (firstMatch) {
+            const cleaned = firstMatch[1].replace(/,/g, "");
             const num = parseFloat(cleaned);
             if (Number.isFinite(num)) {
-              lineAcc += num;
-              found = true;
+              return acc + num;
             }
           }
-          if (found) return acc + lineAcc;
         }
         skippedCount++;
         return acc;

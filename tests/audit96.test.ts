@@ -5,10 +5,14 @@
  *
  * 1. HIGH lc-solver.ts — regex flag inconsistency in match/extract/evaluatePredicate
  *    (filter match case-sensitive, but grep+extract case-insensitive)
+ * 2. MEDIUM lc-solver.ts — (sum RESULTS) silently sums ALL numbers per grep line
+ *    (should take the first numeric token only)
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { NucleusEngine } from "../src/engine/nucleus-engine.js";
+import type { LCTerm } from "../src/logic/types.js";
+import { solve, type SolverTools } from "../src/logic/lc-solver.js";
 
 describe("Audit #96 — Chiasmus review round 2", () => {
   // =========================================================================
@@ -71,6 +75,81 @@ describe("Audit #96 — Chiasmus review round 2", () => {
       // At least one non-null entry — the FATAL line should produce a match
       const nonNull = mapped.filter((v) => v !== null);
       expect(nonNull.length).toBeGreaterThan(0);
+    });
+  });
+
+  // =========================================================================
+  // #2 MEDIUM — (sum RESULTS) should take first numeric token per line
+  // =========================================================================
+  describe("#2 — sum over grep results takes first numeric token only", () => {
+    function makeTools(lines: string[]): SolverTools {
+      return {
+        grep: () =>
+          lines.map((line, i) => ({
+            match: line,
+            line,
+            lineNum: i + 1,
+            index: 0,
+            groups: [],
+          })),
+        fuzzy_search: () => [],
+        bm25: () => [],
+        semantic: () => [],
+        text_stats: () => ({
+          length: 0,
+          lineCount: lines.length,
+          sample: { start: "", middle: "", end: "" },
+        }),
+        context: lines.join("\n"),
+      };
+    }
+
+    it("sums $100 + $200, NOT $100+5 + $200+10 (multi-number line)", () => {
+      // Before the fix: regex accumulates ALL numbers per line:
+      //   Line 1: 100 + 5 = 105
+      //   Line 2: 200 + 10 = 210
+      //   Total = 315
+      // After the fix: take first number per line only:
+      //   Line 1: 100
+      //   Line 2: 200
+      //   Total = 300
+      const tools = makeTools(["Item: $100 Qty: 5", "Item: $200 Qty: 10"]);
+      const term: LCTerm = {
+        tag: "sum",
+        collection: { tag: "grep", pattern: "Item" },
+      };
+      const result = solve(term, tools);
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(300);
+    });
+
+    it("sums error code 500 + error code 404 = 904 (no currency case)", () => {
+      // Before the fix: "Error 500: timeout 30s" would sum 500+30 = 530
+      //                 "Error 404: attempt 2 of 3" would sum 404+2+3 = 409
+      //                 Total = 939 (garbage)
+      // After the fix: takes first number per line:
+      //                 500 + 404 = 904
+      const tools = makeTools([
+        "Error 500: timeout 30s",
+        "Error 404: attempt 2 of 3",
+      ]);
+      const term: LCTerm = {
+        tag: "sum",
+        collection: { tag: "grep", pattern: "Error" },
+      };
+      const result = solve(term, tools);
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(904);
+    });
+
+    it("plain numeric-string entries still parse correctly (no regression)", () => {
+      // Plain strings go through the `typeof val === "string"` branch, not
+      // the grep-object branch. Verify that branch is unaffected by the fix.
+      const stringEngine = new NucleusEngine();
+      stringEngine.loadContent("$1,000\n$2,500.50");
+      const result = stringEngine.execute("(sum (lines 1 2))");
+      expect(result.success).toBe(true);
+      expect(result.value).toBe(3500.5);
     });
   });
 });
