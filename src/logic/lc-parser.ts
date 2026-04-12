@@ -909,19 +909,73 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
 
       const bindings: Array<{ name: string; value: LCTerm }> = [];
       const MAX_BINDINGS = 16;
+      // Optional `(one_of "v1" "v2" …)` enum constraint. Only one
+      // allowed per llm_query. Distinguished from a regular binding by
+      // the reserved head symbol `one_of`.
+      let oneOf: string[] | undefined;
+      const MAX_ONE_OF = 32;
+      // Optional `(calibrate)` bare marker. Meaningful only when the
+      // llm_query is wrapped in an llm_batch, but parses here so the
+      // same inner shape works in either context.
+      let calibrate: boolean | undefined;
 
       while (true) {
         const next = peek(state);
         if (!next || next.type === "rparen") break;
         if (bindings.length >= MAX_BINDINGS) return null;
 
-        // Each binding must be a (name term) paren group.
+        // Each trailing form must be a paren group: either (name term)
+        // for a placeholder binding, or (one_of "v1" "v2" …) for the
+        // enum constraint.
         if (next.type !== "lparen") return null;
         consume(state);
 
-        const bindingNameTok = peek(state);
-        if (!bindingNameTok || bindingNameTok.type !== "symbol") return null;
-        const bindingName = bindingNameTok.value;
+        const headTok = peek(state);
+        if (!headTok || headTok.type !== "symbol") return null;
+
+        if (headTok.value === "one_of") {
+          // Enum constraint — collect string literals until rparen.
+          if (oneOf !== undefined) return null; // duplicate
+          consume(state);
+          const values: string[] = [];
+          while (true) {
+            const nv = peek(state);
+            if (!nv || nv.type === "rparen") break;
+            if (values.length >= MAX_ONE_OF) return null;
+            const valTerm = parseTerm(state, d);
+            if (
+              !valTerm ||
+              valTerm.tag !== "lit" ||
+              typeof valTerm.value !== "string"
+            ) {
+              return null;
+            }
+            values.push(valTerm.value);
+          }
+          if (values.length === 0) return null; // empty enum is pointless
+          const closing = peek(state);
+          if (!closing || closing.type !== "rparen") return null;
+          consume(state);
+          oneOf = values;
+          continue;
+        }
+
+        if (headTok.value === "calibrate") {
+          // Bare marker — accepts no arguments. The only supported
+          // shape is `(calibrate)`; any trailing tokens before the
+          // rparen are a parse error so users don't accidentally
+          // pass flags we don't interpret.
+          if (calibrate !== undefined) return null; // duplicate
+          consume(state);
+          const closing = peek(state);
+          if (!closing || closing.type !== "rparen") return null;
+          consume(state);
+          calibrate = true;
+          continue;
+        }
+
+        // Regular (name term) binding.
+        const bindingName = headTok.value;
         // Only allow conservative identifiers for the placeholder name so
         // that string interpolation can't inject odd characters.
         if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(bindingName)) return null;
@@ -938,7 +992,42 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
         bindings.push({ name: bindingName, value: valueTerm });
       }
 
-      return { tag: "llm_query", prompt: promptStr, bindings };
+      return { tag: "llm_query", prompt: promptStr, bindings, oneOf, calibrate };
+    }
+
+    case "llm_batch": {
+      // (llm_batch COLLECTION (lambda X (llm_query "prompt" [(name bind) ...])))
+      //
+      // Drop-in replacement for `(map COLL (lambda x (llm_query …)))` —
+      // same surface syntax, but the solver collects every interpolated
+      // prompt into one array and dispatches them through a single
+      // `tools.llmBatch` call instead of N serial suspensions.
+      //
+      // Only the "lambda of direct llm_query" shape parses. Wrapping the
+      // llm_query in another form (e.g. `(match (llm_query …) …)`) is not
+      // supported because the solver cannot statically collect the prompt
+      // template in that case — batching requires N-times template
+      // instantiation, not N-times free-form evaluation.
+      const collection = parseTerm(state, d);
+      if (!collection) return null;
+
+      const lambdaTerm = parseTerm(state, d);
+      if (!lambdaTerm || lambdaTerm.tag !== "lambda") return null;
+      if (lambdaTerm.body.tag !== "llm_query") return null;
+
+      return {
+        tag: "llm_batch",
+        collection,
+        param: lambdaTerm.param,
+        prompt: lambdaTerm.body.prompt,
+        bindings: lambdaTerm.body.bindings,
+        // Lift any enum constraint from the inner llm_query so the
+        // solver can validate per-item without re-parsing the body.
+        oneOf: lambdaTerm.body.oneOf,
+        // Same for the calibration marker — the solver forwards it
+        // to tools.llmBatch as an options flag.
+        calibrate: lambdaTerm.body.calibrate,
+      };
     }
 
     default: {
