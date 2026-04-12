@@ -302,7 +302,7 @@ RECOMMENDED WORKFLOW:
 
 HOW HANDLES WORK:
 - Query results are stored server-side in SQLite
-- You receive a compact stub like "$res1: Array(1000) [preview...]"
+- You receive a compact stub like "$grep_error: Array(1000) [preview...]"
 - Use lattice_expand to see full data when you need to make decisions
 - This saves 97%+ tokens compared to returning full results
 
@@ -330,7 +330,7 @@ Call lattice_close when done.`,
     description: `Execute a Nucleus query on the loaded document.
 
 RETURNS HANDLE STUBS (not full data):
-- Array results return a handle like "$res1: Array(500) [preview...]"
+- Array results return a handle like "$grep_error: Array(500) [preview...]"
 - Scalar results (count, sum) return the value directly
 - Use lattice_expand when you need to see the actual data
 
@@ -428,23 +428,23 @@ LLM_QUERY MAP WORKFLOW (OOLONG pattern — one suspension per item):
 2. lattice_llm_respond id="q_1" response="bug"
    → [LLM_QUERY_REQUEST id=q_2] ... tag: item2 ...  (next item)
 3. lattice_llm_respond id="q_2" response="feature"
-   → $res1: Array(2) ["bug", "feature"]  (final result)
+   → $llm_query_classify: Array(2) ["bug", "feature"]  (final result)
 
 LLM_BATCH WORKFLOW (same result, ONE suspension instead of N):
 1. lattice_query '(llm_batch RESULTS (lambda x (llm_query "tag: {item}" (item x))))'
    → [LLM_BATCH_REQUEST id=b_1 count=2] ... two prompts inlined ...
 2. lattice_llm_batch_respond id="b_1" responses=["bug","feature"]
-   → $res1: Array(2) ["bug", "feature"]  (final result in ONE round-trip)
+   → $llm_batch: Array(2) ["bug", "feature"]  (final result in ONE round-trip)
 
 LLM_QUERY + SYMBOLS (rate function complexity — one suspension per function):
 1. lattice_query '(list_symbols "function")'
-   → $res1: Array(10) [...]
+   → $list_symbols_function: Array(10) [...]
 2. lattice_query '(map RESULTS (lambda x (llm_query "Rate complexity of {name}: {body}" (name x) (body (get_symbol_body x)))))'
    → [LLM_QUERY_REQUEST id=q_1] ... Rate complexity of myFunction: function myFunction() { ... }
 3. lattice_llm_respond id="q_1" response="medium — has branching logic and error handling"
    → [LLM_QUERY_REQUEST id=q_2] ... (next function)
    ... repeat until all functions are rated ...
-   → $res2: Array(10) ["medium — ...", "low — ...", ...]  (final result)
+   → $map: Array(10) ["medium — ...", "low — ...", ...]  (final result)
 
 LLM_QUERY + CHUNKS (summarize document sections):
 1. lattice_query '(map (chunk_by_lines 100) (lambda c (llm_query "Summarize: {chunk}" (chunk c))))'
@@ -454,24 +454,24 @@ LLM_QUERY + CHUNKS (summarize document sections):
    ... repeat until all chunks are summarized ...
 
 EXAMPLE WORKFLOW:
-1. (grep "ERROR")                    → Returns: $res1: Array(500) [preview]
-2. (filter RESULTS (lambda x ...))   → Returns: $res2: Array(50) [preview]
+1. (grep "ERROR")                    → Returns: $grep_error: Array(500) [preview]
+2. (filter RESULTS (lambda x ...))   → Returns: $filter: Array(50) [preview]
 3. (count RESULTS)                   → Returns: 50
-4. lattice_expand $res2 limit=10     → See 10 actual error messages
+4. lattice_expand $filter limit=10   → See 10 actual error messages
 
 SYMBOL WORKFLOW:
-1. (list_symbols "function")         → Returns: $res1: Array(15) [preview]
+1. (list_symbols "function")         → Returns: $list_symbols_function: Array(15) [preview]
 2. (get_symbol_body "myFunction")    → Returns source code directly
-3. (find_references "myFunction")    → Returns: $res2: Array(8) [references]
+3. (find_references "myFunction")    → Returns: $find_references_myfunction: Array(8) [references]
 
 MARKDOWN WORKFLOW:
-1. (list_symbols)                       → Returns: $res1: Array(12) [# Intro, ## Setup, ...]
+1. (list_symbols)                       → Returns: $list_symbols: Array(12) [# Intro, ## Setup, ...]
 2. (grep "## Installation")             → Find specific section content
 
 VARIABLE BINDING:
 - RESULTS: Always points to the last array result (use in queries)
 - _1, _2, _3, ...: Results from turn N (use in queries for older results)
-- $res1, $res2, ...: Handle stubs (use ONLY with lattice_expand, NOT in queries)
+- $grep_error, $filter, ...: Handle stubs (use ONLY with lattice_expand, NOT in queries)
 
 EFFICIENCY: Minimize the number of separate tool calls by chaining queries.
 Build a pipeline (grep → filter → count) rather than making independent calls.
@@ -497,16 +497,16 @@ USE THIS WHEN:
 - You need to extract specific data for your response
 
 PARAMETERS:
-- handle: The handle reference (e.g., "$res1")
+- handle: The handle reference (e.g., "$grep_error")
 - limit: Max items to return (default: all) - use for large result sets
 - offset: Skip first N items (for pagination)
 - format: "full" (default) or "lines" (just line content with numbers)
 
 EXAMPLES:
-  lattice_expand $res1                    → Full data from handle
-  lattice_expand $res1 limit=10           → First 10 items only
-  lattice_expand $res1 offset=10 limit=10 → Items 11-20 (pagination)
-  lattice_expand $res1 format=lines       → "[1] line content..." format
+  lattice_expand $grep_error                    → Full data from handle
+  lattice_expand $grep_error limit=10           → First 10 items only
+  lattice_expand $grep_error offset=10 limit=10 → Items 11-20 (pagination)
+  lattice_expand $grep_error format=lines       → "[1] line content..." format
 
 TIP: Start with a small limit to preview, then expand more if needed.`,
     inputSchema: {
@@ -514,7 +514,7 @@ TIP: Start with a small limit to preview, then expand more if needed.`,
       properties: {
         handle: {
           type: "string",
-          description: 'Handle reference to expand (e.g., "$res1")',
+          description: 'Handle reference to expand (e.g., "$grep_error")',
         },
         limit: {
           type: "number",
@@ -559,9 +559,9 @@ TIP: Start with a small limit to preview, then expand more if needed.`,
     description: `Show current handle bindings.
 
 Returns all active handles with their stubs:
-  $res1: Array(500) [preview of first item...]
-  $res2: Array(50) [preview...]
-  RESULTS: -> $res2
+  $grep_error: Array(500) [preview of first item...]
+  $filter: Array(50) [preview...]
+  RESULTS: -> $filter
 
 Use this to see what data you have available before deciding what to expand.`,
     inputSchema: {
@@ -588,15 +588,16 @@ USE THIS TO:
 - Avoid roundtripping large text in every message
 - Pull context back only when actually needed via lattice_expand
 
-RETURNS a handle stub like: $memo1: "auth-module architecture" (2.1KB, 50 lines)
+RETURNS a handle stub like: $memo_auth_architecture: "auth architecture" (2.1KB, 50 lines)
+Handle names are derived from the label for easy identification.
 The LLM carries this compact stub (~15 tokens) instead of the full content (~2000 tokens).
 
 WORKFLOW:
-1. lattice_memo content="<summary>" label="what this is"  → $memo1 stub
+1. lattice_memo content="<summary>" label="auth architecture"  → $memo_auth_architecture stub
 2. Keep a brief index in your response text so you remember what's stashed:
-   "Stashed: $memo1 (auth architecture — middleware chain, session flow)"
+   "Stashed: $memo_auth_architecture (middleware chain, session flow)"
 3. Continue working, carrying just the index (~10 tokens per memo)
-4. lattice_expand $memo1  → Full content when you actually need it
+4. lattice_expand $memo_auth_architecture  → Full content when you actually need it
 
 IMPORTANT: After stashing, always note the handle + label + a short description
 of what's inside in your response. This avoids needing lattice_bindings later
@@ -630,7 +631,7 @@ Check lattice_bindings to see current memos and their handles.`,
       properties: {
         handle: {
           type: "string",
-          description: 'Memo handle to delete (e.g., "$memo1")',
+          description: 'Memo handle to delete (e.g., "$memo_auth_architecture")',
         },
       },
       required: ["handle"],

@@ -203,7 +203,7 @@ export function createLatticeTools(): LatticeToolSet {
       properties: {
         handle: {
           type: "string",
-          description: 'Handle reference, e.g., "$res1"',
+          description: 'Handle reference, e.g., "$grep_error"',
         },
         limit: {
           type: "number",

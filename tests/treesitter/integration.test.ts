@@ -166,7 +166,7 @@ function baz() { return 3; }
     it("should return handle for (list_symbols)", async () => {
       const result = await session.execute('(list_symbols)');
       expect(result.success).toBe(true);
-      expect(result.handle).toMatch(/^\$res\d+$/);
+      expect(result.handle).toMatch(/^\$[a-z0-9_]+$/);
       expect(result.stub).toBeDefined();
     });
 

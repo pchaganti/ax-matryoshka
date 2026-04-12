@@ -56,7 +56,7 @@ describe("Lattice MCP Handle-Based Results", () => {
       const result = await session.execute('(grep "ERROR")');
 
       expect(result.success).toBe(true);
-      expect(result.handle).toMatch(/^\$res\d+$/);
+      expect(result.handle).toMatch(/^\$[a-z0-9_]+$/);
       expect(result.stub).toBeDefined();
       expect(result.stub).toContain("Array(3)");
       // Full data should NOT be in the result
@@ -86,9 +86,9 @@ describe("Lattice MCP Handle-Based Results", () => {
 
       const bindings = session.getBindings();
 
-      expect(bindings["$res1"]).toContain("Array(3)"); // ERRORs
-      expect(bindings["$res2"]).toContain("Array(3)"); // INFOs
-      expect(bindings["$res3"]).toContain("Array(1)"); // WARNs
+      expect(bindings["$grep_error"]).toContain("Array(3)"); // ERRORs
+      expect(bindings["$grep_info"]).toContain("Array(3)"); // INFOs
+      expect(bindings["$grep_warn"]).toContain("Array(1)"); // WARNs
     });
   });
 
@@ -168,10 +168,11 @@ describe("Lattice MCP Handle-Based Results", () => {
 
       // Get bindings to see what we have
       const bindings = session.getBindings();
-      expect(bindings["RESULTS"]).toContain("$res1");
+      const resHandle = Object.keys(bindings).find(k => k.startsWith("$") && !k.startsWith("$memo") && k !== "RESULTS")!;
+      expect(bindings["RESULTS"]).toContain(resHandle);
 
       // Preview to see first few items
-      const preview = session.preview("$res1", 3);
+      const preview = session.preview(resHandle, 3);
       expect(preview).toHaveLength(3);
 
       // Now filter based on what we saw

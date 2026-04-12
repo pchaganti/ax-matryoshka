@@ -61,7 +61,7 @@ export class CheckpointManager {
 
     // Restore RESULTS binding (or clear stale RESULTS if checkpoint has none)
     const resultsHandle = bindings.get("RESULTS");
-    if (resultsHandle && /^\$res\d+$/.test(resultsHandle)) {
+    if (resultsHandle && /^\$[a-z0-9_]+$/.test(resultsHandle) && !resultsHandle.startsWith("$memo")) {
       // Verify handle still exists before restoring
       const handleData = this.registry.get(resultsHandle);
       if (handleData === null) {
@@ -124,9 +124,9 @@ export class CheckpointManager {
     const bindings = this.db.getCheckpoint(turn);
     if (!bindings) return null;
 
-    // Count handles in bindings
+    // Count non-memo handles in bindings
     const handleCount = Array.from(bindings.values()).filter(v =>
-      typeof v === "string" && v.startsWith("$res")
+      typeof v === "string" && v.startsWith("$") && !v.startsWith("$memo")
     ).length;
 
     const timestamp = this.db.getCheckpointTimestamp(turn) ?? Date.now();

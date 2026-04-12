@@ -23,10 +23,62 @@ export interface HandleMetadata {
   createdAt: number;
 }
 
+/**
+ * Derive a short descriptive slug from a Nucleus command string.
+ *
+ * Examples:
+ *   (grep "ERROR")              → "grep_error"
+ *   (bm25 "database timeout" 10) → "bm25_database_timeout"
+ *   (filter RESULTS (lambda …)) → "filter"
+ *   (list_symbols "function")   → "list_symbols_function"
+ *
+ * Returns "res" as a fallback when no command is provided or parseable.
+ */
+export function commandToSlug(command?: string): string {
+  if (!command) return "res";
+
+  // Extract the top-level command name: first word after "("
+  const cmdMatch = command.match(/\(\s*(\w+)/);
+  const cmdName = cmdMatch ? cmdMatch[1] : "";
+
+  // Extract the first quoted string argument
+  const strMatch = command.match(/"([^"]*)"/);
+  const firstArg = strMatch ? strMatch[1] : "";
+
+  let slug = cmdName;
+  if (firstArg) {
+    const argSlug = firstArg
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "")
+      .slice(0, 20);
+    if (argSlug) {
+      slug += "_" + argSlug;
+    }
+  }
+
+  // Normalise to valid identifier chars
+  slug = slug
+    .toLowerCase()
+    .replace(/[^a-z0-9_]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_|_$/g, "");
+
+  // Cap length so handle names stay compact
+  if (slug.length > 30) slug = slug.slice(0, 30).replace(/_$/, "");
+
+  // Prevent collision with the $memo namespace used by createMemoHandle
+  if (/^memo\d*$/.test(slug) || /^memo\d*_/.test(slug)) {
+    slug = "q_" + slug;
+  }
+
+  return slug || "res";
+}
+
 export class SessionDB {
   private db: Database.Database | null;
-  private handleCounter: number = 0;
-  private memoCounter: number = 0;
+  /** Tracks usage count per slug base for collision disambiguation */
+  private slugCounts: Map<string, number> = new Map();
 
   constructor() {
     // Create in-memory database
@@ -280,9 +332,38 @@ export class SessionDB {
   }
 
   /**
-   * Create a handle for storing data array
+   * Generate a unique handle name for a slug.
+   *
+   * Increments the per-slug counter and checks the candidate name against
+   * existing handles in SQLite. If a cross-slug collision is detected
+   * (e.g. slug "grep_error" count=2 produces "$grep_error_2" which was
+   * already taken by slug "grep_error_2" count=1), keeps incrementing
+   * until a free name is found.
    */
-  createHandle(data: unknown[]): string {
+  private nextUniqueHandle(slug: string): string {
+    const checkExists = this.db!.prepare("SELECT 1 FROM handles WHERE handle = ?");
+    const MAX_ATTEMPTS = 1000;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const count = (this.slugCounts.get(slug) ?? 0) + 1;
+      this.slugCounts.set(slug, count);
+      const candidate = count === 1 ? `$${slug}` : `$${slug}_${count}`;
+      if (!checkExists.get(candidate)) {
+        return candidate;
+      }
+    }
+    // Fallback: should never happen in practice
+    return `$${slug}_${Date.now()}`;
+  }
+
+  /**
+   * Create a handle for storing data array.
+   *
+   * @param data    The array payload to store.
+   * @param command Optional Nucleus command string used to derive a
+   *                descriptive handle name (e.g. `(grep "ERROR")` → `$grep_error`).
+   *                Falls back to `$res`, `$res_2`, … when omitted.
+   */
+  createHandle(data: unknown[], command?: string): string {
     if (!this.db) throw new Error("Database not open");
 
     const MAX_HANDLE_ITEMS = 1_000_000;
@@ -290,11 +371,8 @@ export class SessionDB {
       data = data.slice(0, MAX_HANDLE_ITEMS);
     }
 
-    if (this.handleCounter >= Number.MAX_SAFE_INTEGER - 1) {
-      throw new Error("Handle counter overflow");
-    }
-    const nextId = this.handleCounter + 1;
-    const handle = `$res${nextId}`;
+    const slug = commandToSlug(command);
+    const handle = this.nextUniqueHandle(slug);
     const now = Date.now();
 
     // Insert handle metadata and data rows atomically in one transaction
@@ -320,15 +398,19 @@ export class SessionDB {
     });
 
     insertAll(data);
-    this.handleCounter = nextId;
     return handle;
   }
 
   /**
-   * Create a memo handle for storing arbitrary context
-   * Uses $memo prefix and "memo" type to distinguish from query result handles
+   * Create a memo handle for storing arbitrary context.
+   * Uses $memo prefix and "memo" type to distinguish from query result handles.
+   *
+   * @param data  The array payload to store.
+   * @param label Optional label used to derive a descriptive handle name
+   *              (e.g., "auth architecture" → `$memo_auth_architecture`).
+   *              Falls back to `$memo`, `$memo_2`, … when omitted.
    */
-  createMemoHandle(data: unknown[]): string {
+  createMemoHandle(data: unknown[], label?: string): string {
     if (!this.db) throw new Error("Database not open");
 
     const MAX_HANDLE_ITEMS = 1_000_000;
@@ -336,11 +418,20 @@ export class SessionDB {
       data = data.slice(0, MAX_HANDLE_ITEMS);
     }
 
-    if (this.memoCounter >= Number.MAX_SAFE_INTEGER - 1) {
-      throw new Error("Memo counter overflow");
+    // Derive slug from label, with "memo" prefix to stay in the memo namespace
+    let slug = "memo";
+    if (label) {
+      const labelSlug = label
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_|_$/g, "")
+        .slice(0, 24);
+      if (labelSlug) {
+        slug = "memo_" + labelSlug;
+      }
     }
-    const nextId = this.memoCounter + 1;
-    const handle = `$memo${nextId}`;
+
+    const handle = this.nextUniqueHandle(slug);
     const now = Date.now();
 
     const insertHandle = this.db.prepare(`
@@ -364,7 +455,6 @@ export class SessionDB {
     });
 
     insertAll(data);
-    this.memoCounter = nextId;
     return handle;
   }
 
@@ -725,7 +815,7 @@ export class SessionDB {
       DELETE FROM checkpoints;
       DELETE FROM symbols;
     `);
-    // Don't reset handleCounter — preserves monotonicity and prevents
+    // Don't reset slugCounts — preserves uniqueness and prevents
     // handle name collisions with previously issued handles
   }
 

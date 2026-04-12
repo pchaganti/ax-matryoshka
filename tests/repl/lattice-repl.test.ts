@@ -30,8 +30,8 @@ describe("REPL underlying engine", () => {
     await engine.execute('(grep "line")');
     const bindings = engine.getBindings();
 
-    expect(bindings.RESULTS).toBe("-> $res1");
-    expect(bindings.$res1).toContain("Array(3)");
+    expect(bindings.RESULTS).toBe("-> $grep_line");
+    expect(bindings.$grep_line).toContain("Array(3)");
   });
 
   it("should reset state on command", async () => {

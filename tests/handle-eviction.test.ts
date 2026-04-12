@@ -39,15 +39,15 @@ describe("Handle eviction", () => {
     const r2 = await session.execute('(grep "LINE_01")');
     const r3 = await session.execute('(grep "LINE_02")');
 
-    expect(r1.handle).toBe("$res1");
-    expect(r2.handle).toBe("$res2");
-    expect(r3.handle).toBe("$res3");
+    expect(r1.handle).toBe("$grep_line_00");
+    expect(r2.handle).toBe("$grep_line_01");
+    expect(r3.handle).toBe("$grep_line_02");
 
     // All handles should still be accessible
     const bindings = session.getBindings();
-    expect(bindings["$res1"]).toBeDefined();
-    expect(bindings["$res2"]).toBeDefined();
-    expect(bindings["$res3"]).toBeDefined();
+    expect(bindings["$grep_line_00"]).toBeDefined();
+    expect(bindings["$grep_line_01"]).toBeDefined();
+    expect(bindings["$grep_line_02"]).toBeDefined();
   });
 
   it("should not evict when at exactly MAX_HANDLES - 1", async () => {

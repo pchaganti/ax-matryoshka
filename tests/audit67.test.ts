@@ -89,15 +89,15 @@ describe("Audit #67", () => {
   });
 
   // =========================================================================
-  // #8 MEDIUM — session-db.ts handleCounter no MAX_SAFE_INTEGER check
+  // #8 MEDIUM — session-db.ts createHandle uses slug-based naming
   // =========================================================================
-  describe("#8 — createHandle should guard against handleCounter overflow", () => {
-    it("should check handleCounter against MAX_SAFE_INTEGER", () => {
+  describe("#8 — createHandle should use slug-based collision tracking", () => {
+    it("should use slugCounts map for handle name generation", () => {
       const source = readFileSync("src/persistence/session-db.ts", "utf-8");
       const fnStart = source.indexOf("createHandle(");
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/MAX_SAFE_INTEGER|handleCounter\s*>=?\s*Number/i);
+      expect(block).toMatch(/slugCounts|commandToSlug/i);
     });
   });
 

@@ -58,9 +58,9 @@ export interface ExpandTokenMetadata {
  */
 export interface HandleResult {
   success: boolean;
-  /** Handle reference (e.g., "$res1") if result is an array */
+  /** Handle reference (e.g., "$grep_error") if result is an array */
   handle?: string;
-  /** Handle stub for LLM context (e.g., "$res1: Array(1000) [preview...]") */
+  /** Handle stub for LLM context (e.g., "$grep_error: Array(1000) [preview...]") */
   stub?: string;
   /** Scalar value if result is not an array */
   value?: unknown;
@@ -385,7 +385,7 @@ export class HandleSession {
     // already bounds the handle count via its own MAX_HANDLES guard — no
     // need to duplicate that check here.
     if (Array.isArray(result.value)) {
-      const handle = this.registry.store(result.value);
+      const handle = this.registry.store(result.value, command);
       this.registry.setResults(handle);
 
       // Get the stub for LLM context
@@ -590,7 +590,7 @@ export class HandleSession {
     this.evictMemosIfNeeded(contentBytes);
 
     const lines = content.split("\n");
-    const handle = this.db.createMemoHandle(lines);
+    const handle = this.db.createMemoHandle(lines, label);
     this.memoLabels.set(handle, label);
     this.memoSizes.set(handle, contentBytes);
     this.memoTotalBytes += contentBytes;
@@ -621,15 +621,10 @@ export class HandleSession {
    * Evict oldest memos until there's room for newBytes within budget
    */
   private evictMemosIfNeeded(newBytes: number): void {
-    // Get memo handles sorted numerically by ID (not alphabetically —
-    // alphabetical sort puts $memo10 before $memo2)
+    // listHandles() returns handles ordered by created_at, so filtering
+    // preserves creation order — oldest memos come first.
     const memoHandles = this.registry.listHandles()
-      .filter(h => h.startsWith("$memo"))
-      .sort((a, b) => {
-        const aNum = parseInt(a.slice(5), 10);
-        const bNum = parseInt(b.slice(5), 10);
-        return aNum - bNum;
-      });
+      .filter(h => h.startsWith("$memo"));
 
     // Evict until under count limit (leave room for the new one)
     while (memoHandles.length >= HandleSession.MAX_MEMOS) {
