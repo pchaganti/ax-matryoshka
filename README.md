@@ -80,13 +80,6 @@ Handle-based: LLM sees stub          [50 tokens: "$res1: Array(1000) [preview...
 3. Operations execute server-side, returning new handles
 4. Full data is only materialized when needed
 
-**Components:**
-- `SessionDB` - In-memory SQLite with FTS5 for fast full-text search
-- `HandleRegistry` - Stores arrays, returns compact handle references
-- `HandleOps` - Server-side filter/map/count/sum on handles
-- `FTS5Search` - Phrase queries, boolean operators, relevance ranking
-- `CheckpointManager` - Save/restore session state
-
 ### Memory Pad
 
 The Lattice engine doubles as a **context memory** for LLM agents. Instead of roundtripping large text blobs in every message, agents stash context server-side and carry only compact handle stubs:
@@ -115,22 +108,6 @@ The LLM does **reasoning**, not code generation:
 4. **Iterates** - Refines search if results are too broad or narrow
 
 The LLM never writes JavaScript. It outputs Nucleus commands that Lattice executes safely.
-
-### Components Summary
-
-| Component | Purpose |
-|-----------|---------|
-| **Nucleus Adapter** | Prompts LLM to output Nucleus commands |
-| **Lattice Parser** | Parses S-expressions to AST |
-| **Lattice Solver** | Executes commands against document |
-| **In-Memory Handles** | Handle-based storage with FTS5 (97% token savings) |
-| **Memory Pad** | Memo handles for stashing context across turns (93% savings) |
-| **BM25 + Semantic** | Ranked keyword and TF-IDF cosine similarity search |
-| **RRF Fusion** | Reciprocal Rank Fusion for multi-signal search |
-| **Dampening** | Gravity dampening to remove false positives |
-| **Q-Value Reranker** | Learns which lines are useful across turns |
-| **miniKanren** | Relational engine for classification |
-| **RAG Hints** | Few-shot examples from past successes |
 
 ## Installation
 
@@ -190,6 +167,9 @@ Copy `config.example.json` to `config.json` and configure your LLM provider:
       "model": "deepseek-chat",
       "options": { "temperature": 0.2 }
     }
+  },
+  "rlm": {
+    "maxTurns": 10
   }
 }
 ```
@@ -228,6 +208,8 @@ The key advantage is **handle-based results**: query results are stored server-s
 | `lattice_status` | Get session status, document info, and memo usage |
 | `lattice_bindings` | Show current variable bindings and memo labels |
 | `lattice_reset` | Reset all bindings and memos but keep document loaded |
+| `lattice_llm_respond` | Respond to a pending `(llm_query ...)` suspension |
+| `lattice_llm_batch_respond` | Respond to a pending `(llm_batch ...)` suspension with all N responses |
 | `lattice_help` | Get Nucleus command reference |
 
 #### Example MCP config
@@ -289,20 +271,54 @@ The last two patterns fire **one sub-LLM call per item** — classification
 or summarization over an entire document, one chunk at a time, without
 pulling any of it into the root model's context.
 
-**MCP client compatibility (as of 2026-04-11):**
+**Batched sub-LLM** — when per-item calls are independent, `llm_batch`
+collapses N serial suspensions into one:
 
-| Client | `(llm_query ...)` via lattice-mcp | Notes |
-|---|---|---|
-| **Claude Code CLI** | ❌ not supported | Does not advertise `sampling` capability. Use deterministic primitives only. |
-| **Claude Desktop** | ✅ supported | Gated by per-server permission setting — enable sampling for lattice-mcp in server settings. |
-| Custom MCP client | ✅ if implemented | Must set `capabilities.sampling` in initialize and handle `sampling/createMessage`. |
+```scheme
+(llm_batch RESULTS (lambda x (llm_query "tag: {item}" (item x))))
+```
 
-When the connected client doesn't advertise `sampling`, the bridge
-returns a clear "not available" error naming the missing capability.
-Compose the query with deterministic primitives (grep, filter, map,
-chunk_by_*) and it works on any client.
+Same surface syntax as `map` + `llm_query`, but fires a single
+`[LLM_BATCH_REQUEST id=... count=N]` suspension. The client replies once
+with a JSON array of N responses via `lattice_llm_batch_respond`.
+~92% round-trip reduction on N=12, ~99% on N=100.
 
-For the native recursive sub-RLM implementation (Claude Code independent),
+**Constrain responses with `(one_of ...)`** for classification tasks:
+
+```scheme
+(llm_batch RESULTS
+  (lambda x (llm_query "Rate: {item}" (item x)
+                       (one_of "low" "medium" "high"))))
+```
+
+Validates responses case-insensitively against the allowed values,
+making downstream `(filter ...)` / `(count ...)` reliable without
+re-normalizing free-text output.
+
+**Add `(calibrate)` for subjective-judgment tasks:**
+
+```scheme
+(llm_batch RESULTS
+  (lambda x (llm_query "Rate: {item}" (item x)
+                       (one_of "low" "medium" "high")
+                       (calibrate))))
+```
+
+Asks the model to scan all N prompts and establish a consistent relative
+scale before answering any. Useful when ratings depend on the distribution
+of the corpus rather than being absolute.
+
+**Multi-turn suspension protocol (works with any MCP client):**
+
+When `(llm_query ...)` is evaluated, execution suspends and returns a
+`[LLM_QUERY_REQUEST id=...]` message. The MCP client responds via
+`lattice_llm_respond` to resume execution. For queries with multiple
+`llm_query` calls (e.g., inside `map`), each item triggers one
+suspension — respond to each in turn until the final handle stub or
+scalar is returned. No special client capabilities (like `sampling`)
+are required.
+
+For the native recursive sub-RLM implementation,
 use `runRLMFromContent(query, content, { subRLMMaxDepth: 1 })` directly
 from the programmatic API — see the Programmatic section below.
 
@@ -338,35 +354,6 @@ const result = await runRLM("How many ERROR entries are there?", "./server.log",
 });
 ```
 
-## Example Session
-
-```
-$ rlm "How many ERROR entries are there?" ./server.log --verbose
-
-──────────────────────────────────────────────────
-[Turn 1/10] Querying LLM...
-[Turn 1] Term: (grep "ERROR")
-[Turn 1] Result: 42 matches
-
-──────────────────────────────────────────────────
-[Turn 2/10] Querying LLM...
-[Turn 2] Term: (count RESULTS)
-[Turn 2] Console output:
-  [Lattice] Counting 42 items
-[Turn 2] Result: 42
-
-──────────────────────────────────────────────────
-[Turn 3/10] Querying LLM...
-[Turn 3] Final answer received
-
-42
-```
-
-The model:
-1. Searched for relevant data with grep
-2. Summed the matching results
-3. Output the final answer
-
 ## Nucleus DSL Reference
 
 ### Search Commands
@@ -377,6 +364,7 @@ The model:
 (bm25 "query terms" 10)      ; BM25 ranked keyword search (TF-IDF scoring)
 (semantic "query terms" 10)   ; TF-IDF cosine similarity search
 (text_stats)                  ; Document metadata (length, line count, samples)
+(lines 10 20)                 ; Get specific line range (1-indexed)
 ```
 
 ### Multi-Signal Fusion & Ranking
@@ -416,17 +404,6 @@ For code files, Lattice uses tree-sitter to extract structural symbols. This ena
 (find_references "myFunc")    ; Find all references to an identifier
 ```
 
-**Example workflow for code analysis:**
-
-```
-1. lattice_load("./src/app.ts")           # Load a code file
-2. lattice_query('(list_symbols)')        # Get all symbols → $res1
-3. lattice_query('(list_symbols "function")')  # Just functions → $res2
-4. lattice_expand("$res2", limit=5)       # See function names and line numbers
-5. lattice_query('(get_symbol_body "handleRequest")')  # Get function body
-6. lattice_query('(find_references "handleRequest")')  # Find all usages
-```
-
 Symbols include metadata like name, kind, start/end lines, and parent relationships (e.g., methods within classes).
 
 ### Knowledge Graph (Code Structure)
@@ -442,16 +419,6 @@ When a code file is loaded, Lattice automatically builds an in-memory knowledge 
 (dependents "name")             ; All transitive dependents
 (dependents "name" 2)           ; Dependents within depth limit
 (symbol_graph "name" 1)         ; Neighborhood subgraph around symbol
-```
-
-**Example workflow for call graph analysis:**
-
-```
-1. lattice_load("./src/service.ts")
-2. lattice_query('(callers "handleRequest")')     # Who calls it? → $res1
-3. lattice_query('(callees "handleRequest")')     # What does it call? → $res2
-4. lattice_query('(ancestors "MyService")')       # Inheritance chain → $res3
-5. lattice_query('(symbol_graph "handleRequest" 2)')  # 2-hop neighborhood
 ```
 
 The graph is built using line-based heuristics (word-boundary matching for calls, syntax pattern matching for extends/implements), so it produces approximate but useful results without requiring a full language server.
@@ -480,57 +447,7 @@ Once a package is installed, the language is automatically available for symbol 
 
 #### Custom Language Configuration
 
-For languages without built-in mappings, or to override existing mappings, create a config file at `~/.matryoshka/config.json`:
-
-```json
-{
-  "grammars": {
-    "mylang": {
-      "package": "tree-sitter-mylang",
-      "extensions": [".ml", ".mli"],
-      "moduleExport": "mylang",
-      "symbols": {
-        "function_definition": "function",
-        "method_definition": "method",
-        "class_definition": "class",
-        "module_definition": "module"
-      }
-    }
-  }
-}
-```
-
-**Configuration fields:**
-
-| Field | Required | Description |
-|-------|----------|-------------|
-| `package` | Yes | npm package name for the tree-sitter grammar |
-| `extensions` | Yes | File extensions to associate with this language |
-| `symbols` | Yes | Maps tree-sitter node types to symbol kinds |
-| `moduleExport` | No | Submodule export name (e.g., `"typescript"` for tree-sitter-typescript) |
-
-**Symbol kinds:** `function`, `method`, `class`, `interface`, `type`, `struct`, `enum`, `trait`, `module`, `variable`, `constant`, `property`
-
-#### Finding Tree-sitter Node Types
-
-To configure symbol mappings for a new language, you need to know the tree-sitter node types. You can explore them using the tree-sitter CLI:
-
-```bash
-# Install tree-sitter CLI
-npm install -g tree-sitter-cli
-
-# Parse a sample file and see the AST
-tree-sitter parse sample.mylang
-```
-
-Or use the [tree-sitter playground](https://tree-sitter.github.io/tree-sitter/playground) to explore node types interactively.
-
-**Example: Adding OCaml support**
-
-1. Find the grammar package: `tree-sitter-ocaml`
-2. Install it: `npm install tree-sitter-ocaml`
-3. Explore the AST to find node types for functions, modules, etc.
-4. Add to `~/.matryoshka/config.json`:
+For languages without built-in mappings, create `~/.matryoshka/config.json` mapping tree-sitter node types to symbol kinds (`function`, `method`, `class`, `interface`, `type`, `struct`, `enum`, `trait`, `module`, `variable`, `constant`, `property`):
 
 ```json
 {
@@ -541,17 +458,22 @@ Or use the [tree-sitter playground](https://tree-sitter.github.io/tree-sitter/pl
       "moduleExport": "ocaml",
       "symbols": {
         "value_definition": "function",
-        "let_binding": "variable",
         "type_definition": "type",
-        "module_definition": "module",
-        "module_type_definition": "interface"
+        "module_definition": "module"
       }
     }
   }
 }
 ```
 
-**Note:** Some tree-sitter packages use native Node.js bindings that may not compile on all systems. If installation fails, check if the package supports your Node.js version or look for WASM alternatives.
+Use the [tree-sitter playground](https://tree-sitter.github.io/tree-sitter/playground) to explore node types for your language.
+
+### Control Flow
+
+```scheme
+(if (count RESULTS) (sum RESULTS) 0)  ; Conditional: if/then/else
+(add 10 20)                           ; Arithmetic addition
+```
 
 ### Collection Operations
 
@@ -574,44 +496,18 @@ Or use the [tree-sitter playground](https://tree-sitter.github.io/tree-sitter/pl
 
 ### Type Coercion
 
-When the model sees data that needs parsing, it can use declarative type coercion:
-
 ```scheme
-; Date parsing (returns ISO format YYYY-MM-DD)
 (parseDate "Jan 15, 2024")           ; -> "2024-01-15"
 (parseDate "01/15/2024" "US")        ; -> "2024-01-15" (MM/DD/YYYY)
-(parseDate "15/01/2024" "EU")        ; -> "2024-01-15" (DD/MM/YYYY)
-
-; Currency parsing (handles $, €, commas, etc.)
 (parseCurrency "$1,234.56")          ; -> 1234.56
-(parseCurrency "€1.234,56")          ; -> 1234.56 (EU format)
-
-; Number parsing
 (parseNumber "1,234,567")            ; -> 1234567
-(parseNumber "50%")                  ; -> 0.5
-
-; General coercion
-(coerce value "date")                ; Coerce to date
-(coerce value "currency")            ; Coerce to currency
-(coerce value "number")              ; Coerce to number
-
-; Extract and coerce in one step
-(extract str "\\$[\\d,]+" 0 "currency")  ; Extract and parse as currency
-```
-
-Use in map for batch transformations:
-
-```scheme
-; Parse all dates in results
-(map RESULTS (lambda x (parseDate (match x "[A-Za-z]+ \\d+, \\d+" 0))))
-
-; Extract and sum currencies
-(map RESULTS (lambda x (parseCurrency (match x "\\$[\\d,]+" 0))))
+(coerce value "date")                ; General coercion (date/currency/number/boolean/string)
+(extract str "\\$[\\d,]+" 0 "currency")  ; Extract and coerce in one step
 ```
 
 ### Program Synthesis
 
-For complex transformations, the model can synthesize functions from examples:
+The model provides constraints (input/output examples), not code — the synthesizer builds programs automatically using Barliman-style relational synthesis with miniKanren.
 
 ```scheme
 ; Synthesize from input/output pairs
@@ -619,52 +515,26 @@ For complex transformations, the model can synthesize functions from examples:
   ("$100" 100)
   ("$1,234" 1234)
   ("$50,000" 50000))
-; -> Returns a function that extracts numbers from currency strings
-```
 
-This uses Barliman-style relational synthesis with miniKanren to automatically build extraction functions.
+; Named functions — synthesize once, apply many times
+(define-fn "parse_price" (("$100" 100) ("$1,234" 1234)))
+(apply-fn "parse_price" "$50,000")    ; -> 50000
+
+; Boolean classifiers from examples
+(predicate "is_error" (("ERROR: timeout" true) ("INFO: ok" false)))
+```
 
 ### Cross-Turn State
 
 Results from previous turns are available:
 - `RESULTS` - Latest array result (updated by grep, filter)
-- `_0`, `_1`, `_2`, ... - Results from specific turns
+- `_1`, `_2`, `_3`, ... - Results from specific turns (1-indexed)
 
 ### Final Answer
 
 ```scheme
 <<<FINAL>>>your answer here<<<END>>>
 ```
-
-## Troubleshooting
-
-### Model Answers Without Exploring
-
-**Symptom**: The model provides an answer immediately with hallucinated data.
-
-**Solutions**:
-1. Use a more capable model (7B+ recommended)
-2. Be specific in your query: "Find lines containing ERROR and count them"
-
-### Max Turns Reached
-
-**Symptom**: "Max turns (N) reached without final answer"
-
-**Solutions**:
-1. Increase `--max-turns` for complex documents
-2. Check `--verbose` output for repeated patterns (model stuck in loop)
-3. Simplify the query
-
-### Parse Errors
-
-**Symptom**: "Parse error: no valid command"
-
-**Cause**: Model output malformed S-expression.
-
-**Solutions**:
-1. The system auto-converts JSON to S-expressions as fallback
-2. Use `--verbose` to see what the model is generating
-3. Try a different model tuned for code/symbolic output
 
 ## Development
 
@@ -674,45 +544,6 @@ npm test -- --coverage                # With coverage
 RUN_E2E=1 npm test -- tests/e2e.test.ts  # E2E tests (requires Ollama)
 npm run build                         # Build
 npm run typecheck                     # Type check
-```
-
-## Project Structure
-
-```
-src/
-├── adapters/           # Model-specific prompting
-│   ├── nucleus.ts      # Nucleus DSL adapter
-│   └── types.ts        # Adapter interface
-├── logic/              # Lattice engine
-│   ├── lc-parser.ts    # Nucleus parser
-│   ├── lc-solver.ts    # Command executor (uses miniKanren)
-│   ├── type-inference.ts
-│   ├── constraint-resolver.ts
-│   ├── bm25.ts         # BM25 keyword search (from Ori-Mnemos)
-│   ├── semantic.ts     # TF-IDF cosine similarity search
-│   ├── rrf.ts          # Reciprocal Rank Fusion (from Ori-Mnemos)
-│   ├── dampening.ts    # Gravity dampening (from Ori-Mnemos)
-│   ├── qvalue.ts       # Q-value learning reranker (from Ori-Mnemos)
-│   └── stopwords.ts    # Shared stopword set
-├── persistence/        # In-memory handle storage (97% token savings)
-│   ├── session-db.ts   # In-memory SQLite with FTS5
-│   ├── handle-registry.ts  # Handle creation and stubs
-│   ├── handle-ops.ts   # Server-side operations
-│   ├── fts5-search.ts  # Full-text search
-│   └── checkpoint.ts   # Session persistence
-├── treesitter/         # Code-aware symbol extraction
-│   ├── parser-registry.ts  # Tree-sitter parser management
-│   ├── symbol-extractor.ts # AST → symbol extraction
-│   ├── language-map.ts # Extension → language mapping
-│   └── types.ts        # Symbol interfaces
-├── engine/             # Nucleus execution engine
-│   ├── nucleus-engine.ts
-│   └── handle-session.ts   # Session with symbol support
-├── minikanren/         # Relational programming engine
-├── synthesis/          # Program synthesis (Barliman-style)
-│   └── evalo/          # Extractor DSL
-├── rag/                # Few-shot hint retrieval
-└── rlm.ts              # Main execution loop
 ```
 
 ## Acknowledgements
@@ -727,7 +558,7 @@ This project incorporates ideas and code from:
 
 ## License
 
-MIT
+Apache-2.0
 
 ## References
 
