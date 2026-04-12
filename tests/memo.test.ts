@@ -109,7 +109,7 @@ describe("Memory Pad (Memo)", () => {
 
       const bindings = session.getBindings();
       expect(bindings["$memo1"]).toContain("error analysis");
-      expect(bindings["$res1"]).toContain("Array");
+      expect(bindings["$grep_error"]).toContain("Array");
 
       fs.rmSync(tempDir, { recursive: true });
     });
@@ -135,13 +135,13 @@ describe("Memory Pad (Memo)", () => {
       expect(expanded.data).toEqual(["Important context"]);
 
       // Query handle should be gone
-      const queryExpanded = session.expand("$res1");
+      const queryExpanded = session.expand("$grep_content");
       expect(queryExpanded.success).toBe(false);
 
       // Memo label should still be in bindings
       const bindings = session.getBindings();
       expect(bindings["$memo1"]).toContain("must persist");
-      expect(bindings["$res1"]).toBeUndefined();
+      expect(bindings["$grep_content"]).toBeUndefined();
 
       fs.rmSync(tempDir, { recursive: true });
     });

@@ -106,7 +106,7 @@ describe("AI SDK tool definitions", () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toBeDefined();
-      expect(result.data!["$res1"]).toBeDefined();
+      expect(result.data!["$grep_log"]).toBeDefined();
     });
 
     it("should return status", async () => {

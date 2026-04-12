@@ -44,7 +44,7 @@ DEBUG: Cache hit ratio: 95%`;
       const result = await session.execute('(grep "ERROR")');
 
       expect(result.success).toBe(true);
-      expect(result.handle).toMatch(/^\$res\d+$/);
+      expect(result.handle).toMatch(/^\$[a-z0-9_]+$/);
       expect(result.stub).toContain("Array(3)");
       expect(result.value).toBeUndefined(); // Full data not returned
     });
@@ -82,6 +82,40 @@ DEBUG: Cache hit ratio: 95%`;
       // Count filtered results
       const count = await session.execute("(count RESULTS)");
       expect(count.value).toBe(2); // "Connection timeout" and "Request timeout"
+    });
+
+    it("should produce descriptive handle names from commands", async () => {
+      const grep = await session.execute('(grep "ERROR")');
+      expect(grep.handle).toBe("$grep_error");
+
+      const info = await session.execute('(grep "INFO")');
+      expect(info.handle).toBe("$grep_info");
+    });
+
+    it("should disambiguate repeated commands with numeric suffix", async () => {
+      const r1 = await session.execute('(grep "ERROR")');
+      const r2 = await session.execute('(grep "ERROR")');
+      expect(r1.handle).toBe("$grep_error");
+      expect(r2.handle).toBe("$grep_error_2");
+    });
+
+    it("should allow expanding by descriptive handle name", async () => {
+      await session.execute('(grep "ERROR")');
+      const expanded = session.expand("$grep_error");
+      expect(expanded.success).toBe(true);
+      expect(expanded.data).toHaveLength(3);
+    });
+
+    it("should point RESULTS to the latest descriptive handle after chaining", async () => {
+      await session.execute('(grep "ERROR")');
+      await session.execute('(filter RESULTS (lambda x (match x "timeout" 0)))');
+
+      const bindings = session.getBindings();
+      // RESULTS should point to the filter handle, not grep
+      expect(bindings["RESULTS"]).toContain("$filter_timeout");
+      // Both handles should be present
+      expect(bindings["$grep_error"]).toBeDefined();
+      expect(bindings["$filter_timeout"]).toBeDefined();
     });
   });
 
@@ -146,9 +180,9 @@ DEBUG: Cache hit ratio: 95%`;
 
       const bindings = session.getBindings();
 
-      expect(Object.keys(bindings)).toContain("$res1");
-      expect(Object.keys(bindings)).toContain("$res2");
-      expect(bindings["$res1"]).toContain("Array");
+      expect(Object.keys(bindings)).toContain("$grep_error");
+      expect(Object.keys(bindings)).toContain("$grep_info");
+      expect(bindings["$grep_error"]).toContain("Array");
     });
 
     it("should indicate current RESULTS binding", async () => {
@@ -156,7 +190,7 @@ DEBUG: Cache hit ratio: 95%`;
 
       const bindings = session.getBindings();
 
-      expect(bindings["RESULTS"]).toContain("$res1");
+      expect(bindings["RESULTS"]).toContain("$grep_error");
     });
   });
 
@@ -169,7 +203,7 @@ DEBUG: Cache hit ratio: 95%`;
 
     it("should preview first N items", async () => {
       const bindings = session.getBindings();
-      const handle = Object.keys(bindings).find((k) => k.startsWith("$res"))!;
+      const handle = Object.keys(bindings).find((k) => k.startsWith("$") && !k.startsWith("$memo") && k !== "RESULTS")!;
 
       const preview = session.preview(handle, 3);
 
@@ -178,7 +212,7 @@ DEBUG: Cache hit ratio: 95%`;
 
     it("should sample random N items", async () => {
       const bindings = session.getBindings();
-      const handle = Object.keys(bindings).find((k) => k.startsWith("$res"))!;
+      const handle = Object.keys(bindings).find((k) => k.startsWith("$") && !k.startsWith("$memo") && k !== "RESULTS")!;
 
       const sample = session.sample(handle, 3);
 
@@ -508,7 +542,7 @@ describe("HandleSession — llmQuery option (MCP sampling bridge)", () => {
       );
       expect(result.success).toBe(true);
       // Map result is an array handle
-      expect(result.handle).toMatch(/^\$res\d+$/);
+      expect(result.handle).toMatch(/^\$[a-z0-9_]+$/);
       expect(calls).toHaveLength(3);
     } finally {
       session.close();

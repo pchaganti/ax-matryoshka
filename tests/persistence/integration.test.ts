@@ -47,7 +47,7 @@ Sales Q4: $2,400,000`;
       // Step 2: Store results as handle
       const handle = registry.store(searchResults);
       registry.setResults(handle);
-      expect(handle).toBe("$res1");
+      expect(handle).toMatch(/^\$/);
 
       // Step 3: Filter for specific error type
       const filteredHandle = ops.filter(handle, "item.content.includes('timeout')");
@@ -59,8 +59,8 @@ Sales Q4: $2,400,000`;
 
       // Context should show stubs, not full data
       const context = registry.buildContext();
-      expect(context).toContain("$res1");
-      expect(context).toContain("$res2");
+      expect(context).toContain(handle);
+      expect(context).toContain(filteredHandle);
       expect(context.length).toBeLessThan(500);
     });
 
@@ -127,16 +127,16 @@ Sales Q4: $2,400,000`;
     it("should handle multi-turn session", () => {
       // Turn 1: Search
       const results1 = search.search("ERROR");
-      registry.store(results1);
+      const h1 = registry.store(results1);
       checkpoints.save(1);
 
       // Turn 2: Filter
-      const h2 = ops.filter("$res1", "item.content.includes('timeout')");
+      const h2 = ops.filter(h1, "item.content.includes('timeout')");
       registry.setResults(h2);
       checkpoints.save(2);
 
       // Turn 3: Get different errors
-      const h3 = ops.filter("$res1", "item.content.includes('Authentication')");
+      const h3 = ops.filter(h1, "item.content.includes('Authentication')");
       registry.setResults(h3);
       checkpoints.save(3);
 

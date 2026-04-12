@@ -612,7 +612,7 @@ VARIABLES (for use in queries):
   _1, _2, _3, ...              Results from turn N (auto-bound)
   context                       Raw document content
 
-NOTE: $res1, $res2, etc. are handle stubs for lattice_expand only.
+NOTE: Handle stubs (e.g. $grep_error, $filter_timeout) are for lattice_expand only.
       Use RESULTS or _1, _2, _3 to reference previous results in queries.
 
 SUPPORTED LANGUAGES FOR SYMBOLS:

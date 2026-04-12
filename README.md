@@ -71,14 +71,16 @@ For large result sets, RLM uses a handle-based architecture with in-memory SQLit
 
 ```
 Traditional:  LLM sees full array    [15,000 tokens for 1000 results]
-Handle-based: LLM sees stub          [50 tokens: "$res1: Array(1000) [preview...]"]
+Handle-based: LLM sees stub          [50 tokens: "$grep_error: Array(1000) [preview...]"]
 ```
 
 **How it works:**
 1. Results are stored in SQLite with FTS5 full-text indexing
-2. LLM receives only handle references (`$res1`, `$res2`, etc.)
+2. LLM receives descriptive handle references derived from the command (e.g., `$grep_error`, `$bm25_timeout`, `$filter_status`)
 3. Operations execute server-side, returning new handles
 4. Full data is only materialized when needed
+
+Handle names are auto-generated from the Nucleus command: `(grep "ERROR")` produces `$grep_error`, `(list_symbols "function")` produces `$list_symbols_function`. Repeated commands get a numeric suffix (`$grep_error_2`, `$grep_error_3`).
 
 ### Memory Pad
 
@@ -193,7 +195,7 @@ rlm --help
 
 RLM includes `lattice-mcp`, an MCP (Model Context Protocol) server for direct access to the Nucleus engine. This allows coding agents to analyze documents with **80%+ token savings** compared to reading files directly.
 
-The key advantage is **handle-based results**: query results are stored server-side in SQLite, and the agent receives compact stubs like `$res1: Array(1000) [preview...]` instead of full data. Operations chain server-side without roundtripping data.
+The key advantage is **handle-based results**: query results are stored server-side in SQLite, and the agent receives compact stubs like `$grep_error: Array(1000) [preview...]` instead of full data. Handle names are derived from the command for easy identification. Operations chain server-side without roundtripping data.
 
 #### Available Tools
 
@@ -229,19 +231,19 @@ The key advantage is **handle-based results**: query results are stored server-s
 
 ```
 1. lattice_load("/path/to/large-file.txt")   # Load document (use for >500 lines)
-2. lattice_query('(grep "ERROR")')           # Search - returns handle stub $res1
-3. lattice_query('(filter RESULTS ...)')     # Narrow down - returns handle stub $res2
-4. lattice_query('(count RESULTS)')          # Get count without seeing data
-5. lattice_expand("$res2", limit=10)         # Expand only what you need to see
+2. lattice_query('(grep "ERROR")')           # Search → $grep_error: Array(500) [preview]
+3. lattice_query('(filter RESULTS ...)')     # Narrow → $filter_timeout: Array(50) [preview]
+4. lattice_query('(count RESULTS)')          # Count without seeing data → 50
+5. lattice_expand("$filter_timeout", limit=10) # Expand only what you need to see
 6. lattice_close()                           # Free memory when done
 ```
 
 **Token efficiency tips:**
-- Query results return handle stubs, not full data
+- Query results return descriptive handle stubs, not full data
 - Use `lattice_expand` with `limit` to see only what you need
 - Chain `grep → filter → count/sum` to refine progressively
 - Use `RESULTS` in queries (always points to last result)
-- Use `$res1`, `$res2` etc. with `lattice_expand` to inspect specific results
+- Use descriptive handle names (e.g., `$grep_error`) with `lattice_expand` to inspect specific results
 
 #### Chunking and Sub-LLM Recursion
 

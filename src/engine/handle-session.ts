@@ -58,9 +58,9 @@ export interface ExpandTokenMetadata {
  */
 export interface HandleResult {
   success: boolean;
-  /** Handle reference (e.g., "$res1") if result is an array */
+  /** Handle reference (e.g., "$grep_error") if result is an array */
   handle?: string;
-  /** Handle stub for LLM context (e.g., "$res1: Array(1000) [preview...]") */
+  /** Handle stub for LLM context (e.g., "$grep_error: Array(1000) [preview...]") */
   stub?: string;
   /** Scalar value if result is not an array */
   value?: unknown;
@@ -385,7 +385,7 @@ export class HandleSession {
     // already bounds the handle count via its own MAX_HANDLES guard — no
     // need to duplicate that check here.
     if (Array.isArray(result.value)) {
-      const handle = this.registry.store(result.value);
+      const handle = this.registry.store(result.value, command);
       this.registry.setResults(handle);
 
       // Get the stub for LLM context

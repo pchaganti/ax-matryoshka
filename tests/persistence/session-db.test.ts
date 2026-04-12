@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { SessionDB } from "../../src/persistence/session-db.js";
+import { SessionDB, commandToSlug } from "../../src/persistence/session-db.js";
 
 describe("SessionDB", () => {
   let db: SessionDB;
@@ -80,7 +80,13 @@ Line 5: Final line`;
         { line: "Error 2", lineNum: 5 },
       ];
       const handle = db.createHandle(data);
-      expect(handle).toMatch(/^\$res\d+$/);
+      expect(handle).toMatch(/^\$[a-z0-9_]+$/);
+    });
+
+    it("should derive descriptive name from command", () => {
+      const data = [{ line: "Error 1", lineNum: 1 }];
+      const handle = db.createHandle(data, '(grep "ERROR")');
+      expect(handle).toBe("$grep_error");
     });
 
     it("should store handle metadata", () => {
@@ -105,14 +111,23 @@ Line 5: Final line`;
       expect(retrieved[0].line).toBe("Error 1");
     });
 
-    it("should increment handle counter", () => {
+    it("should disambiguate repeated slugs with numeric suffix", () => {
       const h1 = db.createHandle([{ a: 1 }]);
       const h2 = db.createHandle([{ b: 2 }]);
       const h3 = db.createHandle([{ c: 3 }]);
 
-      expect(h1).toBe("$res1");
-      expect(h2).toBe("$res2");
-      expect(h3).toBe("$res3");
+      // All called without command → slug is "res"
+      expect(h1).toBe("$res");
+      expect(h2).toBe("$res_2");
+      expect(h3).toBe("$res_3");
+    });
+
+    it("should disambiguate repeated commands", () => {
+      const h1 = db.createHandle([{ a: 1 }], '(grep "ERROR")');
+      const h2 = db.createHandle([{ b: 2 }], '(grep "ERROR")');
+
+      expect(h1).toBe("$grep_error");
+      expect(h2).toBe("$grep_error_2");
     });
 
     it("should delete handle and its data", () => {
@@ -283,16 +298,45 @@ Line 5: Final line`;
     });
   });
 
-  describe("handle counter sequential numbering", () => {
-    it("should produce sequential handle numbers", () => {
+  describe("descriptive handle naming", () => {
+    it("should produce descriptive names from commands", () => {
+      db.loadDocument("test content");
+      const h1 = db.createHandle(["a", "b"], '(grep "ERROR")');
+      const h2 = db.createHandle(["c", "d"], '(bm25 "database timeout" 10)');
+      const h3 = db.createHandle(["e", "f"], '(list_symbols "function")');
+
+      expect(h1).toBe("$grep_error");
+      expect(h2).toBe("$bm25_database_timeout");
+      expect(h3).toBe("$list_symbols_function");
+    });
+
+    it("should fall back to $res when no command provided", () => {
       db.loadDocument("test content");
       const h1 = db.createHandle(["a", "b"]);
-      const h2 = db.createHandle(["c", "d"]);
-      const h3 = db.createHandle(["e", "f"]);
+      expect(h1).toBe("$res");
+    });
 
-      expect(h1).toBe("$res1");
-      expect(h2).toBe("$res2");
-      expect(h3).toBe("$res3");
+    it("should use sequential suffixes for same slug", () => {
+      db.loadDocument("test content");
+      const h1 = db.createHandle(["a"], '(grep "ERROR")');
+      const h2 = db.createHandle(["b"], '(grep "ERROR")');
+      const h3 = db.createHandle(["c"], '(grep "ERROR")');
+
+      expect(h1).toBe("$grep_error");
+      expect(h2).toBe("$grep_error_2");
+      expect(h3).toBe("$grep_error_3");
+    });
+
+    it("should handle different commands with unique slugs", () => {
+      db.loadDocument("test content");
+      const h1 = db.createHandle(["a"], '(grep "ERROR")');
+      const h2 = db.createHandle(["b"], '(grep "WARN")');
+      const h3 = db.createHandle(["c"], '(filter RESULTS (lambda x (match x "test" 0)))');
+
+      expect(h1).toBe("$grep_error");
+      expect(h2).toBe("$grep_warn");
+      // filter picks up "test" from the nested match string
+      expect(h3).toBe("$filter_test");
     });
   });
 
@@ -327,5 +371,63 @@ Line 5: Final line`;
       expect(data[1]).toBe(2);
       expect(data[2]).toBeNull();
     });
+  });
+});
+
+describe("commandToSlug", () => {
+  it("should extract command name and first string arg", () => {
+    expect(commandToSlug('(grep "ERROR")')).toBe("grep_error");
+    expect(commandToSlug('(bm25 "database timeout" 10)')).toBe("bm25_database_timeout");
+    expect(commandToSlug('(list_symbols "function")')).toBe("list_symbols_function");
+  });
+
+  it("should return command name alone when no string arg", () => {
+    expect(commandToSlug("(count RESULTS)")).toBe("count");
+    expect(commandToSlug("(list_symbols)")).toBe("list_symbols");
+    expect(commandToSlug("(filter RESULTS (lambda x x))")).toBe("filter");
+  });
+
+  it("should return 'res' when no command provided", () => {
+    expect(commandToSlug()).toBe("res");
+    expect(commandToSlug("")).toBe("res");
+  });
+
+  it("should normalise to lowercase and strip special chars", () => {
+    expect(commandToSlug('(grep "ERROR_MSG")')).toBe("grep_error_msg");
+    expect(commandToSlug('(grep "Hello World!")')).toBe("grep_hello_world");
+  });
+
+  it("should truncate long slugs to 30 chars", () => {
+    const slug = commandToSlug('(grep "this is a very long search query that should be truncated")');
+    expect(slug.length).toBeLessThanOrEqual(30);
+  });
+
+  it("should pick up the first quoted string inside nested expressions", () => {
+    expect(commandToSlug('(filter RESULTS (lambda x (match x "timeout" 0)))')).toBe("filter_timeout");
+  });
+
+  it("should handle empty quoted strings gracefully", () => {
+    expect(commandToSlug('(grep "")')).toBe("grep");
+  });
+
+  it("should strip unicode and non-ascii characters", () => {
+    expect(commandToSlug('(grep "错误")')).toBe("grep");
+    expect(commandToSlug('(grep "café")')).toBe("grep_caf");
+  });
+
+  it("should only use the first quoted string", () => {
+    expect(commandToSlug('(replace "from" "to")')).toBe("replace_from");
+  });
+
+  it("should prefix with q_ to prevent collision with memo namespace", () => {
+    expect(commandToSlug("(memo1)")).toBe("q_memo1");
+    expect(commandToSlug('(memo "note")')).toBe("q_memo_note");
+    // Non-colliding names should not be prefixed
+    expect(commandToSlug("(memory)")).toBe("memory");
+    expect(commandToSlug('(grep "memo")')).toBe("grep_memo");
+  });
+
+  it("should handle bare words without parens", () => {
+    expect(commandToSlug("justAWord")).toBe("res");
   });
 });

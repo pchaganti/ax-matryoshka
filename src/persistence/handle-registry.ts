@@ -38,13 +38,16 @@ export class HandleRegistry {
   }
 
   /**
-   * Store an array of data and return a handle reference
+   * Store an array of data and return a handle reference.
+   *
+   * @param data    The array payload.
+   * @param command Optional Nucleus command for deriving a descriptive handle name.
    */
-  store(data: unknown[]): string {
+  store(data: unknown[], command?: string): string {
     while (this.db.handleCount() >= HandleRegistry.MAX_HANDLES) {
       this.evictOldest();
     }
-    return this.db.createHandle(data);
+    return this.db.createHandle(data, command);
   }
 
   /**

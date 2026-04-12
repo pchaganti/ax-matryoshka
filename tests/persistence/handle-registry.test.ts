@@ -22,15 +22,23 @@ describe("HandleRegistry", () => {
         { line: "Error 2", lineNum: 2 },
       ];
       const handle = registry.store(data);
-      expect(handle).toMatch(/^\$res\d+$/);
+      expect(handle).toMatch(/^\$[a-z0-9_]+$/);
     });
 
-    it("should generate incrementing handles", () => {
+    it("should generate descriptive handles from commands", () => {
+      const h1 = registry.store([{ a: 1 }], '(grep "ERROR")');
+      const h2 = registry.store([{ b: 2 }], '(bm25 "timeout")');
+
+      expect(h1).toBe("$grep_error");
+      expect(h2).toBe("$bm25_timeout");
+    });
+
+    it("should disambiguate repeated commands", () => {
       const h1 = registry.store([{ a: 1 }]);
       const h2 = registry.store([{ b: 2 }]);
 
-      expect(h1).toBe("$res1");
-      expect(h2).toBe("$res2");
+      expect(h1).toBe("$res");
+      expect(h2).toBe("$res_2");
     });
 
     it("should retrieve full data by handle", () => {
@@ -60,7 +68,7 @@ describe("HandleRegistry", () => {
       const handle = registry.store(data);
       const stub = registry.getStub(handle);
 
-      expect(stub).toContain("$res1");
+      expect(stub).toContain(handle);
       expect(stub).toContain("Array(3)");
       expect(stub).toContain("Error 1");  // Preview of first item
     });
@@ -112,7 +120,7 @@ describe("HandleRegistry", () => {
       registry.store(data);
 
       const context = registry.buildContext();
-      expect(context).toContain("$res1:");
+      expect(context).toContain("$res:");
     });
   });
 
@@ -144,38 +152,36 @@ describe("HandleRegistry", () => {
       expect(registry.get(handle)).toBeNull();
     });
 
-    it("should allow reuse of deleted handle numbers", () => {
-      // This tests that handles are not reused (they increment forever)
+    it("should not reuse slug counts after deletion", () => {
       const h1 = registry.store([{ a: 1 }]);
       registry.delete(h1);
       const h2 = registry.store([{ b: 2 }]);
 
-      // Handle counter should continue incrementing
-      expect(h2).toBe("$res2");
+      // Slug counter should continue incrementing
+      expect(h1).toBe("$res");
+      expect(h2).toBe("$res_2");
     });
   });
 
   describe("eviction", () => {
-    it("should evict the oldest non-memo handle (creation order, not alphabetical)", () => {
-      // Create 10 handles so we get $res1..$res10
-      // Delete $res1 so the oldest remaining is $res2
-      // Alphabetical order would put $res10 before $res2, but creation
-      // order should evict $res2 first (the actually oldest remaining handle).
+    it("should evict the oldest non-memo handle (creation order)", () => {
+      // Create 10 handles with distinct commands so they get unique names
+      const handles: string[] = [];
       for (let i = 1; i <= 10; i++) {
-        registry.store([{ val: i }]);
+        handles.push(registry.store([{ val: i }], `(grep "pattern_${i}")`));
       }
 
-      // Delete $res1 — now $res2 is the oldest remaining
-      registry.delete("$res1");
+      // Delete the first handle — now the second is the oldest remaining
+      registry.delete(handles[0]);
       expect(registry.listHandles()).toHaveLength(9);
 
       registry.evictOldest();
 
-      // $res2 should be evicted (oldest by creation), NOT $res10
+      // Second handle should be evicted (oldest by creation)
       const remaining = registry.listHandles();
-      expect(remaining).not.toContain("$res2");
-      expect(remaining).toContain("$res10");
-      expect(remaining).toContain("$res3");
+      expect(remaining).not.toContain(handles[1]);
+      expect(remaining).toContain(handles[9]); // last created
+      expect(remaining).toContain(handles[2]); // third created
       expect(remaining).toHaveLength(8);
     });
 
@@ -204,52 +210,53 @@ describe("HandleRegistry", () => {
 
   describe("handle inspection", () => {
     it("should list all active handles", () => {
-      registry.store([{ a: 1 }]);
-      registry.store([{ b: 2 }]);
-      registry.store([{ c: 3 }]);
+      const h1 = registry.store([{ a: 1 }], '(grep "a")');
+      const h2 = registry.store([{ b: 2 }], '(grep "b")');
+      const h3 = registry.store([{ c: 3 }], '(grep "c")');
 
       const handles = registry.listHandles();
       expect(handles).toHaveLength(3);
-      expect(handles).toContain("$res1");
-      expect(handles).toContain("$res2");
-      expect(handles).toContain("$res3");
+      expect(handles).toContain(h1);
+      expect(handles).toContain(h2);
+      expect(handles).toContain(h3);
     });
 
     it("should find handles after gaps from deletion", () => {
-      registry.store([{ a: 1 }]);  // $res1
-      registry.store([{ b: 2 }]);  // $res2
-      registry.store([{ c: 3 }]);  // $res3
-      registry.store([{ d: 4 }]);  // $res4
-      registry.store([{ e: 5 }]);  // $res5
+      const h1 = registry.store([{ a: 1 }], '(grep "a")');
+      const h2 = registry.store([{ b: 2 }], '(grep "b")');
+      const h3 = registry.store([{ c: 3 }], '(grep "c")');
+      const h4 = registry.store([{ d: 4 }], '(grep "d")');
+      const h5 = registry.store([{ e: 5 }], '(grep "e")');
 
       // Delete handle 3, creating a gap
-      registry.delete("$res3");
+      registry.delete(h3);
 
       const handles = registry.listHandles();
       expect(handles).toHaveLength(4);
-      expect(handles).toContain("$res1");
-      expect(handles).toContain("$res2");
-      expect(handles).toContain("$res4");
-      expect(handles).toContain("$res5");
-      expect(handles).not.toContain("$res3");
+      expect(handles).toContain(h1);
+      expect(handles).toContain(h2);
+      expect(handles).toContain(h4);
+      expect(handles).toContain(h5);
+      expect(handles).not.toContain(h3);
     });
 
     it("should find handles after many deletions at start", () => {
-      // Create 15 handles
+      // Create 15 handles with unique commands
+      const all: string[] = [];
       for (let i = 0; i < 15; i++) {
-        registry.store([{ val: i }]);
+        all.push(registry.store([{ val: i }], `(grep "item_${i}")`));
       }
 
       // Delete first 12
-      for (let i = 1; i <= 12; i++) {
-        registry.delete(`$res${i}`);
+      for (let i = 0; i < 12; i++) {
+        registry.delete(all[i]);
       }
 
       const handles = registry.listHandles();
       expect(handles).toHaveLength(3);
-      expect(handles).toContain("$res13");
-      expect(handles).toContain("$res14");
-      expect(handles).toContain("$res15");
+      expect(handles).toContain(all[12]);
+      expect(handles).toContain(all[13]);
+      expect(handles).toContain(all[14]);
     });
 
     it("should get handle count info", () => {
