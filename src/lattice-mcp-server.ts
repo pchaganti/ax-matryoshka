@@ -382,18 +382,31 @@ LLM_QUERY (multi-turn — works with any MCP client, no sampling required):
   (map RESULTS (lambda x (llm_query "tag: {item}" (item x))))  Per-item via map (N suspensions)
   (filter RESULTS (lambda x (match (llm_query "keep?: {item}" (item x)) "keep" 0)))  Per-item filter
 
-LLM_BATCH (one suspension for all N items — prefer this over map+llm_query):
+LLM_BATCH (ONE suspension for all N items — prefer over map+llm_query):
   (llm_batch RESULTS (lambda x (llm_query "tag: {item}" (item x))))
   (llm_batch (list_symbols "function")
              (lambda x (llm_query "Rate: {name}\\n{body}" (name x) (body (get_symbol_body x)))))
-Drop-in replacement for (map COLL (lambda x (llm_query …))) when the per-item
-judgments are independent. The solver collects every interpolated prompt and
-dispatches them through a SINGLE suspension carrying all N prompts at once,
-which the client answers via lattice_llm_batch_respond with a JSON array of
-N responses. Benchmarked at 92% round-trip reduction on N=12 and 99% on
-N=100 — the dominant cost in map+llm_query is protocol overhead, not
-per-item work. Use map+llm_query only when a per-item judgment references
-prior items or the lambda body is more complex than a single (llm_query …).
+Drop-in replacement for (map COLL (lambda x (llm_query …))) when per-item
+judgments are independent. Solver collects all N interpolated prompts and
+dispatches them through ONE lattice_llm_batch_respond call instead of N
+serial llm_query suspensions. 92% round-trip reduction on N=12, 99% on
+N=100 — protocol overhead dominates map+llm_query cost, not per-item work.
+Use map+llm_query only when per-item judgment references prior items or
+the lambda body isn't a direct (llm_query …).
+
+ONE_OF (enum validation — makes downstream filter/count reliable):
+  (llm_query "Rate: {x}" (x y) (one_of "low" "medium" "high"))
+  (llm_batch C (lambda x (llm_query "..." (x x) (one_of "low" "medium" "high"))))
+Validates each response against the enum, canonicalizes case/whitespace,
+fails the query (or the batch, with a specific index) on out-of-set.
+Makes (filter RESULTS (lambda x (match x "low" 0))) exact-match-safe
+without every downstream consumer re-implementing normalization.
+
+CALIBRATE (scale-setting preamble — llm_batch only):
+  (llm_batch C (lambda x (llm_query "..." (one_of ...) (calibrate))))
+Prepends a directive to the batched suspension telling the model to scan
+the whole distribution before answering any single prompt. Useful for
+subjective ratings where the answer depends on the corpus, not absolutes.
 
 When a query contains (llm_query ...), execution SUSPENDS and returns a request like:
   [LLM_QUERY_REQUEST id=q_abc] Please respond to: ...
@@ -419,9 +432,9 @@ LLM_QUERY MAP WORKFLOW (OOLONG pattern — one suspension per item):
 
 LLM_BATCH WORKFLOW (same result, ONE suspension instead of N):
 1. lattice_query '(llm_batch RESULTS (lambda x (llm_query "tag: {item}" (item x))))'
-   → [LLM_BATCH_REQUEST id=b_1 count=2] Prompt 1: tag: item1 | Prompt 2: tag: item2
+   → [LLM_BATCH_REQUEST id=b_1 count=2] ... two prompts inlined ...
 2. lattice_llm_batch_respond id="b_1" responses=["bug","feature"]
-   → $res1: Array(2) ["bug", "feature"]  (final result in ONE round-trip instead of 2)
+   → $res1: Array(2) ["bug", "feature"]  (final result in ONE round-trip)
 
 LLM_QUERY + SYMBOLS (rate function complexity — one suspension per function):
 1. lattice_query '(list_symbols "function")'
@@ -634,24 +647,16 @@ Check lattice_bindings to see current memos and their handles.`,
   },
   {
     name: "lattice_llm_respond",
-    description: `Respond to a pending (llm_query ...) request from a Nucleus query.
+    description: `Resolve a pending (llm_query …) suspension with a single string response.
 
-When a query containing (llm_query "prompt" ...) is executed and the MCP client
-doesn't support sampling, the server suspends execution and returns a pending
-request instead of a result. Use this tool to provide the LLM response and
-continue execution.
+When lattice_query hits (llm_query …) and the client doesn't support sampling,
+execution suspends and returns [LLM_QUERY_REQUEST id=q_abc]. Reply here with
+the same id and your response string; execution resumes. Queries with multiple
+llm_query calls (e.g. inside map) trigger one suspension per item — respond
+to each until you get the final handle stub or scalar.
 
-The execution resumes from where it left off. If the query contains multiple
-llm_query calls (e.g., inside a map over many items), you may receive another
-pending request after responding — this is normal for the OOLONG pattern.
-
-For the batched variant (llm_batch ...), use lattice_llm_batch_respond instead.
-
-WORKFLOW:
-1. lattice_query returns: "[LLM_QUERY_REQUEST id=q_abc] Please respond to: ..."
-2. You respond: lattice_llm_respond id="q_abc" response="your answer"
-3. If more llm_query calls follow, you get another request (repeat step 2)
-4. When all llm_query calls are answered, you get the final query result`,
+For the batched variant (llm_batch …), use lattice_llm_batch_respond instead
+(ONE suspension carrying all N prompts, ONE reply carrying all N responses).`,
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -669,27 +674,15 @@ WORKFLOW:
   },
   {
     name: "lattice_llm_batch_respond",
-    description: `Respond to a pending (llm_batch ...) request from a Nucleus query.
+    description: `Resolve a pending (llm_batch …) suspension with all N responses at once.
 
-(llm_batch COLL (lambda x (llm_query …))) is the batched sibling of the
-map+llm_query pattern. Where map+llm_query fires N serial suspensions —
-one per collection item — llm_batch collects every interpolated prompt
-into a single array and fires ONE suspension carrying all N prompts at
-once. This reduces N round-trips of protocol overhead to 1, which is the
-dominant cost when the underlying judgment is cheap.
+(llm_batch COLL (lambda x (llm_query …))) fires ONE suspension carrying all
+N per-item prompts, instead of N serial llm_query suspensions. Reply with a
+JSON array of exactly N strings — one response per prompt, in header order.
 
-Use this tool to resolve that single suspension. The 'responses' argument
-must be a JSON array of exactly N strings, where N is the count from the
-LLM_BATCH_REQUEST header and each string is the response to the
-correspondingly-numbered prompt, in order. If the array length is wrong,
-the batch stays pending and you can retry with the correct count.
-
-WORKFLOW:
-1. lattice_query returns: "[LLM_BATCH_REQUEST id=b_abc count=N] Prompt 1 ..."
-2. You compose all N responses and reply once:
-   lattice_llm_batch_respond id="b_abc" responses=["r1","r2",...,"rN"]
-3. You get the final query result (or the next suspension, if the query
-   has additional llm_query / llm_batch calls downstream).`,
+If the array length ≠ N, the batch stays pending and you can retry with the
+correct count. Single (llm_query …) suspensions use lattice_llm_respond
+instead.`,
     inputSchema: {
       type: "object" as const,
       properties: {

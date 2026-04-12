@@ -81,8 +81,8 @@ describe("calibrate end-to-end exercise", () => {
     // Must still carry the standard batch header and per-prompt
     // sections so the downstream flow isn't broken by the preamble.
     expect(rendered).toContain("[LLM_BATCH_REQUEST id=b_test_123 count=3]");
-    expect(rendered).toContain("--- Prompt 1 of 3 ---");
-    expect(rendered).toContain("--- Prompt 3 of 3 ---");
+    expect(rendered).toContain("--- Prompt 1/3 ---");
+    expect(rendered).toContain("--- Prompt 3/3 ---");
     expect(rendered).toContain("lattice_llm_batch_respond");
   });
 
@@ -100,7 +100,7 @@ describe("calibrate end-to-end exercise", () => {
       expect(rendered).not.toContain("CALIBRATION");
       // Everything else should still render the same way.
       expect(rendered).toContain("[LLM_BATCH_REQUEST");
-      expect(rendered).toContain("--- Prompt 1 of 2 ---");
+      expect(rendered).toContain("--- Prompt 1/2 ---");
     }
   });
 
@@ -115,7 +115,7 @@ describe("calibrate end-to-end exercise", () => {
     );
     const headerIdx = rendered.indexOf("[LLM_BATCH_REQUEST");
     const directiveIdx = rendered.indexOf("CALIBRATION");
-    const firstPromptIdx = rendered.indexOf("--- Prompt 1 of 1 ---");
+    const firstPromptIdx = rendered.indexOf("--- Prompt 1/1 ---");
 
     expect(headerIdx).toBeGreaterThanOrEqual(0);
     expect(directiveIdx).toBeGreaterThan(headerIdx);

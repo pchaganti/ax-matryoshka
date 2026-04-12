@@ -551,23 +551,18 @@ SUB-LLM (symbolic recursion):
   (llm_batch COLL (lambda x (llm_query ...))) Batched variant — ONE call instead of N
   (llm_batch COLL (lambda x (llm_query "..." (one_of "a" "b") (calibrate))))
   Rules:
-    — prompt is a literal string with {name} placeholders
-    — each (name TERM) fills one placeholder with TERM's evaluated value
-    — result is a string (or string[] for llm_batch); bound to _N as usual
-    — llm_query works nested inside map/filter/reduce lambdas
-    — llm_batch is a drop-in replacement for map+llm_query when per-item
-      judgments are independent; the solver dispatches all N prompts
-      through one suspension instead of N serial suspensions
-    — (one_of "v1" …) appends an allowed-values directive to the
-      prompt, validates the response case-insensitively, and
-      canonicalizes matches to the declared spelling; out-of-set
-      responses fail the query with a specific index on llm_batch
-    — (calibrate) on llm_batch prepends a scale-setting directive to
-      the batched suspension request so the model reads the whole
+    — prompt is a literal string with {name} placeholders; each
+      (name TERM) fills one with TERM's evaluated value
+    — llm_query returns string; llm_batch returns string[]; bound to _N
+    — llm_query nests inside map/filter/reduce; llm_batch takes the
+      same map-style lambda but fires ONE suspension for all N items
+    — (one_of "v1" …) validates + canonicalizes response against enum;
+      out-of-set fails the query (llm_batch names the offending index)
+    — (calibrate) on llm_batch asks the model to scan the full
       distribution before committing to any individual rating
   Works with any MCP client via the multi-turn suspension protocol
-  (lattice_llm_respond / lattice_llm_batch_respond). Clients that
-  advertise "sampling" capability also get the faster native path.
+  (lattice_llm_respond / lattice_llm_batch_respond); clients that
+  advertise "sampling" get the faster native path.
 
 SYMBOL OPERATIONS (requires tree-sitter - .ts, .js, .py, .go, .md, etc.):
   (list_symbols)                List all symbols (functions, classes, methods, headings, etc.)

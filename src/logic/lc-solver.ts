@@ -121,14 +121,15 @@ const synthesisIntegrator = new SynthesisIntegrator();
 
 /**
  * Append a `(one_of …)` enum-constraint directive to a prompt so the
- * sub-LLM knows the exact set of allowed responses. Shared by
- * `llm_query` and `llm_batch` so the wire contract is consistent.
+ * sub-LLM knows the exact set of allowed responses. Each value is
+ * JSON-stringified so quoting/escaping is unambiguous when a value
+ * happens to contain whitespace or special characters.
  */
 function appendOneOfDirective(prompt: string, oneOf: string[]): string {
   return (
     prompt +
-    `\n\nRespond with EXACTLY one of these values and NO other text:\n  ` +
-    oneOf.map((v) => `- ${v}`).join("\n  ")
+    `\n\nAnswer with exactly one (no other text): ` +
+    oneOf.map((v) => JSON.stringify(v)).join(" | ")
   );
 }
 

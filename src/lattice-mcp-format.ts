@@ -43,23 +43,14 @@ export function formatBatchSuspensionRequest(
 ): string {
   const N = prompts.length;
   let text =
-    `[LLM_BATCH_REQUEST id=${id} count=${N}]\n\n` +
-    `You are being asked to respond to ${N} prompts in a single call. ` +
-    `Return a JSON array of exactly ${N} strings via lattice_llm_batch_respond — ` +
-    `one response per prompt, in order.\n`;
+    `[LLM_BATCH_REQUEST id=${id} count=${N}]\n` +
+    `Reply: lattice_llm_batch_respond id="${id}" responses=[${N} strings in order].\n`;
   if (calibrate) {
     text +=
-      `\nCALIBRATION: Before writing any answer, scan all ${N} prompts ` +
-      `below and establish a consistent scale across the batch. Treat ` +
-      `each judgment as RELATIVE to the others, not absolute in isolation. ` +
-      `Then answer every prompt in order.\n`;
+      `CALIBRATION: scan all ${N} prompts first, set a consistent relative scale, then answer in order.\n`;
   }
   for (let i = 0; i < N; i++) {
-    text += `\n--- Prompt ${i + 1} of ${N} ---\n${prompts[i]}\n`;
+    text += `\n--- Prompt ${i + 1}/${N} ---\n${prompts[i]}\n`;
   }
-  text +=
-    `\nRespond using lattice_llm_batch_respond:\n` +
-    `  id: "${id}"\n` +
-    `  responses: [${N} strings, one per prompt]`;
   return text;
 }
