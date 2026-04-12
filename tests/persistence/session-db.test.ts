@@ -338,6 +338,36 @@ Line 5: Final line`;
       // filter picks up "test" from the nested match string
       expect(h3).toBe("$filter_test");
     });
+
+    it("should not collide when a suffixed name matches another slug's base", () => {
+      // Slug "grep_error_2" (first use) → $grep_error_2
+      // Slug "grep_error" (second use) → would naively produce $grep_error_2
+      // Must detect the collision and skip to a safe name
+      db.loadDocument("test content");
+      const h1 = db.createHandle(["a"], '(grep "error_2")');
+      const h2 = db.createHandle(["b"], '(grep "error")');
+      const h3 = db.createHandle(["c"], '(grep "error")');
+
+      expect(h1).toBe("$grep_error_2");
+      // h2 must NOT be "$grep_error_2" — that's taken by h1
+      expect(h2).toBe("$grep_error");
+      // h3 is the second "grep_error" slug — but _2 is taken, so must skip to _3
+      expect(h3).not.toBe("$grep_error_2");
+      // All three must be unique
+      const names = new Set([h1, h2, h3]);
+      expect(names.size).toBe(3);
+    });
+
+    it("should not collide across query and memo handles", () => {
+      db.loadDocument("test content");
+      const h1 = db.createHandle(["a"], '(grep "error")');
+      const m1 = db.createMemoHandle(["b"], "grep error");
+
+      expect(h1).not.toBe(m1);
+      // Both should be valid
+      expect(db.getHandleMetadata(h1)).not.toBeNull();
+      expect(db.getHandleMetadata(m1)).not.toBeNull();
+    });
   });
 
   describe("foreign key cascade", () => {

@@ -332,6 +332,30 @@ export class SessionDB {
   }
 
   /**
+   * Generate a unique handle name for a slug.
+   *
+   * Increments the per-slug counter and checks the candidate name against
+   * existing handles in SQLite. If a cross-slug collision is detected
+   * (e.g. slug "grep_error" count=2 produces "$grep_error_2" which was
+   * already taken by slug "grep_error_2" count=1), keeps incrementing
+   * until a free name is found.
+   */
+  private nextUniqueHandle(slug: string): string {
+    const checkExists = this.db!.prepare("SELECT 1 FROM handles WHERE handle = ?");
+    const MAX_ATTEMPTS = 1000;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const count = (this.slugCounts.get(slug) ?? 0) + 1;
+      this.slugCounts.set(slug, count);
+      const candidate = count === 1 ? `$${slug}` : `$${slug}_${count}`;
+      if (!checkExists.get(candidate)) {
+        return candidate;
+      }
+    }
+    // Fallback: should never happen in practice
+    return `$${slug}_${Date.now()}`;
+  }
+
+  /**
    * Create a handle for storing data array.
    *
    * @param data    The array payload to store.
@@ -348,9 +372,7 @@ export class SessionDB {
     }
 
     const slug = commandToSlug(command);
-    const count = (this.slugCounts.get(slug) ?? 0) + 1;
-    this.slugCounts.set(slug, count);
-    const handle = count === 1 ? `$${slug}` : `$${slug}_${count}`;
+    const handle = this.nextUniqueHandle(slug);
     const now = Date.now();
 
     // Insert handle metadata and data rows atomically in one transaction
@@ -409,9 +431,7 @@ export class SessionDB {
       }
     }
 
-    const count = (this.slugCounts.get(slug) ?? 0) + 1;
-    this.slugCounts.set(slug, count);
-    const handle = count === 1 ? `$${slug}` : `$${slug}_${count}`;
+    const handle = this.nextUniqueHandle(slug);
     const now = Date.now();
 
     const insertHandle = this.db.prepare(`
