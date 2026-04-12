@@ -120,6 +120,20 @@ export interface HandleSessionOptions {
    * throws a clear "not available" error.
    */
   llmQuery?: (prompt: string) => Promise<string>;
+  /**
+   * Optional batched sub-LLM bridge for the `(llm_batch ...)` primitive.
+   *
+   * Receives every per-item interpolated prompt from a
+   * `(llm_batch COLL (lambda x (llm_query …)))` dispatch in one call and
+   * must return an array of responses in matching order. Threaded
+   * through to the underlying `NucleusEngine` alongside `llmQuery`. The
+   * optional `options` argument carries per-dispatch flags lifted from
+   * the batch's surface syntax — currently `calibrate`.
+   */
+  llmBatch?: (
+    prompts: string[],
+    options?: { calibrate?: boolean }
+  ) => Promise<string[]>;
 }
 
 export class HandleSession {
@@ -162,6 +176,7 @@ export class HandleSession {
     this.engine = new NucleusEngine({
       verbose: options.verbose,
       llmQuery: options.llmQuery,
+      llmBatch: options.llmBatch,
     });
     this.db = new SessionDB();
     this.registry = new HandleRegistry(this.db);

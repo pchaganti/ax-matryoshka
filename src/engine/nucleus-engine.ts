@@ -44,6 +44,22 @@ export interface NucleusEngineOptions {
    * When omitted, `(llm_query ...)` throws a clear "not available" error.
    */
   llmQuery?: (prompt: string) => Promise<string>;
+  /**
+   * Optional batched sub-LLM bridge for the `(llm_batch ...)` primitive.
+   *
+   * Same contract as `llmQuery` but receives all N interpolated prompts
+   * from a `(llm_batch COLL (lambda x (llm_query …)))` dispatch in one
+   * call, and must return N responses in matching order. When omitted,
+   * `(llm_batch ...)` throws a clear "not available" error.
+   *
+   * The optional `options` argument carries per-dispatch flags lifted
+   * from the batch's surface syntax — currently `calibrate`. It is
+   * always safe to ignore if the bridge doesn't need them.
+   */
+  llmBatch?: (
+    prompts: string[],
+    options?: { calibrate?: boolean }
+  ) => Promise<string[]>;
 }
 
 /**
@@ -58,7 +74,11 @@ export interface NucleusEngineOptions {
  */
 function createSolverTools(
   context: string,
-  llmQuery?: (prompt: string) => Promise<string>
+  llmQuery?: (prompt: string) => Promise<string>,
+  llmBatch?: (
+    prompts: string[],
+    options?: { calibrate?: boolean }
+  ) => Promise<string[]>
 ): SolverTools {
   const lines = context.split("\n");
 
@@ -216,6 +236,9 @@ function createSolverTools(
     // Symbolic-recursion hook — only present if the caller threaded one in
     // (e.g. the MCP sampling bridge). Omitted means `(llm_query ...)` throws.
     llmQuery,
+    // Batched sibling of llmQuery — dispatches all N prompts from
+    // `(llm_batch …)` in a single call. Omitted means `(llm_batch …)` throws.
+    llmBatch,
   };
 }
 
@@ -242,10 +265,15 @@ export class NucleusEngine {
   private verbose: boolean;
   private turnCounter: number = 0;
   private llmQuery?: (prompt: string) => Promise<string>;
+  private llmBatch?: (
+    prompts: string[],
+    options?: { calibrate?: boolean }
+  ) => Promise<string[]>;
 
   constructor(options: NucleusEngineOptions = {}) {
     this.verbose = options.verbose ?? false;
     this.llmQuery = options.llmQuery;
+    this.llmBatch = options.llmBatch;
   }
 
   /**
@@ -262,7 +290,7 @@ export class NucleusEngine {
   loadContent(content: string): void {
     const trimmed = content.trim();
     this.context = trimmed.length > 0 ? content : "";
-    this.solverTools = trimmed.length > 0 ? createSolverTools(content, this.llmQuery) : null;
+    this.solverTools = trimmed.length > 0 ? createSolverTools(content, this.llmQuery, this.llmBatch) : null;
     this.bindings.clear();
     this.turnCounter = 0;
 
@@ -519,15 +547,22 @@ CHUNKING (pre-slice a large document before mapping over it):
 SUB-LLM (symbolic recursion):
   (llm_query "prompt")                        Direct prompt with no bindings
   (llm_query "...{name}..." (name VALUE))     With named placeholders
+  (llm_query "..." (one_of "a" "b" "c"))      Enum-validated classification
+  (llm_batch COLL (lambda x (llm_query ...))) Batched variant — ONE call instead of N
+  (llm_batch COLL (lambda x (llm_query "..." (one_of "a" "b") (calibrate))))
   Rules:
-    — prompt is a literal string with {name} placeholders
-    — each (name TERM) fills one placeholder with TERM's evaluated value
-    — result is a string; bound to _N as usual
-    — works nested inside map/filter/reduce lambdas
-  Requires the MCP client to advertise "sampling" capability. If the
-  client doesn't, the call returns a clear "not available" error.
-  (Claude Code CLI does not currently support sampling; Claude Desktop
-  does, gated by per-server permission settings.)
+    — prompt is a literal string with {name} placeholders; each
+      (name TERM) fills one with TERM's evaluated value
+    — llm_query returns string; llm_batch returns string[]; bound to _N
+    — llm_query nests inside map/filter/reduce; llm_batch takes the
+      same map-style lambda but fires ONE suspension for all N items
+    — (one_of "v1" …) validates + canonicalizes response against enum;
+      out-of-set fails the query (llm_batch names the offending index)
+    — (calibrate) on llm_batch asks the model to scan the full
+      distribution before committing to any individual rating
+  Works with any MCP client via the multi-turn suspension protocol
+  (lattice_llm_respond / lattice_llm_batch_respond); clients that
+  advertise "sampling" get the faster native path.
 
 SYMBOL OPERATIONS (requires tree-sitter - .ts, .js, .py, .go, .md, etc.):
   (list_symbols)                List all symbols (functions, classes, methods, headings, etc.)

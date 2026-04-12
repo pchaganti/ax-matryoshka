@@ -64,6 +64,7 @@ export type LCTerm =
   | LCDependents
   | LCSymbolGraph
   | LCLLMQuery
+  | LCLLMBatch
   | LCChunkBySize
   | LCChunkByLines
   | LCChunkByRegex;
@@ -571,6 +572,84 @@ export interface LCLLMQuery {
   prompt: string;
   /** Named bindings that fill `{name}` placeholders in the prompt. */
   bindings: Array<{ name: string; value: LCTerm }>;
+  /**
+   * Optional enum constraint from a `(one_of "v1" "v2" …)` trailing
+   * form. When present, the solver augments the prompt with a
+   * directive naming the allowed set, validates the response against
+   * the list case-insensitively, canonicalizes matches to the
+   * declared spelling, and fails the query if the response is not in
+   * the set. This turns free-text LLM output into a validated token
+   * that downstream `(filter …)` / `(count …)` can rely on.
+   */
+  oneOf?: string[];
+  /**
+   * Optional `(calibrate)` marker. Meaningful only inside `llm_batch`
+   * — at the llm_query level it parses harmlessly so that the exact
+   * same `(lambda x (llm_query … (calibrate)))` shape works in both
+   * contexts without special casing. When set, the llm_batch solver
+   * forwards a `calibrate: true` flag to `tools.llmBatch`, which the
+   * MCP bridge uses to prepend a calibration directive to the
+   * batched suspension request.
+   */
+  calibrate?: boolean;
+}
+
+/**
+ * (llm_batch COLLECTION (lambda x (llm_query "prompt" [(name bind) ...])))
+ *   — batched suspension variant of `(llm_query …)`.
+ *
+ * The plain `(map COLL (lambda x (llm_query …)))` pattern fires one
+ * suspension per item — N serial round-trips of protocol overhead. For
+ * independent per-item judgment tasks (tag, rate, classify) that N-times
+ * overhead is pure waste: a single round-trip carrying all N prompts is
+ * sufficient.
+ *
+ * `llm_batch` keeps the same surface syntax as map + llm_query so that a
+ * user can drop-in replace `map` with `llm_batch` when the lambda body is
+ * directly an `llm_query`. The solver statically extracts the prompt
+ * template and its bindings from the llm_query, evaluates the template
+ * once per item in the collection (substituting the lambda param on each
+ * iteration), collects the N interpolated prompts into an array, and
+ * dispatches them through `tools.llmBatch` in one call. The returned
+ * array is bound to the next `_N` just like any other collection result.
+ *
+ * Example:
+ *   (llm_batch RESULTS
+ *     (lambda x
+ *       (llm_query "Rate complexity: {name}\n{body}"
+ *                  (name x)
+ *                  (body (get_symbol_body x)))))
+ */
+export interface LCLLMBatch {
+  tag: "llm_batch";
+  /** The collection to iterate — any term that evaluates to an array. */
+  collection: LCTerm;
+  /** The lambda parameter name bound to each item in turn. */
+  param: string;
+  /** The prompt template from the wrapped (llm_query …). */
+  prompt: string;
+  /**
+   * Named bindings that fill `{name}` placeholders in the prompt. Each
+   * binding's value term is evaluated with the lambda param bound to the
+   * current item before interpolation.
+   */
+  bindings: Array<{ name: string; value: LCTerm }>;
+  /**
+   * Optional enum constraint lifted from the wrapped `(llm_query …)`'s
+   * `(one_of …)` form. Validated per-item after the batch returns —
+   * any invalid item fails the whole batch with a specific error
+   * naming the offending index.
+   */
+  oneOf?: string[];
+  /**
+   * Optional `(calibrate)` marker lifted from the wrapped
+   * `(llm_query …)`. When true, the solver forwards a
+   * `calibrate: true` options flag to `tools.llmBatch`, letting the
+   * bridge prepend a calibration directive to the batched suspension
+   * request so the model scans the whole distribution before
+   * committing to per-item ratings.
+   */
+  calibrate?: boolean;
 }
 
 /**

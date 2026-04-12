@@ -34,6 +34,10 @@ import { resolve, sep } from "node:path";
 import { HandleSession, type HandleResult } from "./engine/handle-session.js";
 import { getVersion } from "./version.js";
 import { hasTraversalSegment } from "./utils/path-safety.js";
+import {
+  formatSuspensionRequest,
+  formatBatchSuspensionRequest,
+} from "./lattice-mcp-format.js";
 
 // Sub-LLM bridge — installed in main() before `server.connect()` so that the
 // first HandleSession (which may be created before the MCP initialize
@@ -44,6 +48,7 @@ import { hasTraversalSegment } from "./utils/path-safety.js";
 // is forwarded to `server.createMessage(...)` and the sub-LLM response is
 // returned as a plain string.
 let samplingBridge: ((prompt: string) => Promise<string>) | null = null;
+let samplingBatchBridge: ((prompts: string[]) => Promise<string[]>) | null = null;
 
 // Default cap for sub-LLM responses. The MCP sampling protocol requires a
 // maxTokens value; we keep it modest so sub-LLM calls stay cheap and the
@@ -75,13 +80,43 @@ interface PendingQuery {
   createdAt: number;
 }
 
+// Parallel registry for (llm_batch …) dispatches. The wire protocol
+// differs from pendingQueries (array of prompts → array of responses),
+// so a single pending entry represents ALL N items of a batch. This is
+// the optimization: one round-trip carrying every item, instead of N
+// serial (llm_query …) suspensions like map+llm_query would.
+interface PendingBatch {
+  id: string;
+  prompts: string[];
+  resolve: (responses: string[]) => void;
+  reject: (error: Error) => void;
+  createdAt: number;
+  /**
+   * Calibration flag lifted from a `(llm_batch … (calibrate))` marker.
+   * When true, `formatBatchSuspensionRequest` prepends a directive
+   * telling the sub-LLM to scan the distribution and establish a
+   * consistent scale before answering any individual prompt.
+   */
+  calibrate?: boolean;
+}
+
 const pendingQueries = new Map<string, PendingQuery>();
-let suspensionCallback: ((info: { id: string; prompt: string }) => void) | null = null;
+const pendingBatches = new Map<string, PendingBatch>();
+let suspensionCallback:
+  | ((
+      info:
+        | { type: "query"; id: string; prompt: string }
+        | { type: "batch"; id: string; prompts: string[]; calibrate?: boolean }
+    ) => void)
+  | null = null;
 let activeExecution: Promise<HandleResult> | null = null;
-// For top-level llm_query: the bridge fires synchronously inside
-// session.execute() before raceExecution() installs the callback.
+// For top-level llm_query / llm_batch: the bridge fires synchronously
+// inside session.execute() before raceExecution() installs the callback.
 // The bridge stores the suspension here so raceExecution() can pick it up.
-let earlySuspension: { id: string; prompt: string } | null = null;
+let earlySuspension:
+  | { type: "query"; id: string; prompt: string }
+  | { type: "batch"; id: string; prompts: string[]; calibrate?: boolean }
+  | null = null;
 
 function resetInactivityTimer(): void {
   if (timeoutHandle) {
@@ -126,30 +161,59 @@ function closeSession(reason: string): void {
 
 type RaceResult =
   | { type: "completed"; result: HandleResult }
-  | { type: "suspended"; id: string; prompt: string };
+  | { type: "suspended"; id: string; prompt: string }
+  | {
+      type: "suspended-batch";
+      id: string;
+      prompts: string[];
+      calibrate?: boolean;
+    };
 
 async function raceExecution(): Promise<RaceResult> {
   if (!activeExecution) {
     throw new Error("No active execution");
   }
 
-  // Check for early suspension: when (llm_query ...) is at the top level,
-  // the bridge fires synchronously inside session.execute() — before this
-  // function was called. The bridge stores the info in earlySuspension.
+  // Check for early suspension: when (llm_query …) or (llm_batch …) is
+  // at the top level, the bridge fires synchronously inside
+  // session.execute() — before this function was called. The bridge
+  // stores the info in earlySuspension.
   if (earlySuspension) {
     const info = earlySuspension;
     earlySuspension = null;
-    return { type: "suspended", ...info };
+    return info.type === "batch"
+      ? {
+          type: "suspended-batch",
+          id: info.id,
+          prompts: info.prompts,
+          calibrate: info.calibrate,
+        }
+      : { type: "suspended", id: info.id, prompt: info.prompt };
   }
 
-  let resolveSuspension: (info: { id: string; prompt: string }) => void;
+  let resolveSuspension: (
+    info:
+      | { type: "query"; id: string; prompt: string }
+      | { type: "batch"; id: string; prompts: string[]; calibrate?: boolean }
+  ) => void;
   const suspensionPromise = new Promise<RaceResult>((resolve) => {
-    resolveSuspension = (info) => resolve({ type: "suspended", ...info });
+    resolveSuspension = (info) => {
+      if (info.type === "batch") {
+        resolve({
+          type: "suspended-batch",
+          id: info.id,
+          prompts: info.prompts,
+          calibrate: info.calibrate,
+        });
+      } else {
+        resolve({ type: "suspended", id: info.id, prompt: info.prompt });
+      }
+    };
   });
 
-  // Install callback for nested llm_query calls (e.g., inside map/filter).
-  // These fire on a microtask after the collection evaluation yields, so
-  // the callback is installed before they run.
+  // Install callback for nested llm_query / llm_batch calls. These fire
+  // on a microtask after the collection evaluation yields, so the
+  // callback is installed before they run.
   suspensionCallback = resolveSuspension!;
 
   return Promise.race([
@@ -162,15 +226,26 @@ async function raceExecution(): Promise<RaceResult> {
   ]);
 }
 
-function formatSuspensionRequest(id: string, prompt: string): string {
-  return (
-    `[LLM_QUERY_REQUEST id=${id}]\n\n` +
-    `Please respond to the following prompt:\n\n  ${prompt}\n\n` +
-    `Respond using lattice_llm_respond:\n` +
-    `  id: "${id}"\n` +
-    `  response: "your response here"`
-  );
+// Render a race result as the MCP tool reply text. Completed → the
+// normal handle-stub summary; suspended (query or batch) → the
+// respective protocol request text. Shared by lattice_query,
+// lattice_llm_respond, and lattice_llm_batch_respond so that continuing
+// a multi-turn execution always returns the right shape regardless of
+// which suspension was just resolved.
+function formatRaceResponse(raceResult: RaceResult): string {
+  if (raceResult.type === "completed") {
+    return formatHandleResult(raceResult.result);
+  }
+  if (raceResult.type === "suspended-batch") {
+    return formatBatchSuspensionRequest(
+      raceResult.id,
+      raceResult.prompts,
+      raceResult.calibrate
+    );
+  }
+  return formatSuspensionRequest(raceResult.id, raceResult.prompt);
 }
+
 
 function rejectAllPendingQueries(reason: string): void {
   for (const [id, entry] of pendingQueries) {
@@ -178,6 +253,12 @@ function rejectAllPendingQueries(reason: string): void {
       entry.reject(new Error(`Session closed: ${reason}`));
     } catch { /* ignore double-reject */ }
     pendingQueries.delete(id);
+  }
+  for (const [id, entry] of pendingBatches) {
+    try {
+      entry.reject(new Error(`Session closed: ${reason}`));
+    } catch { /* ignore double-reject */ }
+    pendingBatches.delete(id);
   }
   activeExecution = null;
   suspensionCallback = null;
@@ -298,8 +379,34 @@ llm_query, get_symbol_body, find_references, and all other Nucleus commands.
 LLM_QUERY (multi-turn — works with any MCP client, no sampling required):
   (llm_query "prompt")                                     Ask a question, get your response
   (llm_query "describe: {item}" (item x))                  With variable binding
-  (map RESULTS (lambda x (llm_query "tag: {item}" (item x))))  Per-item via map
+  (map RESULTS (lambda x (llm_query "tag: {item}" (item x))))  Per-item via map (N suspensions)
   (filter RESULTS (lambda x (match (llm_query "keep?: {item}" (item x)) "keep" 0)))  Per-item filter
+
+LLM_BATCH (ONE suspension for all N items — prefer over map+llm_query):
+  (llm_batch RESULTS (lambda x (llm_query "tag: {item}" (item x))))
+  (llm_batch (list_symbols "function")
+             (lambda x (llm_query "Rate: {name}\\n{body}" (name x) (body (get_symbol_body x)))))
+Drop-in replacement for (map COLL (lambda x (llm_query …))) when per-item
+judgments are independent. Solver collects all N interpolated prompts and
+dispatches them through ONE lattice_llm_batch_respond call instead of N
+serial llm_query suspensions. 92% round-trip reduction on N=12, 99% on
+N=100 — protocol overhead dominates map+llm_query cost, not per-item work.
+Use map+llm_query only when per-item judgment references prior items or
+the lambda body isn't a direct (llm_query …).
+
+ONE_OF (enum validation — makes downstream filter/count reliable):
+  (llm_query "Rate: {x}" (x y) (one_of "low" "medium" "high"))
+  (llm_batch C (lambda x (llm_query "..." (x x) (one_of "low" "medium" "high"))))
+Validates each response against the enum, canonicalizes case/whitespace,
+fails the query (or the batch, with a specific index) on out-of-set.
+Makes (filter RESULTS (lambda x (match x "low" 0))) exact-match-safe
+without every downstream consumer re-implementing normalization.
+
+CALIBRATE (scale-setting preamble — llm_batch only):
+  (llm_batch C (lambda x (llm_query "..." (one_of ...) (calibrate))))
+Prepends a directive to the batched suspension telling the model to scan
+the whole distribution before answering any single prompt. Useful for
+subjective ratings where the answer depends on the corpus, not absolutes.
 
 When a query contains (llm_query ...), execution SUSPENDS and returns a request like:
   [LLM_QUERY_REQUEST id=q_abc] Please respond to: ...
@@ -322,6 +429,12 @@ LLM_QUERY MAP WORKFLOW (OOLONG pattern — one suspension per item):
    → [LLM_QUERY_REQUEST id=q_2] ... tag: item2 ...  (next item)
 3. lattice_llm_respond id="q_2" response="feature"
    → $res1: Array(2) ["bug", "feature"]  (final result)
+
+LLM_BATCH WORKFLOW (same result, ONE suspension instead of N):
+1. lattice_query '(llm_batch RESULTS (lambda x (llm_query "tag: {item}" (item x))))'
+   → [LLM_BATCH_REQUEST id=b_1 count=2] ... two prompts inlined ...
+2. lattice_llm_batch_respond id="b_1" responses=["bug","feature"]
+   → $res1: Array(2) ["bug", "feature"]  (final result in ONE round-trip)
 
 LLM_QUERY + SYMBOLS (rate function complexity — one suspension per function):
 1. lattice_query '(list_symbols "function")'
@@ -534,22 +647,16 @@ Check lattice_bindings to see current memos and their handles.`,
   },
   {
     name: "lattice_llm_respond",
-    description: `Respond to a pending (llm_query ...) request from a Nucleus query.
+    description: `Resolve a pending (llm_query …) suspension with a single string response.
 
-When a query containing (llm_query "prompt" ...) is executed and the MCP client
-doesn't support sampling, the server suspends execution and returns a pending
-request instead of a result. Use this tool to provide the LLM response and
-continue execution.
+When lattice_query hits (llm_query …) and the client doesn't support sampling,
+execution suspends and returns [LLM_QUERY_REQUEST id=q_abc]. Reply here with
+the same id and your response string; execution resumes. Queries with multiple
+llm_query calls (e.g. inside map) trigger one suspension per item — respond
+to each until you get the final handle stub or scalar.
 
-The execution resumes from where it left off. If the query contains multiple
-llm_query calls (e.g., inside a map over many items), you may receive another
-pending request after responding — this is normal for the OOLONG pattern.
-
-WORKFLOW:
-1. lattice_query returns: "[LLM_QUERY_REQUEST id=q_abc] Please respond to: ..."
-2. You respond: lattice_llm_respond id="q_abc" response="your answer"
-3. If more llm_query calls follow, you get another request (repeat step 2)
-4. When all llm_query calls are answered, you get the final query result`,
+For the batched variant (llm_batch …), use lattice_llm_batch_respond instead
+(ONE suspension carrying all N prompts, ONE reply carrying all N responses).`,
     inputSchema: {
       type: "object" as const,
       properties: {
@@ -563,6 +670,34 @@ WORKFLOW:
         },
       },
       required: ["id", "response"],
+    },
+  },
+  {
+    name: "lattice_llm_batch_respond",
+    description: `Resolve a pending (llm_batch …) suspension with all N responses at once.
+
+(llm_batch COLL (lambda x (llm_query …))) fires ONE suspension carrying all
+N per-item prompts, instead of N serial llm_query suspensions. Reply with a
+JSON array of exactly N strings — one response per prompt, in header order.
+
+If the array length ≠ N, the batch stays pending and you can retry with the
+correct count. Single (llm_query …) suspensions use lattice_llm_respond
+instead.`,
+    inputSchema: {
+      type: "object" as const,
+      properties: {
+        id: {
+          type: "string",
+          description: "The batch ID from the LLM_BATCH_REQUEST message",
+        },
+        responses: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "Array of responses in prompt order — must have exactly count entries",
+        },
+      },
+      required: ["id", "responses"],
     },
   },
 ];
@@ -703,11 +838,13 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         } else {
           // Create new session — use temp variable so `session` isn't
           // left pointing at a half-initialised object if loadFile throws.
-          // Thread the sampling bridge through so `(llm_query ...)` inside
-          // lattice_query can delegate to the MCP client's LLM when the
-          // client advertises sampling support.
+          // Thread the sampling bridges through so `(llm_query ...)` and
+          // `(llm_batch ...)` inside lattice_query can delegate to the
+          // MCP client's LLM (native sampling when available, multi-turn
+          // suspension protocol otherwise).
           const newSession = new HandleSession({
             llmQuery: samplingBridge ?? undefined,
+            llmBatch: samplingBatchBridge ?? undefined,
           });
           try {
             stats = await newSession.loadFile(filePath);
@@ -757,7 +894,8 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           return { content: [{ type: "text", text: "Error: command is required" }] };
         }
 
-        // Guard: if there's a pending LLM query, the client must respond first
+        // Guard: if there's a pending LLM query or batch, the client
+        // must respond to that first before kicking off another query.
         if (activeExecution && pendingQueries.size > 0) {
           const pending = pendingQueries.values().next().value as PendingQuery;
           resetInactivityTimer();
@@ -766,6 +904,21 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
               type: "text",
               text: `There is a pending LLM query that must be answered first.\n\n` +
                 formatSuspensionRequest(pending.id, pending.prompt),
+            }],
+          };
+        }
+        if (activeExecution && pendingBatches.size > 0) {
+          const pending = pendingBatches.values().next().value as PendingBatch;
+          resetInactivityTimer();
+          return {
+            content: [{
+              type: "text",
+              text: `There is a pending LLM batch that must be answered first.\n\n` +
+                formatBatchSuspensionRequest(
+                  pending.id,
+                  pending.prompts,
+                  pending.calibrate
+                ),
             }],
           };
         }
@@ -778,17 +931,7 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         activeExecution = session.execute(command);
 
         const raceResult = await raceExecution();
-
-        if (raceResult.type === "completed") {
-          return { content: [{ type: "text", text: formatHandleResult(raceResult.result) }] };
-        }
-
-        return {
-          content: [{
-            type: "text",
-            text: formatSuspensionRequest(raceResult.id, raceResult.prompt),
-          }],
-        };
+        return { content: [{ type: "text", text: formatRaceResponse(raceResult) }] };
       }
 
       case "lattice_expand": {
@@ -875,10 +1018,12 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
         }
 
         // Auto-create session if none exists (memos don't require a loaded document).
-        // Thread sampling bridge so memos-first sessions still get llm_query support.
+        // Thread sampling bridges so memos-first sessions still get
+        // llm_query / llm_batch support.
         if (!session) {
           session = new HandleSession({
             llmQuery: samplingBridge ?? undefined,
+            llmBatch: samplingBatchBridge ?? undefined,
           });
           console.error("[Lattice] Auto-created session for memo storage");
         }
@@ -966,17 +1111,70 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
 
         // Race for completion or next suspension (e.g., next item in a map)
         const raceResult = await raceExecution();
+        return { content: [{ type: "text", text: formatRaceResponse(raceResult) }] };
+      }
 
-        if (raceResult.type === "completed") {
-          return { content: [{ type: "text", text: formatHandleResult(raceResult.result) }] };
+      case "lattice_llm_batch_respond": {
+        const id = args.id as string;
+        const responses = args.responses as unknown;
+
+        if (!id) {
+          return { content: [{ type: "text", text: "Error: id is required" }] };
+        }
+        if (!Array.isArray(responses) || responses.some((r) => typeof r !== "string")) {
+          return {
+            content: [{
+              type: "text",
+              text: "Error: responses must be a JSON array of strings",
+            }],
+          };
         }
 
-        return {
-          content: [{
-            type: "text",
-            text: formatSuspensionRequest(raceResult.id, raceResult.prompt),
-          }],
-        };
+        if (!activeExecution) {
+          return {
+            content: [{
+              type: "text",
+              text: "Error: No active execution to continue. Start with lattice_query.",
+            }],
+          };
+        }
+
+        const entry = pendingBatches.get(id);
+        if (!entry) {
+          return {
+            content: [{
+              type: "text",
+              text: `Error: Unknown or expired batch ID: ${id}. The session may have timed out.`,
+            }],
+          };
+        }
+
+        // Validate length BEFORE resolving so a shape mismatch doesn't
+        // poison the solver's await — the pending entry stays in the
+        // registry and the client can retry lattice_llm_batch_respond
+        // with the correct count.
+        if (responses.length !== entry.prompts.length) {
+          return {
+            content: [{
+              type: "text",
+              text:
+                `Error: expected ${entry.prompts.length} responses, got ${responses.length}. ` +
+                `The batch is still pending — retry lattice_llm_batch_respond with a JSON array ` +
+                `of exactly ${entry.prompts.length} strings.`,
+            }],
+          };
+        }
+
+        // Resolve the pending batch — this unblocks the solver, which
+        // receives the whole responses array from a single tools.llmBatch
+        // call instead of N serial tools.llmQuery awaits.
+        pendingBatches.delete(id);
+        entry.resolve(responses as string[]);
+
+        resetInactivityTimer();
+
+        const raceResult = await raceExecution();
+        return { content: [{ type: "text", text: formatRaceResponse(raceResult) }] };
       }
 
       default:
@@ -1077,9 +1275,57 @@ async function main() {
     // 2. Top-level llm_query: fires synchronously inside session.execute()
     //    BEFORE raceExecution() runs. Store in earlySuspension for pickup.
     if (suspensionCallback) {
-      suspensionCallback({ id, prompt });
+      suspensionCallback({ type: "query", id, prompt });
     } else {
-      earlySuspension = { id, prompt };
+      earlySuspension = { type: "query", id, prompt };
+    }
+
+    return promise;
+  };
+
+  // Parallel batch bridge for (llm_batch …). When the client advertises
+  // sampling, fall back to N parallel createMessage calls (still a win
+  // over map+llm_query's serial dispatch). Otherwise, use the multi-turn
+  // suspension protocol with a SINGLE pending entry carrying all N
+  // prompts — one round-trip, regardless of collection size.
+  samplingBatchBridge = async (
+    prompts: string[],
+    options?: { calibrate?: boolean }
+  ): Promise<string[]> => {
+    const caps = server.getClientCapabilities();
+    if (caps?.sampling) {
+      return Promise.all(
+        prompts.map(async (p) => {
+          const result = await server.createMessage({
+            messages: [{ role: "user", content: { type: "text", text: p } }],
+            maxTokens: SAMPLING_MAX_TOKENS,
+            includeContext: "none",
+          });
+          if (result.content?.type === "text") {
+            return result.content.text;
+          }
+          return `[sub-LLM returned non-text content: ${result.content?.type ?? "unknown"}]`;
+        })
+      );
+    }
+
+    const id = `b_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const calibrate = options?.calibrate;
+    const promise = new Promise<string[]>((resolve, reject) => {
+      pendingBatches.set(id, {
+        id,
+        prompts,
+        resolve,
+        reject,
+        createdAt: Date.now(),
+        calibrate,
+      });
+    });
+
+    if (suspensionCallback) {
+      suspensionCallback({ type: "batch", id, prompts, calibrate });
+    } else {
+      earlySuspension = { type: "batch", id, prompts, calibrate };
     }
 
     return promise;

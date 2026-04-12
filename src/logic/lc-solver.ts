@@ -52,6 +52,28 @@ export interface SolverTools {
    * queries without the option to recurse into an LLM.
    */
   llmQuery?: (prompt: string) => Promise<string>;
+  /**
+   * Optional batched sub-LLM invoker for the `(llm_batch …)` primitive.
+   *
+   * When present, the solver collects every per-item interpolated prompt
+   * inside `(llm_batch COLL (lambda x (llm_query …)))` into a single
+   * array and dispatches them through this callback in one call,
+   * expecting an array of N responses in matching order. When absent,
+   * `(llm_batch …)` throws a clear "not available" error naming the
+   * execution context — callers that wire `llmQuery` typically wire
+   * `llmBatch` too, but `llmBatch` without `llmQuery` is a valid
+   * configuration (the batch primitive never delegates item-by-item).
+   *
+   * The optional `options` argument carries extra flags lifted from
+   * the batch's surface syntax — currently only `calibrate`, which
+   * tells the bridge to prepend a calibration directive to the
+   * batched suspension request. Options are additive: implementers
+   * MAY ignore them for wire compatibility.
+   */
+  llmBatch?: (
+    prompts: string[],
+    options?: { calibrate?: boolean }
+  ) => Promise<string[]>;
 }
 
 /**
@@ -96,6 +118,40 @@ export function validateRegex(pattern: string): { valid: boolean; error?: string
  * Module-level synthesis integrator for caching across calls
  */
 const synthesisIntegrator = new SynthesisIntegrator();
+
+/**
+ * Append a `(one_of …)` enum-constraint directive to a prompt so the
+ * sub-LLM knows the exact set of allowed responses. Each value is
+ * JSON-stringified so quoting/escaping is unambiguous when a value
+ * happens to contain whitespace or special characters.
+ */
+function appendOneOfDirective(prompt: string, oneOf: string[]): string {
+  return (
+    prompt +
+    `\n\nAnswer with exactly one (no other text): ` +
+    oneOf.map((v) => JSON.stringify(v)).join(" | ")
+  );
+}
+
+/**
+ * Validate a sub-LLM response against a `(one_of …)` enum constraint.
+ * Trims, lowercases, and matches against the enum set. Returns the
+ * CANONICAL value (original casing from the declaration) on success so
+ * downstream `(filter …)` / `(count …)` can do exact string comparisons.
+ * Returns `null` if no enum value matches.
+ */
+function canonicalizeOneOf(
+  response: string,
+  oneOf: string[]
+): string | null {
+  const normalized = response.trim().toLowerCase();
+  for (const candidate of oneOf) {
+    if (candidate.toLowerCase() === normalized) {
+      return candidate;
+    }
+  }
+  return null;
+}
 
 /**
  * Solve result
@@ -1226,13 +1282,148 @@ async function evaluate(
           serialized.replace(/\$/g, "$$$$")
         );
       }
-      log(`[Solver] llm_query prompt length: ${interpolated.length} chars`);
+      // Optional (one_of …) constraint — augment the prompt with the
+      // allowed set so the model answers in the expected format.
+      const finalPrompt = term.oneOf
+        ? appendOneOfDirective(interpolated, term.oneOf)
+        : interpolated;
+
+      log(`[Solver] llm_query prompt length: ${finalPrompt.length} chars`);
       log(
         `[Solver] llm_query bindings: ${term.bindings.map((b) => b.name).join(", ") || "(none)"}`
       );
-      const response = await tools.llmQuery(interpolated);
+      if (term.oneOf) {
+        log(`[Solver] llm_query one_of: ${term.oneOf.join(" | ")}`);
+      }
+      const response = await tools.llmQuery(finalPrompt);
       log(`[Solver] llm_query response length: ${response.length} chars`);
+
+      if (term.oneOf) {
+        const canonical = canonicalizeOneOf(response, term.oneOf);
+        if (canonical === null) {
+          throw new Error(
+            `llm_query (one_of): response ${JSON.stringify(response)} ` +
+            `is not in the allowed set [${term.oneOf.join(", ")}]`
+          );
+        }
+        return canonical;
+      }
       return response;
+    }
+
+    case "llm_batch": {
+      // Batched sibling of `llm_query`. Drop-in replacement for
+      //   (map COLL (lambda x (llm_query "…" …bindings)))
+      // that collects every interpolated prompt into a single array and
+      // dispatches them through `tools.llmBatch` in ONE call — one
+      // suspension for N items instead of N serial suspensions.
+      if (!tools.llmBatch) {
+        throw new Error(
+          "llm_batch is not available in this execution context. " +
+          "The RLM loop and the lattice-mcp bridge thread it through " +
+          "alongside llmQuery; standalone NucleusEngine / HandleSession " +
+          "consumers must pass an llmBatch option to enable it."
+        );
+      }
+
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`llm_batch: expected array, got ${typeof collection}`);
+      }
+
+      // Empty collection: no prompts → skip the batch call entirely so
+      // callers don't pay a round-trip for zero work.
+      if (collection.length === 0) {
+        log(`[Solver] llm_batch: empty collection, skipping dispatch`);
+        return [];
+      }
+
+      const MAX_INTERP_LEN = 500_000;
+
+      // Build the N interpolated prompts. Each iteration binds the
+      // lambda param to the current item (coerced to a string in the
+      // same way map does) and evaluates every binding's value term
+      // against that bound scope before string-substituting placeholders.
+      const prompts: string[] = [];
+      for (const item of collection) {
+        const itemValue = toItemString(item);
+        const scopedBindings = new Map(bindings);
+        scopedBindings.set(term.param, itemValue);
+
+        let interpolated = term.prompt;
+        for (const b of term.bindings) {
+          const val = await evaluate(b.value, tools, scopedBindings, log, depth + 1);
+          let serialized: string;
+          try {
+            serialized =
+              typeof val === "string" ? val : JSON.stringify(val, null, 2);
+          } catch {
+            serialized = String(val);
+          }
+          if (serialized.length > MAX_INTERP_LEN) {
+            serialized =
+              serialized.slice(0, MAX_INTERP_LEN) +
+              `\n…[truncated ${serialized.length - MAX_INTERP_LEN} chars]`;
+          }
+          const escapedName = b.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          interpolated = interpolated.replace(
+            new RegExp(`\\{${escapedName}\\}`, "g"),
+            serialized.replace(/\$/g, "$$$$")
+          );
+        }
+        // Apply the per-item (one_of …) directive the same way
+        // llm_query does. The constraint is hoisted out of the inner
+        // llm_query at parse time, so every prompt in the batch gets
+        // the same allowed set.
+        const finalPrompt = term.oneOf
+          ? appendOneOfDirective(interpolated, term.oneOf)
+          : interpolated;
+        prompts.push(finalPrompt);
+      }
+
+      log(
+        `[Solver] llm_batch dispatching ${prompts.length} prompts in a single call` +
+        (term.oneOf ? ` with one_of ${term.oneOf.join(" | ")}` : "") +
+        (term.calibrate ? " [calibrate]" : "")
+      );
+      // Only pass options when we have something to say. Keeping the
+      // default shape identical to the pre-calibrate signature means
+      // existing llmBatch implementations that only accept `prompts`
+      // remain backwards compatible at the call site.
+      const batchOptions = term.calibrate ? { calibrate: true } : undefined;
+      const responses = batchOptions
+        ? await tools.llmBatch(prompts, batchOptions)
+        : await tools.llmBatch(prompts);
+      if (!Array.isArray(responses)) {
+        throw new Error(
+          `llm_batch: tools.llmBatch must return an array, got ${typeof responses}`
+        );
+      }
+      if (responses.length !== prompts.length) {
+        throw new Error(
+          `llm_batch: expected ${prompts.length} responses, got ${responses.length}`
+        );
+      }
+      log(`[Solver] llm_batch received ${responses.length} responses`);
+
+      // Per-item enum validation. Any out-of-set response fails the
+      // whole batch with a specific index so the caller can debug.
+      if (term.oneOf) {
+        const canonicalized: string[] = [];
+        for (let i = 0; i < responses.length; i++) {
+          const canonical = canonicalizeOneOf(responses[i], term.oneOf);
+          if (canonical === null) {
+            throw new Error(
+              `llm_batch (one_of): item ${i + 1} (index ${i}) response ` +
+              `${JSON.stringify(responses[i])} is not in the allowed set ` +
+              `[${term.oneOf.join(", ")}]`
+            );
+          }
+          canonicalized.push(canonical);
+        }
+        return canonicalized;
+      }
+      return responses;
     }
 
     default:
