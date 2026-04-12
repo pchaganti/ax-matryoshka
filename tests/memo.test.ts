@@ -3,7 +3,7 @@
  *
  * Validates:
  * - Storing memos without a loaded document
- * - Memo handles use $memo prefix
+ * - Memo handles use $memo prefix with descriptive names from labels
  * - Memos persist across document loads
  * - Memos are expandable via the same expand() API
  * - Memo labels appear in bindings
@@ -27,12 +27,12 @@ describe("Memory Pad (Memo)", () => {
   });
 
   describe("basic memo storage", () => {
-    it("should store a memo and return a handle stub", async () => {
+    it("should store a memo and return a descriptive handle stub", async () => {
       const result = session.memo("Hello, world!\nThis is a test.", "greeting");
 
       expect(result.success).toBe(true);
-      expect(result.handle).toBe("$memo1");
-      expect(result.stub).toContain("$memo1");
+      expect(result.handle).toBe("$memo_greeting");
+      expect(result.stub).toContain("$memo_greeting");
       expect(result.stub).toContain("greeting");
       expect(result.stub).toContain("2 lines");
     });
@@ -41,17 +41,25 @@ describe("Memory Pad (Memo)", () => {
       // No loadFile/loadContent called
       const result = session.memo("Some context to remember", "context note");
       expect(result.success).toBe(true);
-      expect(result.handle).toBe("$memo1");
+      expect(result.handle).toBe("$memo_context_note");
     });
 
-    it("should assign incrementing memo handles", async () => {
+    it("should assign descriptive memo handles from labels", async () => {
       const r1 = session.memo("First memo", "first");
       const r2 = session.memo("Second memo", "second");
       const r3 = session.memo("Third memo", "third");
 
-      expect(r1.handle).toBe("$memo1");
-      expect(r2.handle).toBe("$memo2");
-      expect(r3.handle).toBe("$memo3");
+      expect(r1.handle).toBe("$memo_first");
+      expect(r2.handle).toBe("$memo_second");
+      expect(r3.handle).toBe("$memo_third");
+    });
+
+    it("should disambiguate repeated labels with numeric suffix", async () => {
+      const r1 = session.memo("Draft 1", "notes");
+      const r2 = session.memo("Draft 2", "notes");
+
+      expect(r1.handle).toBe("$memo_notes");
+      expect(r2.handle).toBe("$memo_notes_2");
     });
 
     it("should report token savings", async () => {
@@ -68,9 +76,9 @@ describe("Memory Pad (Memo)", () => {
   describe("memo expansion", () => {
     it("should expand memo content via expand()", async () => {
       const content = "Line 1\nLine 2\nLine 3";
-      session.memo(content, "test memo");
+      const result = session.memo(content, "test memo");
 
-      const expanded = session.expand("$memo1");
+      const expanded = session.expand(result.handle!);
       expect(expanded.success).toBe(true);
       expect(expanded.total).toBe(3);
       expect(expanded.data).toEqual(["Line 1", "Line 2", "Line 3"]);
@@ -78,13 +86,13 @@ describe("Memory Pad (Memo)", () => {
 
     it("should support limit and offset on memo expansion", async () => {
       const content = Array.from({ length: 20 }, (_, i) => `Line ${i + 1}`).join("\n");
-      session.memo(content, "numbered lines");
+      const result = session.memo(content, "numbered lines");
 
-      const page1 = session.expand("$memo1", { limit: 5, offset: 0 });
+      const page1 = session.expand(result.handle!, { limit: 5, offset: 0 });
       expect(page1.data).toHaveLength(5);
       expect(page1.data![0]).toBe("Line 1");
 
-      const page2 = session.expand("$memo1", { limit: 5, offset: 5 });
+      const page2 = session.expand(result.handle!, { limit: 5, offset: 5 });
       expect(page2.data).toHaveLength(5);
       expect(page2.data![0]).toBe("Line 6");
     });
@@ -92,10 +100,10 @@ describe("Memory Pad (Memo)", () => {
 
   describe("memo labels in bindings", () => {
     it("should show memo labels in getBindings()", async () => {
-      session.memo("Some architecture notes", "arch overview");
+      const result = session.memo("Some architecture notes", "arch overview");
 
       const bindings = session.getBindings();
-      expect(bindings["$memo1"]).toContain("arch overview");
+      expect(bindings[result.handle!]).toContain("arch overview");
     });
 
     it("should show both memo and query handles in bindings", async () => {
@@ -104,11 +112,11 @@ describe("Memory Pad (Memo)", () => {
       fs.writeFileSync(testFile, "ERROR: something failed\nINFO: all good");
 
       await session.loadFile(testFile);
-      session.memo("Analysis summary", "error analysis");
+      const memoResult = session.memo("Analysis summary", "error analysis");
       await session.execute('(grep "ERROR")');
 
       const bindings = session.getBindings();
-      expect(bindings["$memo1"]).toContain("error analysis");
+      expect(bindings[memoResult.handle!]).toContain("error analysis");
       expect(bindings["$grep_error"]).toContain("Array");
 
       fs.rmSync(tempDir, { recursive: true });
@@ -117,7 +125,7 @@ describe("Memory Pad (Memo)", () => {
 
   describe("memo persistence across document loads", () => {
     it("should preserve memos when clearQueryHandles is called", async () => {
-      session.memo("Important context", "must persist");
+      const memoResult = session.memo("Important context", "must persist");
 
       const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "memo-test-"));
       const testFile = path.join(tempDir, "test.txt");
@@ -130,7 +138,7 @@ describe("Memory Pad (Memo)", () => {
       session.clearQueryHandles();
 
       // Memo should still be expandable
-      const expanded = session.expand("$memo1");
+      const expanded = session.expand(memoResult.handle!);
       expect(expanded.success).toBe(true);
       expect(expanded.data).toEqual(["Important context"]);
 
@@ -140,7 +148,7 @@ describe("Memory Pad (Memo)", () => {
 
       // Memo label should still be in bindings
       const bindings = session.getBindings();
-      expect(bindings["$memo1"]).toContain("must persist");
+      expect(bindings[memoResult.handle!]).toContain("must persist");
       expect(bindings["$grep_content"]).toBeUndefined();
 
       fs.rmSync(tempDir, { recursive: true });
@@ -149,43 +157,43 @@ describe("Memory Pad (Memo)", () => {
 
   describe("getMemoLabel", () => {
     it("should return label for memo handles", async () => {
-      session.memo("Content", "my label");
-      expect(session.getMemoLabel("$memo1")).toBe("my label");
+      const result = session.memo("Content", "my label");
+      expect(session.getMemoLabel(result.handle!)).toBe("my label");
     });
 
     it("should return null for non-memo handles", async () => {
-      expect(session.getMemoLabel("$res1")).toBeNull();
-      expect(session.getMemoLabel("$memo999")).toBeNull();
+      expect(session.getMemoLabel("$res")).toBeNull();
+      expect(session.getMemoLabel("$memo_nonexistent")).toBeNull();
     });
   });
 
   describe("memo deletion", () => {
     it("should delete a memo by handle", async () => {
-      session.memo("Content A", "memo a");
-      session.memo("Content B", "memo b");
+      const r1 = session.memo("Content A", "memo a");
+      const r2 = session.memo("Content B", "memo b");
 
-      const deleted = session.deleteMemo("$memo1");
+      const deleted = session.deleteMemo(r1.handle!);
       expect(deleted).toBe(true);
 
-      const expanded = session.expand("$memo1");
+      const expanded = session.expand(r1.handle!);
       expect(expanded.success).toBe(false);
 
-      // $memo2 should still work
-      const memo2 = session.expand("$memo2");
+      // Second memo should still work
+      const memo2 = session.expand(r2.handle!);
       expect(memo2.success).toBe(true);
     });
 
     it("should return false for non-memo handles", async () => {
-      expect(session.deleteMemo("$res1")).toBe(false);
-      expect(session.deleteMemo("$memo999")).toBe(false);
+      expect(session.deleteMemo("$res")).toBe(false);
+      expect(session.deleteMemo("$memo_nonexistent")).toBe(false);
     });
 
     it("should update byte tracking on delete", async () => {
-      session.memo("x".repeat(1000), "big memo");
+      const result = session.memo("x".repeat(1000), "big memo");
       const before = session.getMemoStats();
       expect(before.totalBytes).toBe(1000);
 
-      session.deleteMemo("$memo1");
+      session.deleteMemo(result.handle!);
       const after = session.getMemoStats();
       expect(after.totalBytes).toBe(0);
       expect(after.count).toBe(0);
@@ -195,9 +203,11 @@ describe("Memory Pad (Memo)", () => {
   describe("memo eviction", () => {
     it("should evict oldest memo when count limit exceeded", async () => {
       const limit = HandleSession.MAX_MEMOS;
-      // Fill to the limit
+      // Fill to the limit — use unique labels so each gets a unique handle
+      const handles: string[] = [];
       for (let i = 0; i < limit; i++) {
-        session.memo(`Memo ${i}`, `memo-${i}`);
+        const r = session.memo(`Memo ${i}`, `memo-${i}`);
+        handles.push(r.handle!);
       }
       expect(session.getMemoStats().count).toBe(limit);
 
@@ -206,12 +216,12 @@ describe("Memory Pad (Memo)", () => {
       const stats = session.getMemoStats();
       expect(stats.count).toBe(limit);
 
-      // $memo1 should be evicted
-      const oldest = session.expand("$memo1");
+      // Oldest (first created) should be evicted
+      const oldest = session.expand(handles[0]);
       expect(oldest.success).toBe(false);
 
       // Latest should exist
-      const latest = session.expand(`$memo${limit + 1}`);
+      const latest = session.expand("$memo_overflow");
       expect(latest.success).toBe(true);
     });
 
@@ -220,17 +230,17 @@ describe("Memory Pad (Memo)", () => {
       const chunkSize = Math.floor(maxBytes / 3);
 
       // Store 3 memos that together fill the budget
-      session.memo("x".repeat(chunkSize), "chunk-1");
+      const r1 = session.memo("x".repeat(chunkSize), "chunk-1");
       session.memo("x".repeat(chunkSize), "chunk-2");
       session.memo("x".repeat(chunkSize), "chunk-3");
 
       // Adding another should evict the oldest to make room
-      session.memo("x".repeat(chunkSize), "chunk-4");
+      const r4 = session.memo("x".repeat(chunkSize), "chunk-4");
 
-      // $memo1 should be evicted
-      expect(session.expand("$memo1").success).toBe(false);
-      // $memo4 should exist
-      expect(session.expand("$memo4").success).toBe(true);
+      // First memo should be evicted
+      expect(session.expand(r1.handle!).success).toBe(false);
+      // Fourth memo should exist
+      expect(session.expand(r4.handle!).success).toBe(true);
       // Total bytes should be within budget
       expect(session.getMemoStats().totalBytes).toBeLessThanOrEqual(maxBytes);
     });
@@ -256,30 +266,33 @@ describe("Memory Pad (Memo)", () => {
     });
   });
 
-  describe("eviction order is numeric not alphabetic", () => {
-    it("should evict $memo2 before $memo10", async () => {
-      // Create 12 memos so we have handles crossing the single/double digit boundary
+  describe("eviction order is creation order", () => {
+    it("should evict oldest by creation time, not alphabetically", async () => {
+      // Create 12 memos
+      const handles: string[] = [];
       for (let i = 0; i < 12; i++) {
-        session.memo(`Memo ${i + 1}`, `memo-${i + 1}`);
+        const r = session.memo(`Memo ${i + 1}`, `memo-${i + 1}`);
+        handles.push(r.handle!);
       }
 
-      // Delete $memo1 manually to set up the interesting case
-      session.deleteMemo("$memo1");
-      // Now oldest is $memo2, not $memo10 (alphabetically $memo10 < $memo2)
+      // Delete the first manually to set up the interesting case
+      session.deleteMemo(handles[0]);
+      // Now second created is the oldest remaining
 
       // Fill to the limit
       const limit = HandleSession.MAX_MEMOS;
-      const remaining = limit - 11; // 11 memos left after deleting $memo1
+      const remaining = limit - 11; // 11 memos left after deleting first
       for (let i = 0; i < remaining; i++) {
         session.memo(`Filler ${i}`, `filler-${i}`);
       }
       expect(session.getMemoStats().count).toBe(limit);
 
-      // One more triggers eviction — should evict $memo2 (numeric oldest), not $memo10
-      session.memo("overflow", "overflow");
+      // One more triggers eviction — should evict second created (oldest remaining)
+      session.memo("overflow", "overflow-final");
       expect(session.getMemoStats().count).toBe(limit);
-      expect(session.expand("$memo2").success).toBe(false);
-      expect(session.expand("$memo10").success).toBe(true);
+      expect(session.expand(handles[1]).success).toBe(false);
+      // Later memos should survive
+      expect(session.expand(handles[9]).success).toBe(true);
     });
   });
 

@@ -88,9 +88,9 @@ The Lattice engine doubles as a **context memory** for LLM agents. Instead of ro
 
 ```
 Agent reads file, summarizes → lattice_memo "auth architecture"
-                              → $memo1: "auth architecture" (2.1KB, 50 lines)
+                              → $memo_auth_architecture: "auth architecture" (2.1KB, 50 lines)
 
-20 messages later, needs it  → lattice_expand $memo1
+20 messages later, needs it  → lattice_expand $memo_auth_architecture
                               → Full 50-line summary
 ```
 
@@ -327,11 +327,11 @@ from the programmatic API — see the Programmatic section below.
 #### Memory Pad Usage
 
 ```
-1. lattice_memo(content="<file summary>", label="auth module")  → $memo1 stub
-2. lattice_memo(content="<analysis>", label="perf bottlenecks") → $memo2 stub
+1. lattice_memo(content="<file summary>", label="auth module")  → $memo_auth_module stub
+2. lattice_memo(content="<analysis>", label="perf bottlenecks") → $memo_perf_bottlenecks stub
 3. # ... many turns later, need the auth context ...
-4. lattice_expand("$memo1")                                     → Full summary
-5. lattice_memo_delete("$memo1")                                → Drop when stale
+4. lattice_expand("$memo_auth_module")                          → Full summary
+5. lattice_memo_delete("$memo_auth_module")                     → Drop when stale
 ```
 
 Memos don't require a loaded document — they create a session automatically.

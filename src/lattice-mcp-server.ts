@@ -588,15 +588,16 @@ USE THIS TO:
 - Avoid roundtripping large text in every message
 - Pull context back only when actually needed via lattice_expand
 
-RETURNS a handle stub like: $memo1: "auth-module architecture" (2.1KB, 50 lines)
+RETURNS a handle stub like: $memo_auth_architecture: "auth architecture" (2.1KB, 50 lines)
+Handle names are derived from the label for easy identification.
 The LLM carries this compact stub (~15 tokens) instead of the full content (~2000 tokens).
 
 WORKFLOW:
-1. lattice_memo content="<summary>" label="what this is"  → $memo1 stub
+1. lattice_memo content="<summary>" label="auth architecture"  → $memo_auth_architecture stub
 2. Keep a brief index in your response text so you remember what's stashed:
-   "Stashed: $memo1 (auth architecture — middleware chain, session flow)"
+   "Stashed: $memo_auth_architecture (middleware chain, session flow)"
 3. Continue working, carrying just the index (~10 tokens per memo)
-4. lattice_expand $memo1  → Full content when you actually need it
+4. lattice_expand $memo_auth_architecture  → Full content when you actually need it
 
 IMPORTANT: After stashing, always note the handle + label + a short description
 of what's inside in your response. This avoids needing lattice_bindings later
@@ -630,7 +631,7 @@ Check lattice_bindings to see current memos and their handles.`,
       properties: {
         handle: {
           type: "string",
-          description: 'Memo handle to delete (e.g., "$memo1")',
+          description: 'Memo handle to delete (e.g., "$memo_auth_architecture")',
         },
       },
       required: ["handle"],

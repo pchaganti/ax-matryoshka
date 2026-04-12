@@ -79,7 +79,6 @@ export class SessionDB {
   private db: Database.Database | null;
   /** Tracks usage count per slug base for collision disambiguation */
   private slugCounts: Map<string, number> = new Map();
-  private memoCounter: number = 0;
 
   constructor() {
     // Create in-memory database
@@ -381,10 +380,15 @@ export class SessionDB {
   }
 
   /**
-   * Create a memo handle for storing arbitrary context
-   * Uses $memo prefix and "memo" type to distinguish from query result handles
+   * Create a memo handle for storing arbitrary context.
+   * Uses $memo prefix and "memo" type to distinguish from query result handles.
+   *
+   * @param data  The array payload to store.
+   * @param label Optional label used to derive a descriptive handle name
+   *              (e.g., "auth architecture" → `$memo_auth_architecture`).
+   *              Falls back to `$memo`, `$memo_2`, … when omitted.
    */
-  createMemoHandle(data: unknown[]): string {
+  createMemoHandle(data: unknown[], label?: string): string {
     if (!this.db) throw new Error("Database not open");
 
     const MAX_HANDLE_ITEMS = 1_000_000;
@@ -392,11 +396,22 @@ export class SessionDB {
       data = data.slice(0, MAX_HANDLE_ITEMS);
     }
 
-    if (this.memoCounter >= Number.MAX_SAFE_INTEGER - 1) {
-      throw new Error("Memo counter overflow");
+    // Derive slug from label, with "memo" prefix to stay in the memo namespace
+    let slug = "memo";
+    if (label) {
+      const labelSlug = label
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "_")
+        .replace(/^_|_$/g, "")
+        .slice(0, 24);
+      if (labelSlug) {
+        slug = "memo_" + labelSlug;
+      }
     }
-    const nextId = this.memoCounter + 1;
-    const handle = `$memo${nextId}`;
+
+    const count = (this.slugCounts.get(slug) ?? 0) + 1;
+    this.slugCounts.set(slug, count);
+    const handle = count === 1 ? `$${slug}` : `$${slug}_${count}`;
     const now = Date.now();
 
     const insertHandle = this.db.prepare(`
@@ -420,7 +435,6 @@ export class SessionDB {
     });
 
     insertAll(data);
-    this.memoCounter = nextId;
     return handle;
   }
 
