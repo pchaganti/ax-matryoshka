@@ -36,11 +36,11 @@ function setupGraph() {
   graph.addEdge("bootstrap", "install", "calls");
 
   const detector = new GraphCommunityDetector(graph);
-  const communityMap = detector.detect();
+  detector.detect();
 
   const bindings: Bindings = new Map();
   bindings.set("_symbolGraph", graph);
-  bindings.set("_communityMap", communityMap);
+  bindings.set("_graphDetector", detector);
 
   const tools: SolverTools = {
     grep: () => [],
@@ -52,7 +52,7 @@ function setupGraph() {
     lines: [],
   };
 
-  return { graph, bindings, tools, communityMap };
+  return { graph, bindings, tools, detector };
 }
 
 async function query(cmd: string, bindings: Bindings, tools: SolverTools) {

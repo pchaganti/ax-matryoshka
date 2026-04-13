@@ -1245,99 +1245,63 @@ async function evaluate(
       return neighborhood;
     }
 
-    case "communities": {
-      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
-      const communityMap = bindings.get("_communityMap") as Record<string, number> | undefined;
-      if (!graph || !communityMap) {
-        throw new Error("communities: No symbol graph available. Load a code file first.");
-      }
-      log("[Solver] Listing communities");
-      const { GraphCommunityDetector } = await import("../graph/community-detector.js");
-      const detector = new GraphCommunityDetector(graph);
-      detector.detect();
-      return detector.communityList();
-    }
-
-    case "community_of": {
-      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
-      const communityMap = bindings.get("_communityMap") as Record<string, number> | undefined;
-      if (!graph || !communityMap) {
-        throw new Error("community_of: No symbol graph available. Load a code file first.");
-      }
-      log(`[Solver] Finding community of "${term.name}"`);
-      const cid = communityMap[term.name];
-      if (cid === undefined) {
-        throw new Error(`community_of: Node "${term.name}" not found`);
-      }
-      const { GraphCommunityDetector } = await import("../graph/community-detector.js");
-      const detector = new GraphCommunityDetector(graph);
-      detector.detect();
-      const list = detector.communityList();
-      const community = list.find((c: any) => c.id === cid);
-      return community || { id: cid, nodes: [], cohesion: 0 };
-    }
-
-    case "god_nodes": {
-      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
-      const communityMap = bindings.get("_communityMap") as Record<string, number> | undefined;
-      if (!graph || !communityMap) {
-        throw new Error("god_nodes: No symbol graph available. Load a code file first.");
-      }
-      const topN = term.topN ?? 10;
-      log(`[Solver] Finding top ${topN} god nodes`);
-      const { GraphAnalyzer } = await import("../graph/graph-analyzer.js");
-      const analyzer = new GraphAnalyzer(graph, communityMap);
-      return analyzer.godNodes(topN);
-    }
-
-    case "surprising_connections": {
-      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
-      const communityMap = bindings.get("_communityMap") as Record<string, number> | undefined;
-      if (!graph || !communityMap) {
-        throw new Error("surprising_connections: No symbol graph available. Load a code file first.");
-      }
-      const topN = term.topN ?? 10;
-      log(`[Solver] Finding top ${topN} surprising connections`);
-      const { GraphAnalyzer } = await import("../graph/graph-analyzer.js");
-      const analyzer = new GraphAnalyzer(graph, communityMap);
-      return analyzer.surprisingConnections(topN);
-    }
-
-    case "bridge_nodes": {
-      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
-      const communityMap = bindings.get("_communityMap") as Record<string, number> | undefined;
-      if (!graph || !communityMap) {
-        throw new Error("bridge_nodes: No symbol graph available. Load a code file first.");
-      }
-      const topN = term.topN ?? 10;
-      log(`[Solver] Finding top ${topN} bridge nodes`);
-      const { GraphAnalyzer } = await import("../graph/graph-analyzer.js");
-      const analyzer = new GraphAnalyzer(graph, communityMap);
-      return analyzer.bridgeNodes(topN);
-    }
-
-    case "suggest_questions": {
-      const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
-      const communityMap = bindings.get("_communityMap") as Record<string, number> | undefined;
-      if (!graph || !communityMap) {
-        throw new Error("suggest_questions: No symbol graph available. Load a code file first.");
-      }
-      log("[Solver] Generating suggested questions");
-      const { GraphAnalyzer } = await import("../graph/graph-analyzer.js");
-      const analyzer = new GraphAnalyzer(graph, communityMap);
-      return analyzer.suggestQuestions();
-    }
-
+    case "communities":
+    case "community_of":
+    case "god_nodes":
+    case "surprising_connections":
+    case "bridge_nodes":
+    case "suggest_questions":
     case "graph_report": {
       const graph = bindings.get("_symbolGraph") as import("../graph/symbol-graph.js").SymbolGraph | undefined;
-      const communityMap = bindings.get("_communityMap") as Record<string, number> | undefined;
-      if (!graph || !communityMap) {
-        throw new Error("graph_report: No symbol graph available. Load a code file first.");
+      const detector = bindings.get("_graphDetector") as import("../graph/community-detector.js").GraphCommunityDetector | undefined;
+      if (!graph || !detector) {
+        throw new Error(`${term.tag}: No symbol graph available. Load a code file first.`);
       }
-      log("[Solver] Generating full graph report");
+
+      if (term.tag === "communities") {
+        log("[Solver] Listing communities");
+        return detector.communityList();
+      }
+
+      if (term.tag === "community_of") {
+        log(`[Solver] Finding community of "${term.name}"`);
+        if (!graph.hasSymbol(term.name)) {
+          throw new Error(`community_of: Node "${term.name}" not found in graph`);
+        }
+        const cid = detector.nodeCommunity(term.name);
+        if (cid === undefined) {
+          throw new Error(`community_of: Node "${term.name}" has no community assignment (graph may have been modified since detection)`);
+        }
+        const community = detector.communityList().find((c) => c.id === cid);
+        return community ?? { id: cid, nodes: [term.name], cohesion: 1.0 };
+      }
+
       const { GraphAnalyzer } = await import("../graph/graph-analyzer.js");
-      const analyzer = new GraphAnalyzer(graph, communityMap);
-      return analyzer.fullReport();
+      const analyzer = new GraphAnalyzer(graph, detector);
+
+      switch (term.tag) {
+        case "god_nodes": {
+          const topN = term.topN ?? 10;
+          log(`[Solver] Finding top ${topN} god nodes`);
+          return analyzer.godNodes(topN);
+        }
+        case "surprising_connections": {
+          const topN = term.topN ?? 10;
+          log(`[Solver] Finding top ${topN} surprising connections`);
+          return analyzer.surprisingConnections(topN);
+        }
+        case "bridge_nodes": {
+          const topN = term.topN ?? 10;
+          log(`[Solver] Finding top ${topN} bridge nodes`);
+          return analyzer.bridgeNodes(topN);
+        }
+        case "suggest_questions":
+          log("[Solver] Generating suggested questions");
+          return analyzer.suggestQuestions();
+        case "graph_report":
+          log("[Solver] Generating full graph report");
+          return analyzer.fullReport();
+      }
     }
 
     case "llm_query": {

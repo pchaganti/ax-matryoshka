@@ -1,8 +1,16 @@
 import louvainFn from "graphology-communities-louvain";
+import GraphConstructor from "graphology";
 import type { AbstractGraph } from "graphology-types";
 import type { SymbolGraph } from "./symbol-graph.js";
 
 const louvain = louvainFn as unknown as (graph: AbstractGraph) => Record<string, number>;
+
+// CJS/ESM interop mirror of the pattern in symbol-graph.ts
+const Graph = (typeof GraphConstructor === "function"
+  ? GraphConstructor
+  : (GraphConstructor as unknown as { Graph: typeof GraphConstructor }).Graph
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+) as any;
 
 export type CommunityMap = Record<string, number>;
 
@@ -14,13 +22,23 @@ export interface Community {
 
 export class GraphCommunityDetector {
   private graph: AbstractGraph;
-  private communities: CommunityMap | null = null;
+  private communities: CommunityMap | null;
 
-  constructor(symbolGraph: SymbolGraph) {
-    this.graph = (symbolGraph as any).graph as AbstractGraph;
+  /**
+   * @param symbolGraph  The symbol graph to cluster.
+   * @param precomputed  Optional pre-run community assignment. When supplied,
+   *                     `detect()` is a no-op and returns the cached map,
+   *                     avoiding a redundant Louvain pass when the session
+   *                     has already computed communities at load time.
+   */
+  constructor(symbolGraph: SymbolGraph, precomputed?: CommunityMap) {
+    this.graph = symbolGraph.internalGraph();
+    this.communities = precomputed ?? null;
   }
 
   detect(): CommunityMap {
+    if (this.communities) return this.communities;
+
     if (this.graph.order === 0) {
       this.communities = {};
       return this.communities;
@@ -66,7 +84,7 @@ export class GraphCommunityDetector {
     for (const node of communityNodes) {
       this.graph.forEachOutEdge(node, (_edge, _attrs, _src, target) => {
         if (nodeSet.has(target)) {
-          const key = [node, target].sort().join("|");
+          const key = node < target ? `${node}|${target}` : `${target}|${node}`;
           edgeSet.add(key);
         }
       });
@@ -78,10 +96,7 @@ export class GraphCommunityDetector {
   }
 
   private toUndirected(): AbstractGraph {
-    // graphology-communities-louvain needs an undirected simple graph
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const GraphCtor = require("graphology");
-    const G = new GraphCtor({ type: "undirected", multi: false });
+    const G = new Graph({ type: "undirected", multi: false });
 
     for (const node of this.graph.nodes()) {
       if (!G.hasNode(node)) G.addNode(node);

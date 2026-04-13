@@ -1,14 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { RelationshipAnalyzer } from "../../src/graph/relationship-analyzer.js";
 import type { Symbol } from "../../src/treesitter/types.js";
-import type { EdgeRelation } from "../../src/graph/symbol-graph.js";
-
-interface ExtractedEdge {
-  source: string;
-  target: string;
-  relation: EdgeRelation;
-}
-
 function makeSymbol(name: string, kind: Symbol["kind"], startLine: number, endLine: number, opts?: Partial<Symbol>): Symbol {
   return {
     name, kind, startLine, endLine,
@@ -41,7 +33,7 @@ function main() {
       ];
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "main", target: "helper", relation: "calls" });
+      expect(edges).toContainEqual({ source: "main", target: "helper", relation: "calls", confidence: "INFERRED" });
     });
 
     it("should detect multiple calls from one function", () => {
@@ -60,8 +52,8 @@ function c() {
       ];
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "c", target: "a", relation: "calls" });
-      expect(edges).toContainEqual({ source: "c", target: "b", relation: "calls" });
+      expect(edges).toContainEqual({ source: "c", target: "a", relation: "calls", confidence: "INFERRED" });
+      expect(edges).toContainEqual({ source: "c", target: "b", relation: "calls", confidence: "INFERRED" });
     });
 
     it("should not detect self-references as calls (definition line)", () => {
@@ -93,7 +85,7 @@ function factorial(n) {
       ];
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "factorial", target: "factorial", relation: "calls" });
+      expect(edges).toContainEqual({ source: "factorial", target: "factorial", relation: "calls", confidence: "INFERRED" });
     });
 
     it("should detect method calls on class methods", () => {
@@ -115,7 +107,7 @@ class Foo {
       ];
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "bar", target: "baz", relation: "calls" });
+      expect(edges).toContainEqual({ source: "bar", target: "baz", relation: "calls", confidence: "INFERRED" });
     });
   });
 
@@ -137,7 +129,7 @@ class Dog extends Animal {
       ];
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "Dog", target: "Animal", relation: "extends" });
+      expect(edges).toContainEqual({ source: "Dog", target: "Animal", relation: "extends", confidence: "EXTRACTED" });
     });
 
     it("should not create extends edge if parent class is not in symbols", () => {
@@ -175,7 +167,7 @@ class SqlRepo implements IRepo {
       ];
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "SqlRepo", target: "IRepo", relation: "implements" });
+      expect(edges).toContainEqual({ source: "SqlRepo", target: "IRepo", relation: "implements", confidence: "EXTRACTED" });
     });
 
     it("should detect multiple implements", () => {
@@ -196,8 +188,8 @@ class Widget implements Serializable, Loggable {
       ];
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "Widget", target: "Serializable", relation: "implements" });
-      expect(edges).toContainEqual({ source: "Widget", target: "Loggable", relation: "implements" });
+      expect(edges).toContainEqual({ source: "Widget", target: "Serializable", relation: "implements", confidence: "EXTRACTED" });
+      expect(edges).toContainEqual({ source: "Widget", target: "Loggable", relation: "implements", confidence: "EXTRACTED" });
     });
   });
 
@@ -219,7 +211,7 @@ class Dog(Animal):
       ];
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "Dog", target: "Animal", relation: "extends" });
+      expect(edges).toContainEqual({ source: "Dog", target: "Animal", relation: "extends", confidence: "EXTRACTED" });
     });
   });
 
@@ -260,8 +252,8 @@ function main() {
       const code = lines.join("\n");
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "caller", target: "fn0", relation: "calls" });
-      expect(edges).toContainEqual({ source: "caller", target: "fn1", relation: "calls" });
+      expect(edges).toContainEqual({ source: "caller", target: "fn0", relation: "calls", confidence: "INFERRED" });
+      expect(edges).toContainEqual({ source: "caller", target: "fn1", relation: "calls", confidence: "INFERRED" });
     });
 
     it("should fall back to per-name scan when symbols exceed batch limit", () => {
@@ -278,7 +270,7 @@ function main() {
       const code = lines.join("\n");
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "caller", target: "func_0_with_long_name", relation: "calls" });
+      expect(edges).toContainEqual({ source: "caller", target: "func_0_with_long_name", relation: "calls", confidence: "INFERRED" });
     });
   });
 
@@ -301,7 +293,7 @@ function caller() {
       ];
 
       const edges = analyzer.analyze(symbols, code);
-      expect(edges).toContainEqual({ source: "caller", target: "target", relation: "calls" });
+      expect(edges).toContainEqual({ source: "caller", target: "target", relation: "calls", confidence: "INFERRED" });
     });
   });
 });

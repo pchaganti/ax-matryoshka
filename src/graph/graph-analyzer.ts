@@ -1,6 +1,6 @@
 import type { AbstractGraph } from "graphology-types";
 import type { SymbolGraph } from "./symbol-graph.js";
-import type { CommunityMap } from "./community-detector.js";
+import type { GraphCommunityDetector, Community } from "./community-detector.js";
 
 export interface GodNode {
   name: string;
@@ -33,16 +33,16 @@ export interface AnalysisReport {
   surprisingConnections: SurprisingConnection[];
   bridgeNodes: BridgeNode[];
   questions: SuggestedQuestion[];
-  communities: { id: number; nodes: string[]; cohesion: number }[];
+  communities: Community[];
 }
 
 export class GraphAnalyzer {
   private graph: AbstractGraph;
-  private communities: CommunityMap;
+  private detector: GraphCommunityDetector;
 
-  constructor(symbolGraph: SymbolGraph, communities: CommunityMap) {
-    this.graph = (symbolGraph as any).graph as AbstractGraph;
-    this.communities = communities;
+  constructor(symbolGraph: SymbolGraph, detector: GraphCommunityDetector) {
+    this.graph = symbolGraph.internalGraph();
+    this.detector = detector;
   }
 
   godNodes(topN: number = 10): GodNode[] {
@@ -51,7 +51,7 @@ export class GraphAnalyzer {
     const degrees: Array<{ name: string; degree: number }> = [];
     for (const node of this.graph.nodes()) {
       const sym = this.graph.getNodeAttribute(node, "symbol");
-      if (!sym || sym.kind === "file") continue;
+      if (!sym) continue;
       const deg = this.graph.degree(node);
       if (deg > 0) degrees.push({ name: node, degree: deg });
     }
@@ -60,7 +60,7 @@ export class GraphAnalyzer {
     return degrees.slice(0, topN);
   }
 
-  surprisingConnections(topN: number = 5): SurprisingConnection[] {
+  surprisingConnections(topN: number = 10): SurprisingConnection[] {
     if (this.graph.size === 0) return [];
 
     const results: SurprisingConnection[] = [];
@@ -70,10 +70,10 @@ export class GraphAnalyzer {
       const src = this.graph.source(edge);
       const tgt = this.graph.target(edge);
 
-      if (attrs.relation === "contains" || attrs.relation === "imports") continue;
+      if (attrs.relation === "imports") continue;
 
-      const srcComm = this.communities[src];
-      const tgtComm = this.communities[tgt];
+      const srcComm = this.detector.nodeCommunity(src);
+      const tgtComm = this.detector.nodeCommunity(tgt);
       const crossCommunity = srcComm !== undefined && tgtComm !== undefined && srcComm !== tgtComm;
 
       let score = 0;
@@ -119,23 +119,23 @@ export class GraphAnalyzer {
     return results.slice(0, topN);
   }
 
-  bridgeNodes(topN: number = 5): BridgeNode[] {
+  bridgeNodes(topN: number = 10): BridgeNode[] {
     if (this.graph.order === 0) return [];
 
     const results: BridgeNode[] = [];
     for (const node of this.graph.nodes()) {
       const sym = this.graph.getNodeAttribute(node, "symbol");
-      if (!sym || sym.kind === "file") continue;
+      if (!sym) continue;
 
-      const nodeComm = this.communities[node];
+      const nodeComm = this.detector.nodeCommunity(node);
       const neighborComms = new Set<number>();
 
       this.graph.forEachOutEdge(node, (_edge, _attrs, _src, target) => {
-        const tc = this.communities[target];
+        const tc = this.detector.nodeCommunity(target);
         if (tc !== undefined && tc !== nodeComm) neighborComms.add(tc);
       });
       this.graph.forEachInEdge(node, (_edge, _attrs, source) => {
-        const sc = this.communities[source];
+        const sc = this.detector.nodeCommunity(source);
         if (sc !== undefined && sc !== nodeComm) neighborComms.add(sc);
       });
 
@@ -159,7 +159,7 @@ export class GraphAnalyzer {
     const isolated: string[] = [];
     for (const node of this.graph.nodes()) {
       const sym = this.graph.getNodeAttribute(node, "symbol");
-      if (!sym || sym.kind === "file") continue;
+      if (!sym) continue;
       if (this.graph.degree(node) === 0) {
         isolated.push(node);
       }
@@ -222,41 +222,7 @@ export class GraphAnalyzer {
       surprisingConnections: this.surprisingConnections(),
       bridgeNodes: this.bridgeNodes(),
       questions: this.suggestQuestions(),
-      communities: this.buildCommunityList(),
+      communities: this.detector.communityList(),
     };
-  }
-
-  private buildCommunityList(): Array<{ id: number; nodes: string[]; cohesion: number }> {
-    const grouped: Record<number, string[]> = {};
-    for (const [node, cid] of Object.entries(this.communities)) {
-      if (!grouped[cid]) grouped[cid] = [];
-      grouped[cid].push(node);
-    }
-
-    return Object.entries(grouped).map(([cid, nodes]) => ({
-      id: Number(cid),
-      nodes,
-      cohesion: this.cohesionScore(nodes),
-    })).sort((a, b) => b.nodes.length - a.nodes.length);
-  }
-
-  private cohesionScore(communityNodes: string[]): number {
-    const n = communityNodes.length;
-    if (n <= 1) return 1.0;
-
-    const nodeSet = new Set(communityNodes);
-    const edgeSet = new Set<string>();
-    for (const node of communityNodes) {
-      this.graph.forEachOutEdge(node, (_edge, _attrs, _src, target) => {
-        if (nodeSet.has(target)) {
-          const key = [node, target].sort().join("|");
-          edgeSet.add(key);
-        }
-      });
-    }
-
-    const actual = edgeSet.size;
-    const possible = n * (n - 1) / 2;
-    return possible > 0 ? Math.round((actual / possible) * 100) / 100 : 0;
   }
 }

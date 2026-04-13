@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 import { SymbolGraph } from "../../src/graph/symbol-graph.js";
 import { GraphCommunityDetector } from "../../src/graph/community-detector.js";
-import { GraphAnalyzer, type GodNode, type SurprisingConnection, type BridgeNode } from "../../src/graph/graph-analyzer.js";
+import { GraphAnalyzer } from "../../src/graph/graph-analyzer.js";
 import type { Symbol } from "../../src/treesitter/types.js";
 
 function makeSymbol(name: string, kind: Symbol["kind"]): Symbol {
@@ -34,7 +34,7 @@ function buildAnalysisGraph() {
 
   const detector = new GraphCommunityDetector(graph);
   const communities = detector.detect();
-  const analyzer = new GraphAnalyzer(graph, communities);
+  const analyzer = new GraphAnalyzer(graph, detector);
 
   return { graph, detector, analyzer, communities };
 }
@@ -77,7 +77,7 @@ describe("GraphAnalyzer", () => {
 
   describe("surprisingConnections", () => {
     it("should find cross-community edges", () => {
-      const { analyzer, communities } = buildAnalysisGraph();
+      const { analyzer } = buildAnalysisGraph();
       const surprises = analyzer.surprisingConnections(5);
 
       expect(surprises.length).toBeGreaterThan(0);
@@ -189,8 +189,8 @@ describe("GraphAnalyzer", () => {
     it("should handle empty graph", () => {
       const graph = new SymbolGraph();
       const detector = new GraphCommunityDetector(graph);
-      const communities = detector.detect();
-      const analyzer = new GraphAnalyzer(graph, communities);
+      detector.detect();
+      const analyzer = new GraphAnalyzer(graph, detector);
 
       expect(analyzer.godNodes()).toEqual([]);
       expect(analyzer.surprisingConnections()).toEqual([]);
@@ -202,8 +202,8 @@ describe("GraphAnalyzer", () => {
       const graph = new SymbolGraph();
       graph.addSymbol(makeSymbol("solo", "function"));
       const detector = new GraphCommunityDetector(graph);
-      const communities = detector.detect();
-      const analyzer = new GraphAnalyzer(graph, communities);
+      detector.detect();
+      const analyzer = new GraphAnalyzer(graph, detector);
 
       expect(analyzer.godNodes()).toEqual([]);
       expect(analyzer.surprisingConnections()).toEqual([]);

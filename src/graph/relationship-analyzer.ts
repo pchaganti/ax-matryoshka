@@ -11,18 +11,26 @@
  */
 
 import type { Symbol } from "../treesitter/types.js";
-import type { EdgeRelation } from "./symbol-graph.js";
+import type { EdgeRelation, Confidence } from "./symbol-graph.js";
 
 export interface AnalyzedEdge {
   source: string;
   target: string;
   relation: EdgeRelation;
+  confidence: Confidence;
 }
 
 export class RelationshipAnalyzer {
   /**
    * Analyze symbols and source code to extract relationships.
    * Returns deduplicated edges.
+   *
+   * Confidence stamping:
+   *   - `extends` / `implements` from keyword-anchored class decl lines
+   *     are EXTRACTED — directly visible in the source.
+   *   - `calls` from line-based regex matching (no real AST/scope
+   *     resolution) is INFERRED — we may false-positive on shadowed
+   *     names, string literals that look like identifiers, etc.
    */
   analyze(symbols: Symbol[], code: string): AnalyzedEdge[] {
     const lines = code.split("\n");
@@ -30,11 +38,11 @@ export class RelationshipAnalyzer {
     const edges: AnalyzedEdge[] = [];
     const edgeSet = new Set<string>();
 
-    const addEdge = (source: string, target: string, relation: EdgeRelation) => {
-      const key = `${source}|${target}|${relation}`;
+    const addEdge = (source: string, target: string, relation: EdgeRelation, confidence: Confidence) => {
+      const key = `${source}|${target}|${relation}|${confidence}`;
       if (!edgeSet.has(key)) {
         edgeSet.add(key);
-        edges.push({ source, target, relation });
+        edges.push({ source, target, relation, confidence });
       }
     };
 
@@ -99,7 +107,7 @@ export class RelationshipAnalyzer {
             if (targetName === sym.name && lineIdx === bodyStart - 1) continue;
             if (!seenTargets.has(targetName)) {
               seenTargets.add(targetName);
-              addEdge(sym.name, targetName, "calls");
+              addEdge(sym.name, targetName, "calls", "INFERRED");
             }
           }
         } else if (callPatterns) {
@@ -108,7 +116,7 @@ export class RelationshipAnalyzer {
             if (seenTargets.has(targetName)) continue;
             if (pattern.test(line)) {
               seenTargets.add(targetName);
-              addEdge(sym.name, targetName, "calls");
+              addEdge(sym.name, targetName, "calls", "INFERRED");
             }
           }
         }
@@ -122,12 +130,12 @@ export class RelationshipAnalyzer {
     declLine: string,
     className: string,
     knownSymbols: Set<string>,
-    addEdge: (s: string, t: string, r: EdgeRelation) => void
+    addEdge: (s: string, t: string, r: EdgeRelation, c: Confidence) => void
   ): void {
     // TypeScript/JavaScript: class Foo extends Bar implements Baz, Qux
     const extendsMatch = declLine.match(/\bextends\s+(\w+)/);
     if (extendsMatch && knownSymbols.has(extendsMatch[1])) {
-      addEdge(className, extendsMatch[1], "extends");
+      addEdge(className, extendsMatch[1], "extends", "EXTRACTED");
     }
 
     const implementsMatch = declLine.match(/\bimplements\s+([\w\s,]+)/);
@@ -137,7 +145,7 @@ export class RelationshipAnalyzer {
         // Take just the identifier (no generics)
         const ifaceName = iface.split(/[<{]/)[0].trim();
         if (knownSymbols.has(ifaceName)) {
-          addEdge(className, ifaceName, "implements");
+          addEdge(className, ifaceName, "implements", "EXTRACTED");
         }
       }
     }
@@ -149,7 +157,7 @@ export class RelationshipAnalyzer {
       for (const base of bases) {
         const baseName = base.split(/[<(]/)[0].trim();
         if (knownSymbols.has(baseName)) {
-          addEdge(className, baseName, "extends");
+          addEdge(className, baseName, "extends", "EXTRACTED");
         }
       }
     }

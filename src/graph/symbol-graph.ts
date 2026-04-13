@@ -11,7 +11,7 @@ import GraphConstructor from "graphology";
 import type { AbstractGraph } from "graphology-types";
 import type { Symbol } from "../treesitter/types.js";
 
-export type EdgeRelation = "calls" | "extends" | "implements" | "imports" | "contains";
+export type EdgeRelation = "calls" | "extends" | "implements" | "imports";
 
 export type Confidence = "EXTRACTED" | "INFERRED" | "AMBIGUOUS";
 
@@ -62,48 +62,11 @@ export class SymbolGraph {
   }
 
   addSymbol(symbol: Symbol): void {
-    const isFileNode = symbol.kind === "file" && symbol.name.startsWith("file:");
-    if (!isFileNode && symbol.sourceFile) {
-      const fileNodeId = `file:${symbol.sourceFile}`;
-      if (!this.graph.hasNode(fileNodeId)) {
-        this.graph.addNode(fileNodeId, {
-          symbol: { name: fileNodeId, kind: "file", startLine: 0, endLine: 0, startCol: 0, endCol: 0, sourceFile: symbol.sourceFile },
-        });
-      }
-    }
     if (this.graph.hasNode(symbol.name)) {
       this.graph.setNodeAttribute(symbol.name, "symbol", symbol);
     } else {
       this.graph.addNode(symbol.name, { symbol });
     }
-    if (!isFileNode && symbol.sourceFile) {
-      const fileNodeId = `file:${symbol.sourceFile}`;
-      if (!this.hasEdge(fileNodeId, symbol.name, "contains")) {
-        this.graph.addEdge(fileNodeId, symbol.name, { relation: "contains", confidence: "EXTRACTED" });
-      }
-    }
-  }
-
-  addFileNode(filePath: string): void {
-    const id = `file:${filePath}`;
-    if (!this.graph.hasNode(id)) {
-      this.graph.addNode(id, {
-        symbol: { name: id, kind: "file", startLine: 0, endLine: 0, startCol: 0, endCol: 0, sourceFile: filePath },
-      });
-    }
-  }
-
-  fileSymbols(filePath: string): Symbol[] {
-    const id = `file:${filePath}`;
-    if (!this.graph.hasNode(id)) return [];
-    const result: Symbol[] = [];
-    this.graph.forEachOutEdge(id, (_edge, attrs, _src, target) => {
-      if (attrs.relation === "contains") {
-        const sym = this.graph.getNodeAttribute(target, "symbol");
-        if (sym) result.push(sym);
-      }
-    });
-    return result;
   }
 
   hasSymbol(name: string): boolean {
@@ -227,7 +190,7 @@ export class SymbolGraph {
       const { node, depth } = queue.shift()!;
       if (maxDepth !== undefined && depth >= maxDepth) continue;
 
-      this.graph.forEachInEdge(node, (_edge, attrs, source) => {
+      this.graph.forEachInEdge(node, (_edge, _attrs, source) => {
         if (!visited.has(source)) {
           visited.add(source);
           const sym = this.graph.getNodeAttribute(source, "symbol");
@@ -301,6 +264,15 @@ export class SymbolGraph {
       nodes: this.graph.order,
       edges: this.graph.size,
     };
+  }
+
+  /**
+   * Internal graph accessor for helpers (community detection, analysis)
+   * that need read-only access to edges/attributes directly. Returns the
+   * underlying graphology instance — external callers should not mutate.
+   */
+  internalGraph(): AbstractGraph {
+    return this.graph as unknown as AbstractGraph;
   }
 
   // --- Private helpers ---

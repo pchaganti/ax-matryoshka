@@ -333,14 +333,16 @@ export class HandleSession {
     }
     const edges = this.relationshipAnalyzer.analyze(symbols, content);
     for (const edge of edges) {
-      this.symbolGraph.addEdge(edge.source, edge.target, edge.relation);
+      this.symbolGraph.addEdge(edge.source, edge.target, edge.relation, edge.confidence);
     }
     this.engine.setBinding("_symbolGraph", this.symbolGraph);
 
-    // Run community detection and cache the result
+    // Run community detection once at load time. The detector caches the
+    // map internally, so every (communities), (community_of …), (god_nodes),
+    // etc. call reuses this instance instead of re-running Louvain.
     const detector = new GraphCommunityDetector(this.symbolGraph);
-    const communityMap = detector.detect();
-    this.engine.setBinding("_communityMap", communityMap);
+    detector.detect();
+    this.engine.setBinding("_graphDetector", detector);
   }
 
   /**
