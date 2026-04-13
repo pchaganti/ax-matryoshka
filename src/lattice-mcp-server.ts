@@ -355,6 +355,18 @@ GRAPH OPERATIONS (knowledge graph for code structure):
   (dependents "name" 2)         Dependents within depth limit
   (symbol_graph "name" 1)       Neighborhood subgraph around symbol
 
+GRAPH ANALYSIS (community detection & structural insights):
+  (communities)                 Detect communities with cohesion scores
+  (community_of "name")         Which community does this symbol belong to?
+  (god_nodes)                   Top 10 most-connected nodes (hubs)
+  (god_nodes 5)                 Top N most-connected nodes
+  (surprising_connections)       Cross-community or low-confidence edges
+  (surprising_connections 5)     Top N surprising connections
+  (bridge_nodes)                Nodes bridging different communities
+  (bridge_nodes 5)              Top N bridge nodes
+  (suggest_questions)           Questions the graph is uniquely positioned to answer
+  (graph_report)                Full analysis (all of the above combined)
+
 AGGREGATE (returns scalar directly):
   (count RESULTS)               Count items in current results
   (sum RESULTS)                 Sum numeric values (auto-extracts from $1,234 format)

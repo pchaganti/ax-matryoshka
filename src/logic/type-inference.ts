@@ -261,6 +261,27 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
     case "symbol_graph":
       return { tag: "any" };
 
+    case "communities":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "community_of":
+      return { tag: "any" };
+
+    case "god_nodes":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "surprising_connections":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "bridge_nodes":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "suggest_questions":
+      return { tag: "array", element: { tag: "any" } };
+
+    case "graph_report":
+      return { tag: "any" };
+
     case "llm_query":
       return { tag: "string" };
 

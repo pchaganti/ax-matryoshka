@@ -20,6 +20,7 @@ import {
 } from "../treesitter/language-map.js";
 import { SymbolGraph } from "../graph/symbol-graph.js";
 import { RelationshipAnalyzer } from "../graph/relationship-analyzer.js";
+import { GraphCommunityDetector } from "../graph/community-detector.js";
 
 const MAX_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB
 const CHARS_PER_TOKEN = 4; // Approximate token estimation heuristic
@@ -335,6 +336,11 @@ export class HandleSession {
       this.symbolGraph.addEdge(edge.source, edge.target, edge.relation);
     }
     this.engine.setBinding("_symbolGraph", this.symbolGraph);
+
+    // Run community detection and cache the result
+    const detector = new GraphCommunityDetector(this.symbolGraph);
+    const communityMap = detector.detect();
+    this.engine.setBinding("_communityMap", communityMap);
   }
 
   /**

@@ -888,6 +888,51 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       return { tag: "symbol_graph", name: sgNameTerm.value };
     }
 
+
+    case "communities":
+      return { tag: "communities" };
+
+    case "community_of": {
+      const coNameTerm = parseTerm(state, d);
+      if (!coNameTerm || coNameTerm.tag !== "lit" || typeof coNameTerm.value !== "string") {
+        return null;
+      }
+      return { tag: "community_of", name: coNameTerm.value };
+    }
+
+    case "god_nodes": {
+      const topNTerm = peek(state);
+      if (topNTerm && topNTerm.type === "number") {
+        consume(state);
+        return { tag: "god_nodes", topN: topNTerm.value as number };
+      }
+      return { tag: "god_nodes" };
+    }
+
+    case "surprising_connections": {
+      const scTopN = peek(state);
+      if (scTopN && scTopN.type === "number") {
+        consume(state);
+        return { tag: "surprising_connections", topN: scTopN.value as number };
+      }
+      return { tag: "surprising_connections" };
+    }
+
+    case "bridge_nodes": {
+      const bnTopN = peek(state);
+      if (bnTopN && bnTopN.type === "number") {
+        consume(state);
+        return { tag: "bridge_nodes", topN: bnTopN.value as number };
+      }
+      return { tag: "bridge_nodes" };
+    }
+
+    case "suggest_questions":
+      return { tag: "suggest_questions" };
+
+    case "graph_report":
+      return { tag: "graph_report" };
+
     case "llm_query": {
       // (llm_query "prompt" [(name binding) ...])
       //

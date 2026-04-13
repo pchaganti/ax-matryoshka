@@ -11,7 +11,9 @@ import GraphConstructor from "graphology";
 import type { AbstractGraph } from "graphology-types";
 import type { Symbol } from "../treesitter/types.js";
 
-export type EdgeRelation = "calls" | "extends" | "implements" | "imports";
+export type EdgeRelation = "calls" | "extends" | "implements" | "imports" | "contains";
+
+export type Confidence = "EXTRACTED" | "INFERRED" | "AMBIGUOUS";
 
 interface NodeAttrs {
   symbol: Symbol;
@@ -19,12 +21,21 @@ interface NodeAttrs {
 
 interface EdgeAttrs {
   relation: EdgeRelation;
+  confidence: Confidence;
 }
 
 export interface NeighborhoodEdge {
   source: string;
   target: string;
   relation: EdgeRelation;
+  confidence: Confidence;
+}
+
+export interface EdgeWithConfidence {
+  source: string;
+  target: string;
+  relation: EdgeRelation;
+  confidence: Confidence;
 }
 
 export interface Neighborhood {
@@ -51,11 +62,48 @@ export class SymbolGraph {
   }
 
   addSymbol(symbol: Symbol): void {
+    const isFileNode = symbol.kind === "file" && symbol.name.startsWith("file:");
+    if (!isFileNode && symbol.sourceFile) {
+      const fileNodeId = `file:${symbol.sourceFile}`;
+      if (!this.graph.hasNode(fileNodeId)) {
+        this.graph.addNode(fileNodeId, {
+          symbol: { name: fileNodeId, kind: "file", startLine: 0, endLine: 0, startCol: 0, endCol: 0, sourceFile: symbol.sourceFile },
+        });
+      }
+    }
     if (this.graph.hasNode(symbol.name)) {
       this.graph.setNodeAttribute(symbol.name, "symbol", symbol);
     } else {
       this.graph.addNode(symbol.name, { symbol });
     }
+    if (!isFileNode && symbol.sourceFile) {
+      const fileNodeId = `file:${symbol.sourceFile}`;
+      if (!this.hasEdge(fileNodeId, symbol.name, "contains")) {
+        this.graph.addEdge(fileNodeId, symbol.name, { relation: "contains", confidence: "EXTRACTED" });
+      }
+    }
+  }
+
+  addFileNode(filePath: string): void {
+    const id = `file:${filePath}`;
+    if (!this.graph.hasNode(id)) {
+      this.graph.addNode(id, {
+        symbol: { name: id, kind: "file", startLine: 0, endLine: 0, startCol: 0, endCol: 0, sourceFile: filePath },
+      });
+    }
+  }
+
+  fileSymbols(filePath: string): Symbol[] {
+    const id = `file:${filePath}`;
+    if (!this.graph.hasNode(id)) return [];
+    const result: Symbol[] = [];
+    this.graph.forEachOutEdge(id, (_edge, attrs, _src, target) => {
+      if (attrs.relation === "contains") {
+        const sym = this.graph.getNodeAttribute(target, "symbol");
+        if (sym) result.push(sym);
+      }
+    });
+    return result;
   }
 
   hasSymbol(name: string): boolean {
@@ -71,11 +119,10 @@ export class SymbolGraph {
     return this.graph.mapNodes((_name, attrs) => attrs.symbol);
   }
 
-  addEdge(source: string, target: string, relation: EdgeRelation): void {
+  addEdge(source: string, target: string, relation: EdgeRelation, confidence: Confidence = "EXTRACTED"): void {
     if (!this.graph.hasNode(source) || !this.graph.hasNode(target)) return;
-    // Avoid duplicate edges of the same relation
-    if (this.hasEdge(source, target, relation)) return;
-    this.graph.addEdge(source, target, { relation });
+    if (this.hasEdgeWithConfidence(source, target, relation, confidence)) return;
+    this.graph.addEdge(source, target, { relation, confidence });
   }
 
   hasEdge(source: string, target: string, relation: EdgeRelation): boolean {
@@ -83,6 +130,34 @@ export class SymbolGraph {
     let found = false;
     this.graph.forEachOutEdge(source, (_edge, attrs, _src, tgt) => {
       if (tgt === target && attrs.relation === relation) found = true;
+    });
+    return found;
+  }
+
+  getEdges(source: string, target: string): EdgeWithConfidence[] {
+    if (!this.graph.hasNode(source) || !this.graph.hasNode(target)) return [];
+    const result: EdgeWithConfidence[] = [];
+    this.graph.forEachOutEdge(source, (_edge, attrs, _src, tgt) => {
+      if (tgt === target) {
+        result.push({ source, target, relation: attrs.relation, confidence: attrs.confidence });
+      }
+    });
+    return result;
+  }
+
+  edgeAttributes(): EdgeWithConfidence[] {
+    const result: EdgeWithConfidence[] = [];
+    this.graph.forEachEdge((_edge, attrs, source, target) => {
+      result.push({ source, target, relation: attrs.relation, confidence: attrs.confidence });
+    });
+    return result;
+  }
+
+  private hasEdgeWithConfidence(source: string, target: string, relation: EdgeRelation, confidence: Confidence): boolean {
+    if (!this.graph.hasNode(source) || !this.graph.hasNode(target)) return false;
+    let found = false;
+    this.graph.forEachOutEdge(source, (_edge, attrs, _src, tgt) => {
+      if (tgt === target && attrs.relation === relation && attrs.confidence === confidence) found = true;
     });
     return found;
   }
@@ -210,7 +285,7 @@ export class SymbolGraph {
     const edges: NeighborhoodEdge[] = [];
     this.graph.forEachEdge((_edge, attrs, source, target) => {
       if (nodeSet.has(source) && nodeSet.has(target)) {
-        edges.push({ source, target, relation: attrs.relation });
+        edges.push({ source, target, relation: attrs.relation, confidence: attrs.confidence });
       }
     });
 

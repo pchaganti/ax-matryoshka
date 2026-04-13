@@ -59,10 +59,14 @@ Rules:
 CODE (when analyzing code):
 (list_symbols)  (list_symbols "function")
 (get_symbol_body "name")  (find_references "name")
-(callers "name")  (callees "name")
-(ancestors "Class")  (descendants "Class")
-(implementations "IFace")  (dependents "name")
-(symbol_graph "name" depth)
+ (callers "name")  (callees "name")
+ (ancestors "Class")  (descendants "Class")
+ (implementations "IFace")  (dependents "name")
+ (symbol_graph "name" depth)
+ (communities)  (community_of "name")
+ (god_nodes)  (god_nodes 5)
+ (surprising_connections)  (bridge_nodes)
+ (suggest_questions)  (graph_report)
 
 MULTI-LINE: grep keyword → get lineNum → (lines N M)
 QUERY MAP: count→count, total/sum→sum, list→grep+FINAL
@@ -222,7 +226,7 @@ function extractCode(response: string): string | null {
 
   // Check for plain S-expression in raw text
   // Find opening paren and balance to closing
-  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph", "llm_query", "chunk_by_size", "chunk_by_lines", "chunk_by_regex"];
+  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph", "communities", "community_of", "god_nodes", "surprising_connections", "bridge_nodes", "suggest_questions", "graph_report", "llm_query", "chunk_by_size", "chunk_by_lines", "chunk_by_regex"];
 
   const MAX_SEXP_ITERATIONS = 200;
   let sexpIterations = 0;
