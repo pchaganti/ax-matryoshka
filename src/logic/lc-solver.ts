@@ -1251,9 +1251,10 @@ async function evaluate(
       if (!graph || !communityMap) {
         throw new Error("communities: No symbol graph available. Load a code file first.");
       }
-      log("[Solver] Detecting communities");
+      log("[Solver] Listing communities");
       const { GraphCommunityDetector } = await import("../graph/community-detector.js");
       const detector = new GraphCommunityDetector(graph);
+      detector.detect();
       return detector.communityList();
     }
 
@@ -1268,26 +1269,12 @@ async function evaluate(
       if (cid === undefined) {
         throw new Error(`community_of: Node "${term.name}" not found`);
       }
-      const grouped: Record<number, string[]> = {};
-      for (const [node, id] of Object.entries(communityMap)) {
-        if (!grouped[id]) grouped[id] = [];
-        grouped[id].push(node);
-      }
-      const nodes = grouped[cid] || [];
-      const nodeSet = new Set(nodes);
-      const edgeSet = new Set<string>();
-      const g = (graph as any).graph;
-      for (const node of nodes) {
-        g.forEachOutEdge(node, (_e: any, _a: any, _s: any, target: string) => {
-          if (nodeSet.has(target)) {
-            const key = [node, target].sort().join("|");
-            edgeSet.add(key);
-          }
-        });
-      }
-      const possible = nodes.length * (nodes.length - 1) / 2;
-      const cohesion = possible > 0 ? Math.round((edgeSet.size / possible) * 100) / 100 : 0;
-      return { id: cid, nodes, cohesion };
+      const { GraphCommunityDetector } = await import("../graph/community-detector.js");
+      const detector = new GraphCommunityDetector(graph);
+      detector.detect();
+      const list = detector.communityList();
+      const community = list.find((c: any) => c.id === cid);
+      return community || { id: cid, nodes: [], cohesion: 0 };
     }
 
     case "god_nodes": {
