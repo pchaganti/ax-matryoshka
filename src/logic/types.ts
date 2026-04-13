@@ -63,6 +63,13 @@ export type LCTerm =
   | LCImplementations
   | LCDependents
   | LCSymbolGraph
+  | LCCommunities
+  | LCCommunityOf
+  | LCGodNodes
+  | LCSurprisingConnections
+  | LCBridgeNodes
+  | LCSuggestQuestions
+  | LCGraphReport
   | LCLLMQuery
   | LCLLMBatch
   | LCChunkBySize
@@ -550,6 +557,60 @@ export interface LCSymbolGraph {
   tag: "symbol_graph";
   name: string;
   depth?: number;
+}
+
+
+/**
+ * (communities) - detect communities with cohesion scores
+ */
+export interface LCCommunities {
+  tag: "communities";
+}
+
+/**
+ * (community_of "name") - get community for a specific node
+ */
+export interface LCCommunityOf {
+  tag: "community_of";
+  name: string;
+}
+
+/**
+ * (god_nodes [topN]) - top-N highest-degree nodes
+ */
+export interface LCGodNodes {
+  tag: "god_nodes";
+  topN?: number;
+}
+
+/**
+ * (surprising_connections [topN]) - cross-community/inferred edges
+ */
+export interface LCSurprisingConnections {
+  tag: "surprising_connections";
+  topN?: number;
+}
+
+/**
+ * (bridge_nodes [topN]) - nodes bridging communities
+ */
+export interface LCBridgeNodes {
+  tag: "bridge_nodes";
+  topN?: number;
+}
+
+/**
+ * (suggest_questions) - questions the graph can answer
+ */
+export interface LCSuggestQuestions {
+  tag: "suggest_questions";
+}
+
+/**
+ * (graph_report) - full analysis report
+ */
+export interface LCGraphReport {
+  tag: "graph_report";
 }
 
 /**

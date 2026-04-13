@@ -425,6 +425,21 @@ When a code file is loaded, Lattice automatically builds an in-memory knowledge 
 
 The graph is built using line-based heuristics (word-boundary matching for calls, syntax pattern matching for extends/implements), so it produces approximate but useful results without requiring a full language server.
 
+#### Graph Analysis
+
+Community detection and structural insights help you understand codebase architecture:
+
+```scheme
+(communities)                   ; Detect communities with cohesion scores
+(community_of "name")           ; Which community does this symbol belong to?
+(god_nodes)                     ; Top 10 most-connected nodes (hubs)
+(god_nodes 5)                   ; Top N most-connected nodes
+(surprising_connections)         ; Cross-community or low-confidence edges
+(bridge_nodes)                  ; Nodes bridging different communities
+(suggest_questions)             ; Questions the graph can answer
+(graph_report)                  ; Full analysis (all of the above)
+```
+
 #### Adding Language Support
 
 Matryoshka includes built-in symbol mappings for 20+ languages. To enable a language, install its tree-sitter grammar package:
