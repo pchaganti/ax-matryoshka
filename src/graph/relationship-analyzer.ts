@@ -39,7 +39,7 @@ export class RelationshipAnalyzer {
     const edgeSet = new Set<string>();
 
     const addEdge = (source: string, target: string, relation: EdgeRelation, confidence: Confidence) => {
-      const key = `${source}|${target}|${relation}|${confidence}`;
+      const key = `${source}|${target}|${relation}`;
       if (!edgeSet.has(key)) {
         edgeSet.add(key);
         edges.push({ source, target, relation, confidence });

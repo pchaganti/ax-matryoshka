@@ -102,6 +102,14 @@ describe("Graph Analysis Nucleus Commands", () => {
       const result = await query('(community_of "ghost")', bindings, tools);
       expect(result.success).toBe(false);
     });
+
+    it("should throw when node was added after community detection", async () => {
+      const graph = bindings.get("_symbolGraph") as SymbolGraph;
+      graph.addSymbol({ name: "lateNode", kind: "function", startLine: 1, endLine: 1, startCol: 0, endCol: 0 });
+
+      const result = await query('(community_of "lateNode")', bindings, tools);
+      expect(result.success).toBe(false);
+    });
   });
 
   describe("god_nodes", () => {

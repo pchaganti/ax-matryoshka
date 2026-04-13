@@ -120,4 +120,35 @@ describe("GraphCommunityDetector", () => {
       expect(detect.nodeCommunity("ghost")).toBeUndefined();
     });
   });
+
+  describe("invalidate", () => {
+    it("should re-run Louvain after invalidate() when graph has changed", () => {
+      const { graph, detect } = buildGraphWithCommunities();
+      const first = detect.detect();
+
+      graph.addSymbol(makeSymbol("NewService", "class"));
+      graph.addEdge("NewService", "Database", "calls");
+      graph.addEdge("NewService", "QueryBuilder", "calls");
+      graph.addEdge("NewService", "Migration", "calls");
+
+      const stale = detect.detect();
+      expect(stale["NewService"]).toBeUndefined();
+
+      detect.invalidate();
+      const fresh = detect.detect();
+      expect(fresh["NewService"]).toBeDefined();
+      expect(fresh["NewService"]).not.toEqual(first["AuthService"]);
+    });
+
+    it("should clear communityList cache after invalidate()", () => {
+      const { detect } = buildGraphWithCommunities();
+      detect.detect();
+      const firstList = detect.communityList();
+      const firstCount = firstList.length;
+
+      detect.invalidate();
+      const secondList = detect.communityList();
+      expect(secondList.length).toBe(firstCount);
+    });
+  });
 });

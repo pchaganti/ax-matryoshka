@@ -1273,7 +1273,10 @@ async function evaluate(
           throw new Error(`community_of: Node "${term.name}" has no community assignment (graph may have been modified since detection)`);
         }
         const community = detector.communityList().find((c) => c.id === cid);
-        return community ?? { id: cid, nodes: [term.name], cohesion: 1.0 };
+        if (!community) {
+          throw new Error(`community_of: Node "${term.name}" has community ID ${cid} but no matching community in the cached list. Call invalidate() on the detector and retry.`);
+        }
+        return community;
       }
 
       const { GraphAnalyzer } = await import("../graph/graph-analyzer.js");
