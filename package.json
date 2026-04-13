@@ -87,6 +87,7 @@
     "@yogthos/tree-sitter-clojure": "^0.0.14",
     "better-sqlite3": "^12.6.2",
     "graphology": "^0.26.0",
+    "graphology-communities-louvain": "^2.0.2",
     "graphology-dag": "^0.4.1",
     "graphology-shortest-path": "^2.1.0",
     "graphology-traversal": "^0.3.1",

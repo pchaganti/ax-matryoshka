@@ -17,7 +17,8 @@ export type SymbolKind =
   | "property"
   | "enum"
   | "module"
-  | "namespace";
+  | "namespace"
+  | "file";
 
 /**
  * Represents a symbol extracted from source code
@@ -41,6 +42,8 @@ export interface Symbol {
   id?: number;
   /** Parent symbol ID for nested symbols */
   parentSymbolId?: number | null;
+  /** Source file path this symbol was extracted from */
+  sourceFile?: string;
 }
 
 /**

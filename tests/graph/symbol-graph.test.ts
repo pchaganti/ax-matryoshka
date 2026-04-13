@@ -263,8 +263,8 @@ describe("SymbolGraph", () => {
     it("should return edges in the neighborhood", () => {
       const hood = graph.neighborhood("b", 1);
       expect(hood.edges.length).toBeGreaterThanOrEqual(2);
-      expect(hood.edges).toContainEqual({ source: "a", target: "b", relation: "calls" });
-      expect(hood.edges).toContainEqual({ source: "b", target: "c", relation: "calls" });
+      expect(hood.edges).toContainEqual({ source: "a", target: "b", relation: "calls", confidence: "EXTRACTED" });
+      expect(hood.edges).toContainEqual({ source: "b", target: "c", relation: "calls", confidence: "EXTRACTED" });
     });
 
     it("should expand neighborhood with larger depth", () => {
