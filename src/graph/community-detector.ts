@@ -36,6 +36,10 @@ export class GraphCommunityDetector {
     this.communities = precomputed ?? null;
   }
 
+  invalidate(): void {
+    this.communities = null;
+  }
+
   detect(): CommunityMap {
     if (this.communities) return this.communities;
 

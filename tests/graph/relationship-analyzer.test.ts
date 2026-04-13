@@ -235,6 +235,29 @@ function main() {
       const callEdges = edges.filter((e) => e.source === "main" && e.target === "helper" && e.relation === "calls");
       expect(callEdges).toHaveLength(1);
     });
+
+    it("should deduplicate by source+target+relation regardless of confidence", () => {
+      const analyzer = new RelationshipAnalyzer();
+      const code = `
+class Base {}
+class Foo extends Base {
+  bar() {
+    return Base;
+  }
+}
+`.trim();
+
+      const symbols = [
+        makeSymbol("Base", "class", 1, 1),
+        makeSymbol("Foo", "class", 2, 6),
+        makeSymbol("bar", "method", 3, 5, { parentSymbolId: 1 }),
+      ];
+
+      const edges = analyzer.analyze(symbols, code);
+      const fooToBase = edges.filter((e) => e.source === "Foo" && e.target === "Base");
+      expect(fooToBase).toHaveLength(1);
+      expect(fooToBase[0].relation).toBe("extends");
+    });
   });
 
   describe("large symbol sets", () => {
