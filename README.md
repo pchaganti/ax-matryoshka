@@ -1,6 +1,7 @@
 # Matryoshka
 
 [![Tests](https://github.com/yogthos/Matryoshka/actions/workflows/test.yml/badge.svg)](https://github.com/yogthos/Matryoshka/actions/workflows/test.yml)
+[![SafeSkill 88/100](https://img.shields.io/badge/SafeSkill-88%2F100_Passes%20with%20Notes-yellow)](https://safeskill.dev/scan/yogthos-matryoshka)
 
 Process documents 100x larger than your LLM's context window—without vector databases or chunking heuristics.
 
