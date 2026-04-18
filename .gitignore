@@ -53,3 +53,9 @@ anki-connect/
 .dolt/
 *.db
 .beads-credential-key
+
+# OpenWolf tooling
+.wolf/
+
+# Local paper source
+arXiv-*/

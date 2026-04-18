@@ -1,8 +1,15 @@
+# OpenWolf
+
+@.wolf/OPENWOLF.md
+
+This project uses OpenWolf for context management. Read and follow .wolf/OPENWOLF.md every session. Check .wolf/cerebrum.md before generating code. Check .wolf/anatomy.md before reading files.
+
+
 # Claude Code Guidelines for Matryoshka RLM
 
 ## What This Project Does
 
-**Matryoshka RLM** (Recursive Language Model) processes documents 100x larger than an LLM context window without RAG or chunking. The LLM emits **Nucleus commands** (constrained S-expressions), which are parsed, type-checked, and executed by the **Lattice logic engine**. Results are stored server-side in SQLite — the LLM sees only handle stubs (`$res1: Array(1000) [preview...]`), achieving **97%+ token savings**.
+**Matryoshka RLM** (Recursive Language Model) processes documents 100x larger than an LLM context window without RAG or chunking. The LLM emits **Nucleus commands** (constrained S-expressions), which are parsed, type-checked, and executed by the **Lattice logic engine**. Results are stored server-side in SQLite — the LLM sees only descriptive handle stubs derived from the command (`$grep_error: Array(1000) [preview...]`), achieving **97%+ token savings**.
 
 ```
 User Query → LLM Reasons → Nucleus S-expression
@@ -120,7 +127,7 @@ await nucleus.executeCommand({ type: "query", command: "(sum RESULTS)" });
 
 ### Handle System
 
-Query results are stored server-side as handles (e.g., `$res1`). You receive compact stubs instead of full data, saving 97%+ tokens. Use `lattice_expand` to inspect actual content when needed.
+Query results are stored server-side as handles with **descriptive names derived from the command** (e.g. `(grep "ERROR")` → `$grep_error`, `(list_symbols "function")` → `$list_symbols_function`). Repeated commands get numeric suffixes (`$grep_error_2`). You receive compact stubs instead of full data, saving 97%+ tokens. Use `lattice_expand` to inspect actual content when needed.
 
 - **`lattice_expand`** - View full data from a handle (supports `limit`, `offset`, `format`)
 - **`lattice_bindings`** - Show all active handles and their stubs
@@ -298,7 +305,7 @@ _1, _2, _3, ...                    ; Results from turn N (auto-bound)
 context                             ; Raw document content
 ```
 
-Note: `$res1`, `$res2`, etc. are handle stubs for `lattice_expand` only. Use `RESULTS` or `_1`, `_2`, `_3` to reference previous results in queries.
+Note: Descriptive handle stubs (e.g. `$grep_error`, `$filter`, `$map`) are for `lattice_expand` only — do NOT reference them inside Nucleus queries. Use `RESULTS` (latest array) or `_1`, `_2`, `_3` (per-turn) to chain queries.
 
 ### Multi-Signal Search Pipeline
 ```scheme
@@ -319,24 +326,24 @@ Note: `$res1`, `$res2`, etc. are handle stubs for `lattice_expand` only. Use `RE
 
 #### Symbol Workflow
 ```
-1. (list_symbols "function")         → $res1: Array(15) [preview]
+1. (list_symbols "function")         → $list_symbols_function: Array(15) [preview]
 2. (get_symbol_body "myFunction")    → Returns source code directly
-3. (find_references "myFunction")    → $res2: Array(8) [references]
+3. (find_references "myFunction")    → $find_references_myfunction: Array(8) [references]
 ```
 
 #### Graph Workflow
 ```
-1. (callers "handleRequest")         → $res1: Array(3) [who calls it]
-2. (callees "handleRequest")         → $res2: Array(5) [what it calls]
-3. (ancestors "MyService")           → $res3: [BaseService, EventEmitter]
+1. (callers "handleRequest")         → $callers_handlerequest: Array(3) [who calls it]
+2. (callees "handleRequest")         → $callees_handlerequest: Array(5) [what it calls]
+3. (ancestors "MyService")           → $ancestors_myservice: [BaseService, EventEmitter]
 4. (symbol_graph "handleRequest" 2)  → Subgraph: 12 nodes, 15 edges
-5. (communities)                     → $res5: [{id: 0, nodes: [...], cohesion: 0.67}, ...]
+5. (communities)                     → $communities: [{id: 0, nodes: [...], cohesion: 0.67}, ...]
 6. (graph_report)                    → Full analysis: god nodes, surprises, bridges, questions
 ```
 
 #### Markdown Workflow
 ```
-1. (list_symbols)                    → $res1: Array(12) [# Intro, ## Setup, ...]
+1. (list_symbols)                    → $list_symbols: Array(12) [# Intro, ## Setup, ...]
 2. (grep "## Installation")         → Find specific section content
 ```
 
@@ -348,15 +355,15 @@ Instead of carrying full context in every message, store it server-side and refe
 ```
 # Store context — no lattice_load required
 lattice_memo content="<file summary or analysis>" label="auth module architecture"
-→ $memo1: "auth module architecture" (2.1KB, 50 lines)
+→ $memo_auth_module_architecture: "auth module architecture" (2.1KB, 50 lines)
 
 # Continue working with just the stub (~15 tokens instead of ~500)
 # Pull back full content only when needed:
-lattice_expand $memo1
+lattice_expand $memo_auth_module_architecture
 → Full text
 
 # Memos persist across document loads
-lattice_load ./other-file.ts    # $memo1 survives this
+lattice_load ./other-file.ts    # $memo_auth_module_architecture survives this
 ```
 
 **IMPORTANT — Maintain a memo index**: After stashing memos, include a brief index
@@ -365,9 +372,12 @@ in your response so you know what's available on future turns without calling
 
 ```
 Stashed memos:
-- $memo1: "auth module architecture" — key types, middleware chain, session flow
-- $memo2: "perf bottleneck analysis" — hot paths, allocation sites, recommendations
+- $memo_auth_module_architecture — key types, middleware chain, session flow
+- $memo_perf_bottleneck_analysis — hot paths, allocation sites, recommendations
 ```
+Memo names are derived from the label you pass to `lattice_memo` (repeated
+labels get numeric suffixes like `$memo_auth_2`). Labels without slug content
+fall back to `$memo`, `$memo_2`, …
 
 Keep the index to one line per memo (handle + label + what's inside). Update it
 when you add or delete memos. This costs ~10 tokens per memo but saves a tool call
