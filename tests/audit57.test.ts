@@ -69,7 +69,7 @@ describe("Audit #57", () => {
       const source = readFileSync("src/persistence/session-db.ts", "utf-8");
       const loadDocStart = source.indexOf("loadDocument(");
       expect(loadDocStart).toBeGreaterThan(-1);
-      const block = source.slice(loadDocStart, loadDocStart + 500);
+      const block = source.slice(loadDocStart, loadDocStart + 1500);
       expect(block).toMatch(/MAX_LINES|MAX_DOCUMENT|lines\.length\s*>/i);
     });
   });

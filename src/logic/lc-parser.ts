@@ -174,6 +174,16 @@ function tokenize(input: string): Token[] {
           i++;
         }
       }
+      // Distinguish overflow from EOF: if the loop exited because we hit
+      // the size cap (not the closing quote), bail with an explicit
+      // length-related error instead of advancing `i` past whatever
+      // character happens to be next — that would silently mis-pair
+      // quotes and corrupt the rest of the parse.
+      if (str.length >= MAX_STRING_LENGTH && input[i] !== '"') {
+        throw new Error(
+          `String literal too long: exceeds ${MAX_STRING_LENGTH} characters`
+        );
+      }
       if (i >= input.length) {
         // Unterminated string - throw to produce a clear error message
         throw new Error("Unterminated string literal");

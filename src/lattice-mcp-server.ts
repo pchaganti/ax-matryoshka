@@ -31,6 +31,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { stat } from "node:fs/promises";
 import { resolve, sep } from "node:path";
+import { randomUUID } from "node:crypto";
 import { HandleSession, type HandleResult } from "./engine/handle-session.js";
 import { getVersion } from "./version.js";
 import { hasTraversalSegment } from "./utils/path-safety.js";
@@ -117,6 +118,16 @@ let earlySuspension:
   | { type: "query"; id: string; prompt: string }
   | { type: "batch"; id: string; prompts: string[]; calibrate?: boolean }
   | null = null;
+
+/**
+ * Generate a pending-request ID. Uses crypto.randomUUID for the random
+ * portion so concurrent suspensions in the same millisecond can't collide
+ * — the previous `Date.now() + 6 base36 chars` form had ~36 bits of
+ * entropy and was a real collision risk under load.
+ */
+export function makePendingId(prefix: "q" | "b"): string {
+  return `${prefix}_${Date.now()}_${randomUUID()}`;
+}
 
 function resetInactivityTimer(): void {
   if (timeoutHandle) {
@@ -1274,7 +1285,7 @@ async function main() {
     // Create a pending Promise that the tool handler will return as a
     // suspension request. The LLM client calls lattice_llm_respond to
     // resolve it and continue execution. Works with any MCP client.
-    const id = `q_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const id = makePendingId("q");
 
     const promise = new Promise<string>((resolve, reject) => {
       pendingQueries.set(id, { id, prompt, resolve, reject, createdAt: Date.now() });
@@ -1322,7 +1333,7 @@ async function main() {
       );
     }
 
-    const id = `b_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const id = makePendingId("b");
     const calibrate = options?.calibrate;
     const promise = new Promise<string[]>((resolve, reject) => {
       pendingBatches.set(id, {

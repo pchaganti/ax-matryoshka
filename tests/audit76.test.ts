@@ -118,7 +118,7 @@ describe("Audit #76", () => {
       const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
       const replaceCase = source.indexOf('case "replace"');
       expect(replaceCase).toBeGreaterThan(-1);
-      const block = source.slice(replaceCase, replaceCase + 600);
+      const block = source.slice(replaceCase, replaceCase + 900);
       expect(block).toMatch(/MAX_RESULT|result\.length\s*>/);
     });
   });

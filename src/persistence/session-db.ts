@@ -75,8 +75,16 @@ export function commandToSlug(command?: string): string {
   return slug || "res";
 }
 
+export interface LoadStatus {
+  truncated: boolean;
+  reason?: string;
+  originalLines?: number;
+  storedLines: number;
+}
+
 export class SessionDB {
   private db: Database.Database | null;
+  private lastLoadStatus: LoadStatus = { truncated: false, storedLines: 0 };
   /** Tracks usage count per slug base for collision disambiguation */
   private slugCounts: Map<string, number> = new Map();
 
@@ -199,25 +207,42 @@ export class SessionDB {
    * Load document content into the database
    */
   loadDocument(content: string): number {
-    if (!this.db) return 0;
+    if (!this.db) {
+      this.lastLoadStatus = { truncated: false, storedLines: 0 };
+      return 0;
+    }
 
     // Handle empty document
     if (!content) {
       this.db.exec("DELETE FROM document_lines");
+      this.lastLoadStatus = { truncated: false, storedLines: 0 };
       return 0;
     }
+
+    const originalLength = content.length;
+    let truncated = false;
+    let reason: string | undefined;
 
     // Cap content size before splitting to prevent OOM on huge strings
     const MAX_CONTENT_SIZE = 100_000_000; // 100MB
     if (content.length > MAX_CONTENT_SIZE) {
       content = content.slice(0, MAX_CONTENT_SIZE);
+      truncated = true;
+      reason = `content size ${originalLength} exceeded MAX_CONTENT_SIZE (${MAX_CONTENT_SIZE} bytes)`;
     }
 
+    // Pre-fix this method silently dropped overflow content. Now we
+    // surface it via lastLoadStatus so callers and operators can tell
+    // when a downstream query is operating on incomplete data.
     const MAX_LINES = 500_000;
-    let lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n", MAX_LINES + 1);
-    if (lines.length > MAX_LINES) {
-      lines = lines.slice(0, MAX_LINES);
+    const allLines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n", MAX_LINES + 1);
+    let lines = allLines;
+    if (allLines.length > MAX_LINES) {
+      lines = allLines.slice(0, MAX_LINES);
+      truncated = true;
+      reason = `line count exceeded MAX_LINES (${MAX_LINES})`;
     }
+
     const insert = this.db.prepare(
       "INSERT INTO document_lines (lineNum, content) VALUES (?, ?)"
     );
@@ -231,7 +256,26 @@ export class SessionDB {
     });
 
     replaceAll(lines);
+
+    this.lastLoadStatus = {
+      truncated,
+      reason,
+      originalLines: truncated ? allLines.length : undefined,
+      storedLines: lines.length,
+    };
+    if (truncated) {
+      console.error(`[SessionDB] loadDocument truncated: ${reason}`);
+    }
     return lines.length;
+  }
+
+  /**
+   * Truncation metadata from the most recent loadDocument() call.
+   * Callers can use this to warn the user when a downstream query
+   * may be operating on incomplete data.
+   */
+  getLastLoadStatus(): LoadStatus {
+    return this.lastLoadStatus;
   }
 
   /**

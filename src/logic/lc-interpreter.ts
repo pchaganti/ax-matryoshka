@@ -256,6 +256,9 @@ export function evaluate(
       if (typeof str !== "string") {
         throw new Error(`replace: expected string, got ${typeof str}`);
       }
+      if (typeof term.to !== "string") {
+        throw new Error(`replace: expected string for 'to', got ${typeof term.to}`);
+      }
       const replaceValidation = validateRegex(term.from);
       if (!replaceValidation.valid) return str;
       // Escape $ in replacement to prevent backreference injection ($1, $&, etc.)
@@ -274,7 +277,9 @@ export function evaluate(
       if (!Number.isInteger(term.index) || term.index < 0) return null;
       if (typeof term.delim !== "string" || term.delim.length === 0 || term.delim.length > 1000) return null;
       const MAX_SPLIT_PARTS = 10_000;
-      const parts = str.split(term.delim);
+      // Bound the split itself, not just the post-allocation check —
+      // see lc-solver.ts split case for the full reasoning.
+      const parts = str.split(term.delim, MAX_SPLIT_PARTS + 1);
       if (parts.length > MAX_SPLIT_PARTS) return null;
       if (term.index >= parts.length) return null;
       return parts[term.index] ?? null;

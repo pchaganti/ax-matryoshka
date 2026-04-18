@@ -105,7 +105,7 @@ describe("Audit #40", () => {
     it("should check for empty delimiter before splitting", () => {
       const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
       // Find the split case near line 439
-      const splitCase = source.match(/case "split"[\s\S]*?\.split\(term\.delim\)/);
+      const splitCase = source.match(/case "split"[\s\S]*?\.split\(term\.delim/);
       expect(splitCase).not.toBeNull();
       // Should check for empty delimiter
       expect(splitCase![0]).toMatch(/delim.*length|!term\.delim|delim === ""/);

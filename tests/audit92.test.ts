@@ -95,7 +95,7 @@ describe("Audit #92", () => {
       const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
       const splitCase = source.indexOf('case "split"');
       expect(splitCase).toBeGreaterThan(-1);
-      const block = source.slice(splitCase, splitCase + 600);
+      const block = source.slice(splitCase, splitCase + 900);
       // Should check term.index against parts.length
       expect(block).toMatch(/index\s*>=\s*parts\.length|index\s*>\s*parts\.length\s*-\s*1/);
     });

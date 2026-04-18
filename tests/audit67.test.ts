@@ -27,7 +27,7 @@ describe("Audit #67", () => {
       const source = readFileSync("src/persistence/session-db.ts", "utf-8");
       const fnStart = source.indexOf("loadDocument(content");
       expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
+      const block = source.slice(fnStart, fnStart + 600);
       expect(block).toMatch(/MAX_CONTENT|content\.length\s*>/i);
     });
   });

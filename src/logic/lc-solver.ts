@@ -85,6 +85,58 @@ export type Bindings = Map<string, unknown>;
 const moduleQStore = new QValueStore();
 
 /**
+ * Walk the pattern with a paren stack to detect any group that has
+ * an internal quantifier AND a trailing quantifier — the canonical
+ * shape of catastrophic backtracking, e.g. (a+)+, (a*)+, (.*(.*).*)+,
+ * ((a|b)+)+, (?:a+)+. A regex-only check can't see through nested
+ * parens; the scanner skips escapes and character classes so it
+ * doesn't false-positive on literal `(`/`)`/quantifier chars.
+ */
+function hasNestedQuantifier(pattern: string): boolean {
+  const stack: { hasQuantInside: boolean }[] = [];
+  const isQuant = (c: string) => c === "+" || c === "*" || c === "{";
+  let i = 0;
+  while (i < pattern.length) {
+    const c = pattern[i];
+    if (c === "\\") {
+      i += 2;
+      continue;
+    }
+    if (c === "[") {
+      // Skip character class — its contents aren't group structure.
+      i++;
+      while (i < pattern.length && pattern[i] !== "]") {
+        if (pattern[i] === "\\") i++;
+        i++;
+      }
+      i++;
+      continue;
+    }
+    if (c === "(") {
+      stack.push({ hasQuantInside: false });
+      i++;
+      continue;
+    }
+    if (c === ")") {
+      const top = stack.pop();
+      i++;
+      if (i < pattern.length && isQuant(pattern[i])) {
+        if (top?.hasQuantInside) return true;
+        // Trailing quantifier on this group counts as a quantifier
+        // in the parent group's body for the next iteration.
+        if (stack.length > 0) stack[stack.length - 1].hasQuantInside = true;
+      }
+      continue;
+    }
+    if (isQuant(c) && stack.length > 0) {
+      stack[stack.length - 1].hasQuantInside = true;
+    }
+    i++;
+  }
+  return false;
+}
+
+/**
  * Validate a regex pattern for safety (ReDoS protection)
  */
 export function validateRegex(pattern: string): { valid: boolean; error?: string } {
@@ -98,9 +150,8 @@ export function validateRegex(pattern: string): { valid: boolean; error?: string
     return { valid: false, error: `Regex pattern too long (${pattern.length} chars, max 500)` };
   }
 
-  // Reject nested quantifiers that cause catastrophic backtracking
-  // Patterns like (a+)+, (a*)+, (a+)*, (a{1,})+, etc.
-  if (/(\((?:[^()]*[+*{])[^()]*\))[+*{]|\(\?[^)]*[+*{][^)]*\)[+*{]/.test(pattern)) {
+  // Reject nested quantifiers that cause catastrophic backtracking.
+  if (hasNestedQuantifier(pattern)) {
     return { valid: false, error: "Regex contains nested quantifiers which may cause catastrophic backtracking" };
   }
 
@@ -753,6 +804,9 @@ async function evaluate(
       if (typeof str !== "string") {
         throw new Error(`replace: expected string, got ${typeof str}`);
       }
+      if (typeof term.to !== "string") {
+        throw new Error(`replace: expected string for 'to', got ${typeof term.to}`);
+      }
       const replaceValidation = validateRegex(term.from);
       if (!replaceValidation.valid) {
         throw new Error(`replace: ${replaceValidation.error}`);
@@ -773,7 +827,12 @@ async function evaluate(
       if (!Number.isInteger(term.index) || term.index < 0) return null;
       if (!term.delim || term.delim.length === 0 || term.delim.length > 1000) return null;
       const MAX_SPLIT_PARTS = 10_000;
-      const parts = str.split(term.delim);
+      // Bound the split itself, not just the post-allocation check —
+      // an unbounded `str.split(delim)` on a multi-MB string with a
+      // common delimiter materializes the full part array (potentially
+      // millions of strings) before we ever look at .length. Asking
+      // for one extra part is enough to detect overflow.
+      const parts = str.split(term.delim, MAX_SPLIT_PARTS + 1);
       if (parts.length > MAX_SPLIT_PARTS) return null;
       return parts[term.index] ?? null;
     }
@@ -1637,6 +1696,9 @@ async function evaluateWithBinding(
       const str = body.str.tag === "var" && body.str.name === param
         ? String(value)
         : String(await evaluateWithBinding(body.str, param, value, tools, bindings, log, depth + 1));
+      if (typeof body.to !== "string") {
+        throw new Error(`replace: expected string for 'to', got ${typeof body.to}`);
+      }
       const replaceVal = validateRegex(body.from);
       if (!replaceVal.valid) {
         throw new Error(`replace: ${replaceVal.error}`);

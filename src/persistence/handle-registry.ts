@@ -44,7 +44,18 @@ export class HandleRegistry {
    * @param command Optional Nucleus command for deriving a descriptive handle name.
    */
   store(data: unknown[], command?: string): string {
+    // Bound the eviction loop so a stuck or inconsistent backing
+    // store can't spin forever. Each evictOldest() must reduce
+    // handleCount; if we go an iteration without progress we bail.
+    let lastCount = -1;
     while (this.db.handleCount() >= HandleRegistry.MAX_HANDLES) {
+      const before = this.db.handleCount();
+      if (before === lastCount) {
+        throw new Error(
+          `HandleRegistry: eviction made no progress at count=${before} (MAX=${HandleRegistry.MAX_HANDLES})`
+        );
+      }
+      lastCount = before;
       this.evictOldest();
     }
     return this.db.createHandle(data, command);
@@ -149,17 +160,17 @@ export class HandleRegistry {
   }
 
   /**
-   * Evict the oldest non-memo handle to free space
+   * Evict the oldest non-memo handle to free space.
+   * Throws if there is nothing to evict — callers (e.g. store()'s
+   * eviction loop) rely on this to detect inconsistent state and
+   * abort instead of spinning.
    */
   evictOldest(): void {
     const handles = this.db.listHandles();
-    const target = handles.find(h => !h.startsWith("$memo"));
-    if (target) {
-      this.delete(target);
-      return;
+    if (handles.length === 0) {
+      throw new Error("HandleRegistry: evictOldest called but no handles to evict");
     }
-    if (handles.length > 0) {
-      this.delete(handles[0]);
-    }
+    const target = handles.find(h => !h.startsWith("$memo")) ?? handles[0];
+    this.delete(target);
   }
 }
