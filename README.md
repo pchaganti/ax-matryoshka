@@ -62,15 +62,15 @@ Matryoshka has two execution paths and not every primitive works in both:
 |---|---|---|
 | `(grep …)`, `(filter …)`, `(map …)`, etc. | ✅ | ✅ |
 | `(llm_query …)`, `(llm_batch …)` | ✅ | ✅ via MCP sampling protocol |
-| `(rlm_query …)`, `(rlm_batch …)` | ✅ | ❌ throws "not available in this execution context" |
+| `(rlm_query …)`, `(rlm_batch …)` | ✅ | ✅ — child Nucleus session spawns via the same MCP sampling bridge; the user sees M suspensions per call where M = child's turn count to FINAL |
 | `(context N)` selector | ✅ (multi-doc via `runRLMFromContent(query, string[])`) | partial — `(context 0)` works; multi-doc loading not exposed via `lattice_load` |
 | `(grep "X" haystack)` | ✅ | ✅ |
-| `(show_vars)` | ✅ | ✅ |
+| `(show_vars)` | ✅ | ✅ (internal `_<name>` bindings filtered out) |
 | `FINAL_VAR(name)` resolution | ✅ | N/A — MCP returns query results directly |
 | `maxTimeoutMs` / `maxTokens` / `maxErrors` | ✅ | ❌ — MCP has its own session timeout |
 | `compactionThresholdChars` | ✅ | ❌ — MCP doesn't have a multi-turn FSM history |
 
-The recursive (`rlm_query`/`rlm_batch`) and resource-limit features were built for the `runRLM` FSM loop. Wiring them into `lattice-mcp-server` would require additional plumbing (child-session spawning, MCP-protocol propagation of timeouts) that hasn't been done.
+The resource-limit features remain `runRLM`-only. The recursive primitives (`rlm_query`/`rlm_batch`) work in both paths — the MCP path spawns a child `runRLMFromContent` whose `llmClient` is the same sampling bridge as the parent, so each child turn flows through the existing MCP suspension/sampling protocol.
 
 #### Recursive Primitives
 
