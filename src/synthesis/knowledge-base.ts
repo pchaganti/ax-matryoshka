@@ -232,9 +232,12 @@ export class KnowledgeBase {
   }
 
   /**
-   * Import knowledge base from persistence
+   * Import knowledge base from persistence. Named `importComponents`
+   * (not `import`) to avoid confusion with the JS `import()` dynamic-
+   * import operator — static analyzers flag bare `.import(...)` as
+   * a potential dynamic-import call when it's just a method name.
    */
-  import(components: SynthesizedComponent[]): void {
+  importComponents(components: SynthesizedComponent[]): void {
     for (const component of components) {
       this.add(component);
     }

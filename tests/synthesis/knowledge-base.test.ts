@@ -539,7 +539,7 @@ describe("Knowledge Base", () => {
         },
       ];
 
-      kb.import(components);
+      kb.importComponents(components);
 
       expect(kb.get("imported1")).not.toBeNull();
       expect(kb.get("imported1")!.usageCount).toBe(100);
@@ -564,7 +564,7 @@ describe("Knowledge Base", () => {
       const exported = kb.export();
 
       const newKb = new KnowledgeBase();
-      newKb.import(exported);
+      newKb.importComponents(exported);
 
       const restored = newKb.get("original");
       expect(restored).not.toBeNull();
