@@ -1103,6 +1103,36 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       return { tag: "rlm_query", prompt: promptStr, context };
     }
 
+    case "rlm_batch": {
+      // (rlm_batch COLLECTION (lambda X (rlm_query "prompt" [(context EXPR)])))
+      //
+      // Concurrent variant of `(map COLL (lambda x (rlm_query …)))`.
+      // Same surface as llm_batch, but the lambda body is an
+      // rlm_query (recursive child Nucleus session) instead of an
+      // llm_query (flat sub-LLM call). Solver collects the per-item
+      // (prompt, context) pairs and dispatches them through a single
+      // tools.rlmBatch call so the implementation can fan them out
+      // in parallel.
+      //
+      // Restriction: lambda body MUST be a direct rlm_query. Any
+      // wrapping (e.g. (if … (rlm_query …) "default")) breaks the
+      // static prompt/context extraction the batch path relies on.
+      const collection = parseTerm(state, d);
+      if (!collection) return null;
+
+      const lambdaTerm = parseTerm(state, d);
+      if (!lambdaTerm || lambdaTerm.tag !== "lambda") return null;
+      if (lambdaTerm.body.tag !== "rlm_query") return null;
+
+      return {
+        tag: "rlm_batch",
+        collection,
+        param: lambdaTerm.param,
+        prompt: lambdaTerm.body.prompt,
+        context: lambdaTerm.body.context,
+      };
+    }
+
     case "llm_batch": {
       // (llm_batch COLLECTION (lambda X (llm_query "prompt" [(name bind) ...])))
       //

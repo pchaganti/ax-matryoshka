@@ -51,7 +51,10 @@ export function inferTurn(prompt: string): number {
   return (matches ? matches.length : 0) + 1;
 }
 
-export type Responder = (prompt: string, turn: number) => string;
+export type Responder = (
+  prompt: string,
+  turn: number
+) => string | Promise<string>;
 
 /**
  * Build an instrumented scripted LLM driven by callback responders.

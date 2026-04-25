@@ -66,7 +66,10 @@ describe("Audit #62", () => {
       const source = readFileSync("src/rlm.ts", "utf-8");
       const fnStart = source.indexOf("function createSolverTools(");
       expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
+      // Window is wide enough to cover the function signature (which
+      // grew when Phase 1/2 added rlmQuery/rlmBatch callback params)
+      // plus the line-cap statement that follows it.
+      const block = source.slice(fnStart, fnStart + 800);
       // Should cap the main lines array, not just sample slices
       expect(block).toMatch(/MAX_SOLVER_LINES|MAX_CONTEXT_LINES|lines\s*=\s*lines\.slice/i);
     });

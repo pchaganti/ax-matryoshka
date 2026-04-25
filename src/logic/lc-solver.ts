@@ -91,6 +91,24 @@ export interface SolverTools {
    * standalone-vs-RLM-loop distinction.
    */
   rlmQuery?: (prompt: string, contextDoc: string | null) => Promise<string>;
+  /**
+   * Optional batched recursive-child invoker for the `(rlm_batch …)`
+   * primitive. Phase 2 of the recursive-Nucleus port.
+   *
+   * The solver collects per-item (prompt, materialized contextDoc)
+   * pairs from the inner rlm_query template and dispatches them
+   * through this callback in ONE call. The implementation is
+   * responsible for fanning the items out concurrently — typically
+   * via `Promise.all` over child session spawns, optionally bounded
+   * by a worker pool. The returned array MUST have one entry per
+   * input item, in the same order.
+   *
+   * When undefined, `(rlm_batch …)` fails with a clear error naming
+   * the execution context — same pattern as rlmQuery / llmBatch.
+   */
+  rlmBatch?: (
+    items: Array<{ prompt: string; contextDoc: string | null }>
+  ) => Promise<string[]>;
 }
 
 /**
@@ -1551,8 +1569,80 @@ async function evaluate(
       );
       const response = await tools.rlmQuery(term.prompt, contextDoc);
       log(`[Solver] rlm_query response length: ${response.length} chars`);
-      log(`[Solver] rlm_query response length: ${response.length} chars`);
       return response;
+    }
+
+    case "rlm_batch": {
+      // Phase 2 — concurrent variant of `(map COLL (lambda x (rlm_query …)))`.
+      // Builds N (prompt, contextDoc) pairs from the inner rlm_query
+      // template and dispatches them through tools.rlmBatch in a
+      // single call. The implementation fans them out concurrently
+      // (typically Promise.all over child sessions); the solver
+      // itself is just the materialization-and-dispatch layer.
+      if (!tools.rlmBatch) {
+        throw new Error(
+          "rlm_batch is not available in this execution context. " +
+          "The RLM loop provides it once the parent threads an " +
+          "rlmBatch callback through SolverTools. Standalone " +
+          "NucleusEngine / HandleSession instances must pass an " +
+          "rlmBatch option to enable it."
+        );
+      }
+
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`rlm_batch: expected array, got ${typeof collection}`);
+      }
+
+      // Empty collection short-circuit — match llm_batch's behavior
+      // so callers don't pay a dispatch round-trip for zero work.
+      if (collection.length === 0) {
+        log(`[Solver] rlm_batch: empty collection, skipping dispatch`);
+        return [];
+      }
+
+      const items: Array<{ prompt: string; contextDoc: string | null }> = [];
+      for (const item of collection) {
+        // Bind the lambda param to the RAW item (no toItemString
+        // coercion). rlm_batch funnels each item through
+        // materializeContext, which knows how to render arrays as
+        // line-oriented documents and objects with a `.line` field
+        // as their line text. Stringifying the item up-front would
+        // collapse all that structure into a flat string and defeat
+        // the handle-as-document property we built for rlm_query.
+        const scopedBindings = new Map(bindings);
+        scopedBindings.set(term.param, item);
+
+        let contextDoc: string | null = null;
+        if (term.context) {
+          const resolved = await evaluate(
+            term.context,
+            tools,
+            scopedBindings,
+            log,
+            depth + 1
+          );
+          contextDoc = materializeContext(resolved);
+        }
+        items.push({ prompt: term.prompt, contextDoc });
+      }
+
+      log(
+        `[Solver] rlm_batch dispatching ${items.length} child sessions in a single call`
+      );
+      const responses = await tools.rlmBatch(items);
+      if (!Array.isArray(responses)) {
+        throw new Error(
+          `rlm_batch: tools.rlmBatch must return an array, got ${typeof responses}`
+        );
+      }
+      if (responses.length !== items.length) {
+        throw new Error(
+          `rlm_batch: expected ${items.length} responses, got ${responses.length}`
+        );
+      }
+      log(`[Solver] rlm_batch received ${responses.length} responses`);
+      return responses;
     }
 
     case "llm_batch": {

@@ -73,6 +73,7 @@ export type LCTerm =
   | LCLLMQuery
   | LCLLMBatch
   | LCRlmQuery
+  | LCRlmBatch
   | LCChunkBySize
   | LCChunkByLines
   | LCChunkByRegex;
@@ -749,6 +750,41 @@ export interface LCRlmQuery {
    * is materialized into a line-oriented string and used as the
    * child's working document. Omitted when the prompt itself is the
    * complete instruction.
+   */
+  context?: LCTerm;
+}
+
+/**
+ * (rlm_batch COLL (lambda x (rlm_query "prompt" [(context EXPR)])))
+ *   — Phase 2 concurrent variant of `(rlm_query …)`.
+ *
+ * Drop-in replacement for `(map COLL (lambda x (rlm_query …)))`. The
+ * solver evaluates the collection, fans the per-item child sessions
+ * out via `tools.rlmBatch` in ONE call carrying all N items, and
+ * returns the array of N child responses in input order.
+ *
+ * Same lambda-of-direct-rlm_query restriction as LCLLMBatch: the
+ * solver must statically extract the inner rlm_query's prompt and
+ * context expression at parse time, so wrapping the rlm_query in
+ * another form (e.g. `(if cond (rlm_query …) "default")`) is not
+ * batchable.
+ */
+export interface LCRlmBatch {
+  tag: "rlm_batch";
+  /** The collection — any term that evaluates to an array. */
+  collection: LCTerm;
+  /** Lambda parameter name bound to each item in turn. */
+  param: string;
+  /**
+   * The inner rlm_query's prompt template. Constant across items
+   * for now (rlm_query has no per-item placeholder interpolation).
+   * Could become a templated string in a future phase.
+   */
+  prompt: string;
+  /**
+   * The inner rlm_query's optional `(context EXPR)` clause. Each
+   * item evaluates this expression with the lambda parameter bound
+   * to the current item before materialization.
    */
   context?: LCTerm;
 }
