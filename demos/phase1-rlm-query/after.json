@@ -1,24 +1,28 @@
 {
   "mode": "phase1",
-  "scenario": "structured-extraction",
-  "docChars": 5545,
-  "docLines": 120,
-  "parentChars": 33722,
+  "scenario": "scaled-handle-as-document",
+  "docChars": 1823,
+  "docLines": 72,
+  "parentChars": 24429,
   "childChars": 0,
-  "totalChars": 33722,
+  "totalChars": 24429,
   "parentCalls": 6,
   "childCalls": 0,
   "totalCalls": 6,
-  "avgParentChars": 5620,
+  "avgParentChars": 4072,
   "avgChildChars": 0,
   "result": "Max turns (6) reached without final answer.",
+  "expectedTotalAuth": 16,
+  "observedSum": null,
+  "correct": false,
   "baseline": {
-    "avgChildChars": 2790,
-    "childCalls": 48,
-    "totalChars": 154512
+    "avgChildChars": 1756,
+    "childCalls": 10,
+    "totalChars": 28600,
+    "observedSum": 0
   },
   "delta": {
     "avgChildCharsPctReduction": 100,
-    "totalCharsPctReduction": 78
+    "totalCharsPctReduction": 15
   }
 }

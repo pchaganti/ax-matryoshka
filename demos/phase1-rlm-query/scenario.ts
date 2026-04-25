@@ -1,82 +1,111 @@
 /**
- * Scenario: structured-extraction over chunks.
+ * Scenario A — scaled handle-as-document benchmark.
  *
- * Document: 8 chunks, each chunk holds 3 unique `FACT-N: <text>` lines
- * surrounded by filler. 24 facts total.
+ * Same failure mode as scenario-b (child grep with `^anchor` over a
+ * JSON-stringified handle returns 0 matches), scaled across N chunks.
+ * Combines a binary correctness gate with a multi-call token measure
+ * so Phase 1 has to win on both axes to pass:
  *
- * Task: extract every FACT line per chunk.
+ *   - Today's path: parent's `(map chunks (lambda c (llm_query "..." (chunk c))))`
+ *     hands each child a JSON-stringified chunk as document. The child
+ *     `(grep "^AUTH:")` matches zero per chunk. Final answer: array of 8
+ *     zeros (wrong).
+ *   - Phase 1: `(map chunks (lambda c (rlm_query "..." (context c))))`
+ *     hands each child a clean line-oriented document. The child grep
+ *     returns the actual AUTH count per chunk. Final answer: array of
+ *     8 correct counts.
  *
- * Why this scenario probes the Phase 1 differential:
- * - Today's path: parent emits `(map COLL (lambda c (llm_query "extract: {item}" (item c))))`
- *   with `subRLMMaxDepth: 1`. Each child receives an interpolated prompt
- *   that *contains* the chunk text plus framing. Child's user message
- *   carries both the framing wrapper AND the chunk; the chunk is also
- *   the child's document. The framing wrapper is paid every iteration.
- * - Phase 1 path: parent emits `(map COLL (lambda c (rlm_query "extract" (context c))))`.
- *   Child's user message is just "extract" (or similar minimal query);
- *   the chunk goes directly to the child as its document, no framing
- *   wrapper inflating the prompt.
+ * Doc layout: 8 chunks, each chunk is a mini-log with 1–3 AUTH lines
+ * plus filler. Total AUTH lines = 16, distributed across the 8 chunks.
  *
- * Measurable savings: childChars per call should drop because the
- * prompt-side framing/interpolation is no longer paid.
+ * Pass criteria:
+ *   - correctness: child's reported counts equal the per-chunk ground
+ *     truth (sum = 16) instead of all-zeros.
+ *   - tokens: per-call child prompt size drops measurably. Captured
+ *     for inspection but not gated as a hard threshold — correctness
+ *     is the primary gate; tokens are descriptive.
  */
 
-const FILLER = (n: number): string =>
-  Array.from(
-    { length: n },
-    (_, i) => `filler line ${i} — ignore this for extraction purposes`
-  ).join("\n");
-
-function chunk(idx: number): string {
-  return [
-    `=== CHUNK ${idx} HEADER ===`,
-    FILLER(3),
-    `FACT-${idx}-A: alpha event recorded at t=${idx * 100}`,
-    FILLER(2),
-    `FACT-${idx}-B: beta threshold exceeded by ${idx * 1.5}`,
-    FILLER(2),
-    `FACT-${idx}-C: gamma operator returned status code ${idx + 200}`,
-    FILLER(3),
-    `=== END CHUNK ${idx} ===`,
-  ].join("\n");
-}
-
-export const SCENARIO_DOC: string = Array.from({ length: 8 }, (_, i) =>
-  chunk(i + 1)
-).join("\n");
-
-export const SCENARIO_QUERY = "List every FACT line, one per line.";
+import type { Responder } from "./harness.js";
 
 /**
- * Scripted LLM responses for the BASELINE (today's path).
- *
- * Parent flow:
- *   turn 1: `(grep "^FACT-")` — fetch the 24 fact lines as RESULTS.
- *   turn 2: `(llm_batch RESULTS (lambda x (llm_query "extract code: {item}" (item x))))`
- *           — this is the closest *flat* baseline; one suspension, N items.
- *           Records: 1 batched parent call carrying 24 prompts.
- *   turn 3: `<<<FINAL>>>...<<<END>>>`
- *
- * For a recursion-flavored baseline we use:
- *   turn 2: `(map RESULTS (lambda x (llm_query "extract code: {item}" (item x))))` with subRLMMaxDepth=1
- *           — fires N child sub-RLMs, each with the interpolated single-line as document.
+ * Per-chunk AUTH counts that the child should report when it can grep
+ * cleanly. This is the ground truth Phase 1 must produce.
  */
-export const BASELINE_PARENT_SCRIPT: string[] = [
-  `(grep "^FACT-")`,
-  `(map RESULTS (lambda x (llm_query "extract code: {item}" (item x))))`,
+export const SCENARIO_A_CHUNK_AUTH_COUNTS: readonly number[] = [
+  2, 1, 3, 2, 1, 2, 3, 2,
+];
+export const SCENARIO_A_TOTAL_AUTH = SCENARIO_A_CHUNK_AUTH_COUNTS.reduce(
+  (a, b) => a + b,
+  0
+); // 16
+
+const FILLER = (n: number, idx: number): string =>
+  Array.from(
+    { length: n },
+    (_, i) => `info: chunk ${idx} heartbeat ${i}`
+  ).join("\n");
+
+function buildChunk(idx: number, authCount: number): string {
+  const lines: string[] = [`=== chunk ${idx} ===`, FILLER(2, idx)];
+  for (let i = 1; i <= authCount; i++) {
+    lines.push(`AUTH: token-failure-${idx}-${i} at ${idx * 100 + i}ms`);
+    lines.push(`info: chunk ${idx} between ${i}`);
+  }
+  lines.push(FILLER(1, idx), `=== end chunk ${idx} ===`);
+  return lines.join("\n");
+}
+
+export const SCENARIO_A_DOC: string = SCENARIO_A_CHUNK_AUTH_COUNTS.map(
+  (n, i) => buildChunk(i + 1, n)
+).join("\n");
+
+export const SCENARIO_A_QUERY = "Per chunk, count AUTH lines.";
+
+/**
+ * Parent script — baseline path uses `llm_query` + subRLMMaxDepth=1.
+ *
+ * Turn 1: chunk the doc into 8 ~equal slices (the doc above is ~120
+ * lines, so chunk_by_lines 15 produces ~8 chunks).
+ * Turn 2: per-chunk `llm_query` so each child sub-RLM works on its
+ * chunk. The child returns the count it observed.
+ * Turn 3: emit FINAL with the array of counts.
+ */
+export const SCENARIO_A_BASELINE_PARENT_SCRIPT: string[] = [
+  `(chunk_by_lines 15)`,
+  `(map RESULTS (lambda c (llm_query "count AUTH lines in this chunk" (chunk c))))`,
   `<<<FINAL>>>FINAL_VAR(_2)<<<END>>>`,
 ];
 
 /**
- * For each child invocation: the FSM rejects a FINAL answer until at
- * least one code term has been executed. So the child must do a probe
- * turn (any well-formed Nucleus term against its document) before
- * emitting FINAL.
+ * Parent script — Phase 1 path uses `rlm_query` with handle-as-context.
  *
- * The child's "document" under today's path is the interpolated
- * `{item}` — a single FACT-line. (grep "FACT-") will match it.
+ * Same shape; the child receives the chunk as its working document
+ * directly instead of JSON-interpolated into a prompt string.
  */
-export const BASELINE_CHILD_SCRIPT: string[] = [
-  `(grep "FACT-")`,
-  `<<<FINAL>>>extracted<<<END>>>`,
+export const SCENARIO_A_PHASE1_PARENT_SCRIPT: string[] = [
+  `(chunk_by_lines 15)`,
+  `(map RESULTS (lambda c (rlm_query "count AUTH lines" (context c))))`,
+  `<<<FINAL>>>FINAL_VAR(_2)<<<END>>>`,
 ];
+
+/**
+ * Shared child responder — same in both modes. The child:
+ *   turn 1: `(grep "^AUTH:")` over its document
+ *   turn 2: counts the matches reported in the prior-turn feedback
+ *           and emits that count as FINAL.
+ *
+ * This makes the test honest: whatever the child reports is what its
+ * grep actually saw. Today's path → JSON noise → 0 per chunk. Phase
+ * 1 → clean lines → real counts.
+ */
+export const SCENARIO_A_CHILD_RESPONDER: Responder = (prompt, turn) => {
+  if (turn === 1) {
+    return `(grep "^AUTH:")`;
+  }
+  const lastResultIdx = prompt.lastIndexOf("Result:");
+  if (lastResultIdx < 0) return `<<<FINAL>>>0<<<END>>>`;
+  const tail = prompt.slice(lastResultIdx);
+  const matchOccurrences = (tail.match(/"match":/g) ?? []).length;
+  return `<<<FINAL>>>${matchOccurrences}<<<END>>>`;
+};
