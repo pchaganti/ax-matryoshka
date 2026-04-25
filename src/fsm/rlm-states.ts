@@ -577,8 +577,8 @@ function handleAnalyze(ctx: RLMContext): RLMContext {
     });
     const bindingsBlock = lines.join("\n");
     const prefix = skipped > 0
-      ? `\n\nBindings available for next turn (${skipped} older entries omitted):\n`
-      : `\n\nBindings available for next turn:\n`;
+      ? `\n\nBindings (${skipped} older omitted):\n`
+      : `\n\nBindings:\n`;
     feedback += `${prefix}${bindingsBlock}`;
   }
 

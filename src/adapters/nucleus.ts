@@ -25,56 +25,50 @@ function buildSystemPrompt(
   if (!Number.isFinite(contextLength) || contextLength < 0) contextLength = 0;
   const sizeCategory = contextLength < 2000 ? "SMALL" : "LARGE";
 
-  return `Analyze document. ONE command per turn.
+  return `ONE command per turn.
 
 SEARCH:
-(grep "pattern")              → matching lines w/ line numbers
-(lines START END)             → get line range (1-indexed)
+(grep "pat")              → matched lines + lineNums
+(lines START END)         → line range, 1-indexed
 
-CHUNK (slice document before mapping over it — for too-large docs):
-(chunk_by_size N)             → N-char slices
-(chunk_by_lines N)            → N-line slices
-(chunk_by_regex "pat")        → slices split on regex (e.g. "\\n\\n")
-  — feed to (map … (lambda c (llm_query "summarize: {chunk}" (chunk c))))
-    to fire a sub-LLM per chunk of a document too big for the root window
+CHUNK (slice big doc for map):
+(chunk_by_size N)         → N-char slices
+(chunk_by_lines N)        → N-line slices
+(chunk_by_regex "pat")    → split on regex
+  use w/ (map … (lambda c (llm_query "..." (chunk c))))
 
 TRANSFORM:
 (filter RESULTS (lambda x (match x "pat" 0)))
 (map RESULTS (lambda x (match x "pat" 1)))
 (count RESULTS)   (sum RESULTS)
 
-SUB-LLM (semantic work on what grep/filter can't express):
-(llm_query "Summarize the data below: {items}" (items RESULTS))
-  — one sub-LLM call over the whole binding
-(map RESULTS (lambda x (llm_query "classify: {item}" (item x))))
-  — one sub-LLM call PER ITEM, returns an array of strings
-(filter RESULTS (lambda x (match (llm_query "keep?: {item}" (item x)) "keep" 0)))
-  — semantic predicate, keep items whose sub-LLM response matches
+SUB-LLM (work grep can't do):
+(llm_query "...{items}" (items RESULTS))   → one call over binding
+(map RESULTS (lambda x (llm_query "..." (item x))))   → per-item
+(filter RESULTS (lambda x (match (llm_query "..." (item x)) "keep" 0)))
 Rules:
-  — prompt is a literal string with {name} placeholders
-  — each (name TERM) fills one placeholder with TERM's evaluated value
-  — use for open-ended semantic tasks (classification, summarization,
-    paraphrase) that don't reduce to regex patterns
+  prompt literal w/ {name} placeholders
+  each (name TERM) fills one placeholder
+  use for classify/summarize/paraphrase, not regex
 
-CODE (when analyzing code):
+CODE:
 (list_symbols)  (list_symbols "function")
 (get_symbol_body "name")  (find_references "name")
- (callers "name")  (callees "name")
- (ancestors "Class")  (descendants "Class")
- (implementations "IFace")  (dependents "name")
- (symbol_graph "name" depth)
- (communities)  (community_of "name")
- (god_nodes)  (god_nodes 5)
- (surprising_connections)  (bridge_nodes)
- (suggest_questions)  (graph_report)
+(callers "name")  (callees "name")
+(ancestors "Class")  (descendants "Class")
+(implementations "IFace")  (dependents "name")
+(symbol_graph "name" depth)
+(communities)  (community_of "name")
+(god_nodes)  (god_nodes 5)
+(surprising_connections)  (bridge_nodes)
+(suggest_questions)  (graph_report)
 
-MULTI-LINE: grep keyword → get lineNum → (lines N M)
-QUERY MAP: count→count, total/sum→sum, list→grep+FINAL
+MULTI-LINE: grep keyword → lineNum → (lines N M)
+QUERY: count→count, sum/total→sum, list→grep+FINAL
 ANSWER: <<<FINAL>>>answer<<<END>>>
-  — for large answers, use FINAL_VAR(name) to reference a binding:
-    <<<FINAL>>>FINAL_VAR(_2)<<<END>>>      — substitutes _2's full value
-    <<<FINAL>>>The matches: FINAL_VAR(RESULTS)<<<END>>>
-  — use this when inlining a large result would blow the context window
+  big answer: FINAL_VAR(name) refs binding
+    <<<FINAL>>>FINAL_VAR(_2)<<<END>>>
+    <<<FINAL>>>matches: FINAL_VAR(RESULTS)<<<END>>>
 
 ${hints?.hintsText || ""}${hints?.selfCorrectionText || ""}`;
 }
@@ -375,14 +369,14 @@ function extractFinalAnswer(
  * Feedback when no LC term found
  */
 function getNoCodeFeedback(): string {
-  return `Parse error: no valid command. Extract a keyword from the query and search:
+  return `No command. Extract keyword from query:
 
-(grep "KEYWORD")   <- extract keyword from query, e.g., "SALES", "ERROR", "stage"
+(grep "KEYWORD")   ← e.g., "ERROR", "SALES", "stage"
 
-Then based on query type:
-- "list/show/what": output items directly <<<FINAL>>>item1, item2<<<END>>>
-- "how many/count": (count RESULTS)
-- "total/sum": (sum RESULTS)
+Then by query type:
+list/show/what → <<<FINAL>>>item1, item2<<<END>>>
+count → (count RESULTS)
+total/sum → (sum RESULTS)
 
 Next:`;
 }
@@ -411,30 +405,28 @@ function getErrorFeedback(error: string, code?: string): string {
 function getSuccessFeedback(resultCount?: number, previousCount?: number, query?: string): string {
   const safeQuery = (query || "the query").slice(0, 200);
   if (resultCount === 0 && previousCount && previousCount > 0) {
-    return `Filter matched nothing. Try different pattern.
+    return `Filter matched 0. Try different pattern.
 
 Next:`;
   }
 
   if (resultCount === 0) {
-    return `No matches. Try different search terms.
+    return `No matches. Try different terms.
 
 Next:`;
   }
 
   if (resultCount && resultCount > 0) {
-    return `Found ${resultCount} matches.
-
-Check: Do these results answer "${safeQuery}"?
-- For "list/show/what": output the items directly <<<FINAL>>>item1, item2...<<<END>>>
-- For "how many/count": (count RESULTS)
-- For "total/sum": (sum RESULTS)
-- If too broad: (filter RESULTS (lambda x (match x "specific_term" 0)))
+    return `Found ${resultCount} matches. Answer "${safeQuery}"?
+list/show/what → <<<FINAL>>>item1, item2<<<END>>>
+count → (count RESULTS)
+total/sum → (sum RESULTS)
+too broad → (filter RESULTS (lambda x (match x "term" 0)))
 
 Next:`;
   }
 
-  return `Done. Output your answer.
+  return `Done. Output answer.
 
 Next:`;
 }
@@ -444,13 +436,12 @@ Next:`;
  */
 function getRepeatedCodeFeedback(resultCount?: number): string {
   if (resultCount === 0) {
-    return `Already tried. Use different keyword.
+    return `Already tried. Try different keyword.
 
 Next:`;
   }
 
   return `Already done. RESULTS has ${resultCount ?? "your"} data.
-
 Output: (sum RESULTS) or <<<FINAL>>>answer<<<END>>>
 
 Next:`;
