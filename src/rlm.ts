@@ -38,7 +38,11 @@ import { buildRLMSpec, createInitialContext, type RLMContext } from "./fsm/rlm-s
 function createSolverTools(
   context: string,
   llmClient?: LLMQueryFn,
-  subRLMSpawner?: (prompt: string) => Promise<string>
+  subRLMSpawner?: (prompt: string) => Promise<string>,
+  rlmQuerySpawner?: (prompt: string, contextDoc: string | null) => Promise<string>,
+  rlmBatchDispatcher?: (
+    items: Array<{ prompt: string; contextDoc: string | null }>
+  ) => Promise<string[]>
 ): SolverTools {
   const MAX_SOLVER_LINES = 500_000;
   let lines = context.split("\n");
@@ -207,6 +211,70 @@ function createSolverTools(
             return String(response ?? "");
           }
         : undefined,
+
+    // Phase 1 hook for `(rlm_query …)`. Same priority order as
+    // llmQuery: spawner if available (recursive child Nucleus FSM
+    // with handle-as-document semantics), else flat llmClient with
+    // prompt+context concatenated, else undefined.
+    rlmQuery: rlmQuerySpawner
+      ? rlmQuerySpawner
+      : llmClient
+        ? async (subPrompt: string, contextDoc: string | null) => {
+            const composed =
+              contextDoc !== null && contextDoc.length > 0
+                ? `${subPrompt}\n\nContext:\n${contextDoc}`
+                : subPrompt;
+            const framedPrompt =
+              "You are a sub-LLM invoked by a parent RLM run. Answer the " +
+              "prompt concisely and directly. Do not emit control tags " +
+              "like <<<FINAL>>> or S-expressions — your caller uses your " +
+              "response as a plain string.\n\n" +
+              composed;
+            const response = await llmClient(framedPrompt);
+            return String(response ?? "");
+          }
+        : undefined,
+
+    // Phase 2 hook for `(rlm_batch …)`. Dispatcher fires N child
+    // sessions concurrently (Promise.all over the items array)
+    // when configured. Flat fallback runs N flat llmClient calls
+    // also via Promise.all so even the depth-cap path is concurrent
+    // — N children should never serialize when the model provider
+    // can handle the parallelism.
+    rlmBatch: rlmBatchDispatcher
+      ? rlmBatchDispatcher
+      : llmClient
+        ? async (items) => {
+            // Per-item error isolation in the flat-fallback dispatch:
+            // a single failed call MUST NOT abort the rest. We catch
+            // per item and emit an error string into that slot so
+            // the caller still gets an N-length array. Bare
+            // Promise.all rejection would lose every other item's
+            // completed work mid-flight — the same correctness bug
+            // we fix in the recursive dispatcher above.
+            return Promise.all(
+              items.map(async (it, idx) => {
+                try {
+                  const composed =
+                    it.contextDoc !== null && it.contextDoc.length > 0
+                      ? `${it.prompt}\n\nContext:\n${it.contextDoc}`
+                      : it.prompt;
+                  const framedPrompt =
+                    "You are a sub-LLM invoked by a parent RLM run. Answer the " +
+                    "prompt concisely and directly. Do not emit control tags " +
+                    "like <<<FINAL>>> or S-expressions — your caller uses your " +
+                    "response as a plain string.\n\n" +
+                    composed;
+                  const response = await llmClient(framedPrompt);
+                  return String(response ?? "");
+                } catch (err) {
+                  const msg = err instanceof Error ? err.message : String(err);
+                  return `Error: rlm_batch item ${idx} failed — ${msg}`;
+                }
+              })
+            );
+          }
+        : undefined,
   };
 }
 
@@ -328,6 +396,38 @@ export interface RLMOptions {
    */
   subRLMMaxDepth?: number;
   /**
+   * Maximum number of `(rlm_batch …)` child sessions run concurrently.
+   * Default 4. The dispatcher uses a worker-pool pattern: workers pick
+   * the next item until the work queue drains, so a 100-item batch
+   * with concurrency 4 keeps at most 4 child Nucleus FSMs in flight
+   * at once. Tune up for fast/cheap models, down for rate-limited
+   * providers.
+   */
+  maxConcurrentSubcalls?: number;
+  /**
+   * Phase 5 — wall-clock cap in milliseconds for the whole run
+   * (parent + all child sessions cumulatively for the parent's
+   * tree). When exceeded, the loop aborts cleanly between turns
+   * and returns a partial-answer string starting with
+   * "[aborted: timeout ...]". Default unset = no cap.
+   */
+  maxTimeoutMs?: number;
+  /**
+   * Phase 5 — total chars sent to + received from the LLM across
+   * all turns (a coarse proxy for token cost; provider-specific
+   * tokenization is left to the wire layer). When exceeded, the
+   * loop aborts cleanly with "[aborted: tokens ...]". Default
+   * unset = no cap.
+   */
+  maxTokens?: number;
+  /**
+   * Phase 5 — max consecutive code-execution / parse errors
+   * before the loop gives up. Catches runaway "the LLM is stuck
+   * emitting garbage" loops. Default unset = no cap (loop only
+   * stops at maxTurns).
+   */
+  maxErrors?: number;
+  /**
    * Internal — current sub-RLM depth. Automatically incremented by
    * the sub-RLM spawner each time a `(llm_query …)` call recurses.
    * Never set this manually from user code; it's a private parameter
@@ -376,10 +476,16 @@ export async function runRLM(
  * the P3 sub-RLM spawner (which builds a sub-RLM over the interpolated
  * prompt rather than a file). Behaviorally identical to `runRLM` except
  * for the file-read step.
+ *
+ * Phase 3: `documentContent` may be either a single string (single-doc
+ * back-compat) or an array of strings (multi-context). When an array
+ * is supplied, the solver exposes each entry as `(context N)`; the
+ * primary context (index 0) is also the default for primitives that
+ * don't specify a haystack.
  */
 export async function runRLMFromContent(
   query: string,
-  documentContent: string,
+  documentContent: string | string[],
   options: RLMOptions
 ): Promise<unknown> {
   const {
@@ -391,6 +497,10 @@ export async function runRLMFromContent(
     ragEnabled = true,
     sessionId: rawSessionId = `session-${Date.now()}`,
     subRLMMaxDepth = 0,
+    maxConcurrentSubcalls = 4,
+    maxTimeoutMs,
+    maxTokens,
+    maxErrors,
     _subRLMDepth = 0,
   } = options;
 
@@ -443,12 +553,45 @@ export async function runRLMFromContent(
     }
   }
 
-  log(`\n[RLM] Loaded document: ${documentContent.length.toLocaleString()} characters (depth=${_subRLMDepth})`);
+  // Phase 5 — record the run's start time so child spawners can
+  // propagate the REMAINING timeout budget. Without this, a parent
+  // configured with maxTimeoutMs=500 would spawn a child that
+  // ignores the cap and runs to its own maxTurns ceiling, blowing
+  // the parent's budget by a wide margin. Per project rule
+  // (correctness > performance): the budget is on the WHOLE TREE,
+  // not per-session.
+  const runStartTime = Date.now();
+  function remainingTimeoutMs(): number | undefined {
+    if (maxTimeoutMs === undefined) return undefined;
+    const left = maxTimeoutMs - (Date.now() - runStartTime);
+    // Hand at least 1ms so the child checks once and aborts cleanly
+    // rather than getting `undefined` and running unbounded.
+    return Math.max(1, left);
+  }
+
+  // Normalize documentContent into the (primary, contexts) split.
+  // - Single string: primary = the string, contexts = [the string].
+  // - Array: primary = first entry (back-compat for single-doc
+  //   primitives), contexts = the full array (addressable via
+  //   `(context N)`). Empty arrays are rejected — they'd leave the
+  //   solver with no document to work on.
+  const contexts: string[] = Array.isArray(documentContent)
+    ? documentContent
+    : [documentContent];
+  if (contexts.length === 0) {
+    throw new Error("runRLMFromContent: documentContent[] must have at least one entry");
+  }
+  const primaryContent: string = contexts[0];
+  log(
+    `\n[RLM] Loaded ${contexts.length} context(s): ${contexts
+      .map((c) => `${c.length.toLocaleString()} chars`)
+      .join(", ")} (depth=${_subRLMDepth})`
+  );
 
   // Build system prompt using the adapter (with RAG hints if enabled)
   const registry = createToolRegistry();
   const toolInterfaces = getToolInterfaces(registry);
-  const systemPrompt = adapter.buildSystemPrompt(documentContent.length, toolInterfaces, ragHints);
+  const systemPrompt = adapter.buildSystemPrompt(primaryContent.length, toolInterfaces, ragHints);
 
   log(`[RLM] Using adapter: ${adapter.name}`);
   log(`[RLM] Adapter type: ${adapter.name.includes("barliman") ? "Barliman (constraint-based synthesis)" : "Standard"}`);
@@ -501,6 +644,9 @@ export async function runRLMFromContent(
             sessionId: `${sessionId}-sub${childDepth}`,
             subRLMMaxDepth: effectiveMaxDepth,
             _subRLMDepth: childDepth,
+            maxTimeoutMs: remainingTimeoutMs(),
+            maxTokens,
+            maxErrors,
           }
         );
         // runRLMFromContent normally returns a string (the final answer
@@ -517,10 +663,124 @@ export async function runRLMFromContent(
       }
     : undefined;
 
+  // Phase 1 — `(rlm_query …)` spawner. Same depth budget as the
+  // llm_query spawner; when at the depth cap, the solver layer's
+  // built-in flat fallback handles the call. The spawner here always
+  // implements the FULL recursive semantics: spawn a child
+  // runRLMFromContent with the rlm_query prompt as the child's query
+  // and the resolved (context …) value as the child's working
+  // document. Null contextDoc → child's document is the prompt
+  // itself (mirrors subRLMSpawner so callers without a `(context …)`
+  // clause still get a working child).
+  const rlmQuerySpawner = _subRLMDepth < effectiveMaxDepth
+    ? async (subPrompt: string, contextDoc: string | null): Promise<string> => {
+        const childMaxTurns = Math.max(1, Math.floor(maxTurns / 2));
+        const childDepth = _subRLMDepth + 1;
+        // contextDoc === null means the user OMITTED the `(context …)`
+        // form — in that case fall back to using the prompt itself as
+        // the child's document so a no-context rlm_query still has
+        // something to operate on. An EMPTY string ("") means the
+        // user passed an explicit but empty context (e.g. (context
+        // []) — empty grep result, empty handle); preserve the user's
+        // intent and let the child see an empty document. Conflating
+        // the two would silently mask "I expected results but got
+        // none" bugs.
+        const childDocument = contextDoc !== null ? contextDoc : subPrompt;
+        log(
+          `[RLM] Spawning rlm_query child (depth ${childDepth}/${effectiveMaxDepth}) ` +
+            `prompt=${subPrompt.length} chars, document=${childDocument.length} chars`
+        );
+        const childResult = await runRLMFromContent(subPrompt, childDocument, {
+          llmClient,
+          adapter,
+          maxTurns: childMaxTurns,
+          verbose,
+          ragEnabled: false,
+          sessionId: `${sessionId}-rlm${childDepth}`,
+          subRLMMaxDepth: effectiveMaxDepth,
+          _subRLMDepth: childDepth,
+          maxTimeoutMs: remainingTimeoutMs(),
+          maxTokens,
+          maxErrors,
+        });
+        if (typeof childResult === "string") return childResult;
+        if (childResult === null || childResult === undefined) return "";
+        try {
+          return JSON.stringify(childResult);
+        } catch {
+          return String(childResult);
+        }
+      }
+    : undefined;
+
+  // Phase 2 — `(rlm_batch …)` dispatcher. Same depth budget as
+  // rlm_query; when at the cap, the createSolverTools fallback
+  // handles items one-by-one through llmClient (still concurrent
+  // via Promise.all). When within the cap, we fan child Nucleus
+  // sessions out with a worker-pool concurrency limit so a 100-item
+  // batch doesn't open 100 simultaneous LLM connections.
+  const rlmBatchConcurrency = Math.max(1, maxConcurrentSubcalls);
+  const rlmBatchDispatcher = _subRLMDepth < effectiveMaxDepth
+    ? async (
+        items: Array<{ prompt: string; contextDoc: string | null }>
+      ): Promise<string[]> => {
+        log(
+          `[RLM] rlm_batch dispatching ${items.length} children at depth ` +
+            `${_subRLMDepth + 1}/${effectiveMaxDepth}, concurrency=${rlmBatchConcurrency}`
+        );
+        const results: string[] = new Array(items.length);
+        let next = 0;
+        async function worker(): Promise<void> {
+          while (true) {
+            const idx = next++;
+            if (idx >= items.length) return;
+            // Per-item error isolation: a single failed child must
+            // NOT abort the rest of the batch. We capture errors as
+            // marker strings in the result slot so the parent's
+            // solver returns a complete N-length array — same shape
+            // a successful run produces. Bare Promise.all rejection
+            // would lose every other worker's completed work mid-
+            // flight, breaking correctness for partial-failure runs.
+            //
+            // The single-spawn path is reused so behavior on the
+            // happy path stays identical to a hand-rolled (map COLL
+            // (lambda c (rlm_query …))). rlmQuerySpawner is non-null
+            // here because it's built in the same depth-budget
+            // branch as this dispatcher.
+            try {
+              results[idx] = await rlmQuerySpawner!(
+                items[idx].prompt,
+                items[idx].contextDoc
+              );
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              results[idx] = `Error: rlm_batch item ${idx} failed — ${msg}`;
+            }
+          }
+        }
+        const workerCount = Math.min(rlmBatchConcurrency, items.length);
+        await Promise.all(Array.from({ length: workerCount }, () => worker()));
+        return results;
+      }
+    : undefined;
+
   // Create solver tools for document operations. Passing llmClient here
   // enables the `(llm_query …)` LC primitive; passing subRLMSpawner
-  // upgrades it from flat to recursive.
-  const solverTools = createSolverTools(documentContent, llmClient, subRLMSpawner);
+  // upgrades it from flat to recursive. rlmQuerySpawner enables the
+  // Phase 1 `(rlm_query …)` recursive primitive; rlmBatchDispatcher
+  // enables Phase 2's concurrent `(rlm_batch …)` variant.
+  const solverTools = createSolverTools(
+    primaryContent,
+    llmClient,
+    subRLMSpawner,
+    rlmQuerySpawner,
+    rlmBatchDispatcher
+  );
+  // Phase 3 — expose the full contexts array. Index 0 is also
+  // available via the legacy `tools.context` field for
+  // back-compat. When a Phase-3-aware primitive (`(context N)`,
+  // `(grep "pat" (context N))`) runs, it reads `tools.contexts`.
+  solverTools.contexts = contexts;
 
   // Build user message with optional constraints
   let userMessage = `Query: ${query}`;
@@ -561,6 +821,9 @@ export async function runRLMFromContent(
       sessionId,
       maxTurns,
       log,
+      maxTimeoutMs,
+      maxTokens,
+      maxErrors,
     });
 
     const engine = new FSMEngine<RLMContext>();

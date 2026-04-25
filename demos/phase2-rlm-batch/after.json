@@ -1,0 +1,26 @@
+{
+  "mode": "phase2",
+  "scenario": "concurrent-map-vs-batch",
+  "simulatedLatencyMs": 100,
+  "docChars": 1823,
+  "parentChars": 10492,
+  "childChars": 20767,
+  "totalChars": 31259,
+  "parentCalls": 3,
+  "childCalls": 10,
+  "totalCalls": 13,
+  "avgParentChars": 3497,
+  "avgChildChars": 2077,
+  "elapsedMs": 431,
+  "result": "[\n  \"3\",\n  \"3\",\n  \"3\",\n  \"5\",\n  \"2\"\n]",
+  "expectedTotalAuth": 16,
+  "observedSum": 16,
+  "correct": true,
+  "baseline": {
+    "elapsedMs": 1030,
+    "observedSum": 16
+  },
+  "delta": {
+    "speedupX": 2.39
+  }
+}

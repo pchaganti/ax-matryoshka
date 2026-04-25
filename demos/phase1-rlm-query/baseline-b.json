@@ -1,0 +1,17 @@
+{
+  "mode": "baseline-b",
+  "scenario": "handle-as-document",
+  "docChars": 211,
+  "parentChars": 8598,
+  "childChars": 3513,
+  "totalChars": 12111,
+  "parentCalls": 3,
+  "childCalls": 2,
+  "totalCalls": 5,
+  "avgParentChars": 2866,
+  "avgChildChars": 1757,
+  "result": "0",
+  "expectedAuthCount": 3,
+  "childReportedCount": 0,
+  "correct": false
+}

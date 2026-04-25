@@ -1,0 +1,13 @@
+{
+  "mode": "phase3",
+  "scenario": "cross-document-correlation",
+  "docCount": 3,
+  "result": "deploy=[\n  {\n    \"match\": \"deploy\",\n    \"line\": \"info: 09:58 deploy queue length 1\",\n    \"lineNum\": 2,\n    \"index\": 36,\n    \"groups\": []\n  },\n  {\n    \"match\": \"deploy\",\n    \"line\": \"info: 10:00 starting deploy\",\n    \"lineNum\": 3,\n    \"index\": 79,\n    \"groups\": []\n  },\n  {\n    \"match\": \"DEPLOY\",\n    \"line\": \"DEPLOY: v1.2.3 at 10:00\",\n    \"lineNum\": 4,\n    \"index\": 86,\n    \"groups\": []\n  },\n  {\n    \"match\": \"deploy\",\n    \"line\": \"info: 10:01 deploy complete\",\n    \"lineNum\": 5,\n    \"index\": 122,\n    \"groups\": []\n  }\n] outage=[\n  {\n    \"match\": \"OUTAGE\",\n    \"line\": \"OUTAGE: 10:05-10:30, root cause unclear\",\n    \"lineNum\": 2,\n    \"index\": 38,\n    \"groups\": []\n  }\n]",
+  "deployLineNumReported": 4,
+  "outageLineNumReported": 2,
+  "expected": {
+    "deployLineNum": 4,
+    "outageLineNum": 2
+  },
+  "perDocProvenance": true
+}

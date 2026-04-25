@@ -72,6 +72,10 @@ export type LCTerm =
   | LCGraphReport
   | LCLLMQuery
   | LCLLMBatch
+  | LCRlmQuery
+  | LCRlmBatch
+  | LCContext
+  | LCShowVars
   | LCChunkBySize
   | LCChunkByLines
   | LCChunkByRegex;
@@ -92,11 +96,21 @@ export interface LCLit {
 }
 
 /**
- * (grep <pattern>) - search document for pattern
+ * (grep <pattern> [haystack]) - search a document for a pattern.
+ *
+ * The optional `haystack` is any term that evaluates to a string.
+ * When supplied, grep operates over THAT string instead of the
+ * default `tools.context`. Used to scope grep across multiple
+ * loaded contexts via `(context N)` or to grep a binding directly:
+ *
+ *   (grep "ERROR" (context 1))   ; grep the second loaded doc
+ *   (grep "X" $some_string)      ; grep a string binding
+ *   (grep "ERROR")               ; back-compat — grep tools.context
  */
 export interface LCGrep {
   tag: "grep";
   pattern: string;
+  haystack?: LCTerm;
 }
 
 /**
@@ -711,6 +725,116 @@ export interface LCLLMBatch {
    * committing to per-item ratings.
    */
   calibrate?: boolean;
+}
+
+/**
+ * (rlm_query "prompt" [(context EXPR)]) — Phase 1 recursive primitive.
+ *
+ * Spawns a CHILD Nucleus FSM session. The child runs its own loop —
+ * emitting Nucleus terms, executing them, accumulating bindings —
+ * until it produces a FINAL answer. That FINAL string becomes the
+ * bound value of this term in the parent.
+ *
+ * The optional `(context EXPR)` form supplies the child's working
+ * document. EXPR is evaluated against the parent's bindings; if the
+ * value is an array, items are stringified and joined by newlines so
+ * the child's `(grep …)` / `(lines …)` / `(chunk_by_lines …)`
+ * primitives operate on a clean line-oriented document. If the value
+ * is a string, it is used as-is. If `(context …)` is omitted, the
+ * child's document is the prompt itself (matching the existing
+ * `subRLMSpawner` semantics for backwards compat).
+ *
+ * Differs from `(llm_query …)`:
+ *   - llm_query interpolates bindings into the prompt; the result is
+ *     a FLAT sub-LLM call (or, when subRLMMaxDepth > 0, a recursive
+ *     child whose document IS the interpolated prompt).
+ *   - rlm_query separates the child's QUERY (the prompt) from the
+ *     child's WORKING DOCUMENT (the resolved context). The child can
+ *     run document-level primitives over a structured handle without
+ *     the JSON-stringification noise the llm_query path imposes.
+ */
+export interface LCRlmQuery {
+  tag: "rlm_query";
+  /** Query string handed to the child as its top-level user message. */
+  prompt: string;
+  /**
+   * Optional context expression. Evaluated by the solver; the result
+   * is materialized into a line-oriented string and used as the
+   * child's working document. Omitted when the prompt itself is the
+   * complete instruction.
+   */
+  context?: LCTerm;
+}
+
+/**
+ * (rlm_batch COLL (lambda x (rlm_query "prompt" [(context EXPR)])))
+ *   — Phase 2 concurrent variant of `(rlm_query …)`.
+ *
+ * Drop-in replacement for `(map COLL (lambda x (rlm_query …)))`. The
+ * solver evaluates the collection, fans the per-item child sessions
+ * out via `tools.rlmBatch` in ONE call carrying all N items, and
+ * returns the array of N child responses in input order.
+ *
+ * Same lambda-of-direct-rlm_query restriction as LCLLMBatch: the
+ * solver must statically extract the inner rlm_query's prompt and
+ * context expression at parse time, so wrapping the rlm_query in
+ * another form (e.g. `(if cond (rlm_query …) "default")`) is not
+ * batchable.
+ */
+export interface LCRlmBatch {
+  tag: "rlm_batch";
+  /** The collection — any term that evaluates to an array. */
+  collection: LCTerm;
+  /** Lambda parameter name bound to each item in turn. */
+  param: string;
+  /**
+   * The inner rlm_query's prompt template. Constant across items
+   * for now (rlm_query has no per-item placeholder interpolation).
+   * Could become a templated string in a future phase.
+   */
+  prompt: string;
+  /**
+   * The inner rlm_query's optional `(context EXPR)` clause. Each
+   * item evaluates this expression with the lambda parameter bound
+   * to the current item before materialization.
+   */
+  context?: LCTerm;
+}
+
+/**
+ * (context N) — Phase 3 multi-context selector.
+ *
+ * Returns the Nth loaded context's content as a string. Contexts are
+ * loaded by `runRLMFromContent` (or its callers) and exposed via
+ * `SolverTools.contexts`. Index 0 is the default context for
+ * primitives that don't specify a haystack — back-compat for
+ * single-doc workflows. When `contexts` is undefined, `(context 0)`
+ * falls back to `tools.context` so single-doc consumers don't need
+ * to wire the new field.
+ *
+ * Usage patterns:
+ *   (grep "ERROR" (context 1))         — grep the second loaded doc
+ *   (rlm_query "scan" (context (context 2)))  — pass doc 2 as child doc
+ */
+export interface LCContext {
+  tag: "context";
+  /** Zero-based index into the loaded contexts array. */
+  index: number;
+}
+
+/**
+ * (show_vars) — Phase 4 binding-introspection term.
+ *
+ * Returns a string summarizing every binding currently in scope:
+ * one entry per name with a shape descriptor (Array(N), String(N),
+ * Number(v), Boolean(v), object). Lets a query inspect what's
+ * available without a separate tool call. The Python RLM's
+ * `SHOW_VARS()` helper is the spiritual cousin.
+ *
+ * Returns "No bindings" (or similar) when the map is empty.
+ */
+export interface LCShowVars {
+  tag: "show_vars";
 }
 
 /**

@@ -1,0 +1,17 @@
+{
+  "mode": "phase1-b",
+  "scenario": "handle-as-document",
+  "docChars": 211,
+  "parentChars": 8560,
+  "childChars": 4072,
+  "totalChars": 12632,
+  "parentCalls": 3,
+  "childCalls": 2,
+  "totalCalls": 5,
+  "avgParentChars": 2853,
+  "avgChildChars": 2036,
+  "result": "3",
+  "expectedAuthCount": 3,
+  "childReportedCount": 3,
+  "correct": true
+}

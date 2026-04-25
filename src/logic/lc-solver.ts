@@ -24,6 +24,20 @@ import { SynthesisIntegrator } from "./synthesis-integrator.js";
 // Type for sandbox tools interface
 export interface SolverTools {
   grep: (pattern: string) => Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }>;
+  /**
+   * Phase 3 — grep over an arbitrary haystack instead of the default
+   * context. Used by `(grep "pat" HAYSTACK)`. The haystack can be
+   * any string the LLM constructs: another loaded context via
+   * `(context N)`, a binding's value, or a literal. Returns the
+   * same shape as `grep` (line numbers are 1-indexed within the
+   * haystack, not the default context). Optional — when undefined,
+   * the solver falls back to in-line regex matching so single-doc
+   * consumers don't have to wire it.
+   */
+  grepIn?: (
+    pattern: string,
+    haystack: string
+  ) => Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }>;
   fuzzy_search: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
   bm25: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
   semantic: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
@@ -38,6 +52,19 @@ export interface SolverTools {
    * session lets the line array be garbage-collected.
    */
   lines: string[];
+  /**
+   * Phase 3 — multiple loaded documents addressable via `(context N)`.
+   *
+   * When set, `contexts[0]` is the default that primitives like grep
+   * fall back to when no haystack is supplied (i.e., it should mirror
+   * `context`). When unset, single-doc back-compat applies and
+   * `(context 0)` falls back to the legacy `context` field. The two
+   * fields coexist so single-doc consumers don't have to wire
+   * `contexts` and so multi-doc consumers don't have to keep `context`
+   * in sync — `context` is the source of truth for index 0 unless
+   * `contexts` overrides it.
+   */
+  contexts?: string[];
   /**
    * Optional sub-LLM invoker for the `(llm_query …)` primitive.
    *
@@ -73,6 +100,41 @@ export interface SolverTools {
   llmBatch?: (
     prompts: string[],
     options?: { calibrate?: boolean }
+  ) => Promise<string[]>;
+  /**
+   * Optional recursive child-session invoker for the `(rlm_query …)`
+   * primitive. Phase 1 of the recursive-Nucleus port.
+   *
+   * The solver evaluates the optional `(context EXPR)` form, stringifies
+   * the resulting value into a clean line-oriented document (one item
+   * per line for arrays, the string itself for strings, `null` when no
+   * context is supplied), and dispatches through this callback. The
+   * callback is responsible for spawning a child Nucleus FSM session
+   * with that document, running it to completion, and returning the
+   * child's FINAL string.
+   *
+   * When undefined, `(rlm_query …)` fails with a clear error naming
+   * the execution context — the same pattern llmQuery uses for the
+   * standalone-vs-RLM-loop distinction.
+   */
+  rlmQuery?: (prompt: string, contextDoc: string | null) => Promise<string>;
+  /**
+   * Optional batched recursive-child invoker for the `(rlm_batch …)`
+   * primitive. Phase 2 of the recursive-Nucleus port.
+   *
+   * The solver collects per-item (prompt, materialized contextDoc)
+   * pairs from the inner rlm_query template and dispatches them
+   * through this callback in ONE call. The implementation is
+   * responsible for fanning the items out concurrently — typically
+   * via `Promise.all` over child session spawns, optionally bounded
+   * by a worker pool. The returned array MUST have one entry per
+   * input item, in the same order.
+   *
+   * When undefined, `(rlm_batch …)` fails with a clear error naming
+   * the execution context — same pattern as rlmQuery / llmBatch.
+   */
+  rlmBatch?: (
+    items: Array<{ prompt: string; contextDoc: string | null }>
   ) => Promise<string[]>;
 }
 
@@ -205,6 +267,74 @@ function canonicalizeOneOf(
 }
 
 /**
+ * Convert a resolved `(context EXPR)` value into a clean line-oriented
+ * document for a child Nucleus session.
+ *
+ * Strings pass through untouched. Arrays join their stringified items
+ * by newlines so the child's `^anchor` regexes work — the primary
+ * differentiator from the existing llm_query path, which JSON-
+ * stringifies the binding and pollutes line starts with `[`/`{`/quotes.
+ *
+ * Per-item stringification: grep-result-like objects (anything with a
+ * string `.line` field) yield that field's value, since that's the
+ * "one item per line" representation users expect when piping grep
+ * results into a child. Other objects fall back to compact JSON.
+ * Strings, numbers, booleans become their natural string form;
+ * null/undefined become "".
+ *
+ * Output is capped at MAX_CONTEXT_DOC_CHARS to bound child memory
+ * footprint; longer values are silently truncated. The cap is
+ * intentionally larger than llm_query's 500k interpolation cap
+ * because rlm_query passes the value as a child DOCUMENT (where the
+ * matryoshka 50MB doc limit applies), not as prompt text.
+ */
+const MAX_CONTEXT_DOC_CHARS = 5_000_000;
+
+function stringifyItem(item: unknown): string {
+  if (item === null || item === undefined) return "";
+  if (typeof item === "string") return item;
+  if (typeof item === "number" || typeof item === "boolean") return String(item);
+  if (typeof item === "object") {
+    const obj = item as Record<string, unknown>;
+    if (typeof obj.line === "string") return obj.line;
+    try {
+      return JSON.stringify(item);
+    } catch {
+      return String(item);
+    }
+  }
+  return String(item);
+}
+
+/**
+ * Top-level dispatch for `(rlm_query …)` context materialization.
+ * Returns a string; an empty string ("") is a valid output (e.g., the
+ * user passed `(context [])` — empty array). Callers MUST distinguish
+ * this from `null` (no `(context …)` form supplied) when deciding
+ * whether to fall back to using the prompt as the child's document.
+ */
+function materializeContext(value: unknown): string {
+  let out: string;
+  if (value === null || value === undefined) {
+    out = "";
+  } else if (typeof value === "string") {
+    out = value;
+  } else if (Array.isArray(value)) {
+    out = value.map(stringifyItem).join("\n");
+  } else if (typeof value === "number" || typeof value === "boolean") {
+    out = String(value);
+  } else {
+    // Object that isn't an array — use the same line-extraction
+    // heuristic as for array items.
+    out = stringifyItem(value);
+  }
+  if (out.length > MAX_CONTEXT_DOC_CHARS) {
+    out = out.slice(0, MAX_CONTEXT_DOC_CHARS);
+  }
+  return out;
+}
+
+/**
  * Solve result
  */
 export interface SolveResult {
@@ -326,6 +456,75 @@ async function evaluate(
         throw new Error(`Invalid regex pattern: ${regexValidation.error}`);
       }
 
+      // Phase 3 — optional haystack arg. The haystack MUST evaluate
+      // to a string. Numbers/booleans get rendered cleanly via
+      // String(); arrays/objects/null/undefined are rejected with a
+      // specific error so a typo (e.g. `(grep "X" RESULTS)` where
+      // RESULTS is the latest grep result array) doesn't silently
+      // coerce to "[object Object]" and produce garbage matches.
+      // Per project rule: correctness > performance — surface user
+      // mistakes loudly.
+      if (term.haystack) {
+        const hayValue = await evaluate(term.haystack, tools, bindings, log, depth + 1);
+        let haystack: string;
+        if (typeof hayValue === "string") {
+          haystack = hayValue;
+        } else if (typeof hayValue === "number" || typeof hayValue === "boolean") {
+          haystack = String(hayValue);
+        } else {
+          const shape = Array.isArray(hayValue)
+            ? `array(${hayValue.length})`
+            : hayValue === null
+              ? "null"
+              : hayValue === undefined
+                ? "undefined"
+                : typeof hayValue;
+          throw new Error(
+            `(grep "${term.pattern}" HAYSTACK): haystack must evaluate to a string, got ${shape}. ` +
+              `If you have an array, materialize it first (e.g., join lines) or grep an individual element.`
+          );
+        }
+        log(
+          `[Solver] Executing grep("${pattern}") over haystack (${haystack.length} chars)`
+        );
+        if (tools.grepIn) {
+          const results = tools.grepIn(pattern, haystack);
+          log(`[Solver] Found ${results.length} matches in haystack`);
+          return results;
+        }
+        // Fallback in-line search — same shape as the production
+        // grep callback. Used by test stubs that don't provide
+        // grepIn AND legacy SolverTools instances. ReDoS validated
+        // upstream by the same validateRegex call we already ran.
+        const flags = "gmi";
+        const regex = new RegExp(pattern, flags);
+        const lines = haystack.split("\n");
+        const results: Array<{
+          match: string;
+          line: string;
+          lineNum: number;
+          index: number;
+          groups: string[];
+        }> = [];
+        const MAX_HAYSTACK_MATCHES = 10_000;
+        let m: RegExpExecArray | null;
+        while ((m = regex.exec(haystack)) !== null) {
+          const beforeMatch = haystack.slice(0, m.index);
+          const lineNum = (beforeMatch.match(/\n/g) || []).length + 1;
+          results.push({
+            match: m[0],
+            line: lines[lineNum - 1] ?? "",
+            lineNum,
+            index: m.index,
+            groups: m.slice(1).filter((g): g is string => g !== undefined),
+          });
+          if (m[0].length === 0) regex.lastIndex++;
+          if (results.length >= MAX_HAYSTACK_MATCHES) break;
+        }
+        log(`[Solver] Found ${results.length} matches in haystack (in-line fallback)`);
+        return results;
+      }
+
       log(`[Solver] Executing grep("${pattern}")`);
       const results = tools.grep(pattern);
       log(`[Solver] Found ${results.length} matches`);
@@ -336,6 +535,60 @@ async function evaluate(
         });
       }
       return results;
+    }
+
+    case "show_vars": {
+      // Phase 4 — binding introspection. Returns a string summary
+      // that can be inlined into a sub-LLM prompt, used in a
+      // FINAL_VAR substitution, or just passed back to the user as
+      // the answer. Format mirrors `lattice_bindings` in spirit but
+      // is reachable from inside a query.
+      if (bindings.size === 0) {
+        return "No bindings yet — run a query to populate RESULTS or a binding name.";
+      }
+      const lines: string[] = [];
+      for (const [name, value] of bindings) {
+        let shape: string;
+        if (Array.isArray(value)) {
+          shape = `Array(${value.length})`;
+        } else if (typeof value === "string") {
+          shape = `String(${value.length})`;
+        } else if (typeof value === "number") {
+          shape = `Number(${value})`;
+        } else if (typeof value === "boolean") {
+          shape = `Boolean(${value})`;
+        } else if (value === null) {
+          shape = "null";
+        } else if (value === undefined) {
+          shape = "undefined";
+        } else if (typeof value === "object") {
+          shape = "object";
+        } else {
+          shape = typeof value;
+        }
+        lines.push(`  ${name}: ${shape}`);
+      }
+      return `Bindings (${bindings.size}):\n${lines.join("\n")}`;
+    }
+
+    case "context": {
+      // Phase 3 — `(context N)` selector. Returns the Nth loaded
+      // context's content. Falls back to `tools.context` when
+      // `contexts` is unset and the index is 0 — back-compat for
+      // single-doc workflows that haven't wired the new field.
+      const idx = term.index;
+      if (tools.contexts) {
+        if (idx < 0 || idx >= tools.contexts.length) {
+          throw new Error(
+            `(context ${idx}): index out of range — ${tools.contexts.length} context(s) loaded`
+          );
+        }
+        return tools.contexts[idx];
+      }
+      if (idx === 0) return tools.context;
+      throw new Error(
+        `(context ${idx}): only 1 context loaded — use runRLMFromContent with an array to enable multi-context`
+      );
     }
 
     case "fuzzy_search": {
@@ -1430,6 +1683,116 @@ async function evaluate(
         return canonical;
       }
       return response;
+    }
+
+    case "rlm_query": {
+      // Phase 1 recursive primitive — spawn a child Nucleus FSM with
+      // an explicit query and (optional) clean line-oriented document.
+      // The actual child-spawning logic lives behind the `rlmQuery`
+      // callback the parent's RLM loop wires up; this case is just
+      // the materialization-and-dispatch layer.
+      if (!tools.rlmQuery) {
+        throw new Error(
+          "rlm_query is not available in this execution context. " +
+          "The RLM loop provides it once the parent threads an " +
+          "rlmQuery callback through SolverTools. Standalone " +
+          "NucleusEngine / HandleSession instances must pass an " +
+          "rlmQuery option to enable it."
+        );
+      }
+
+      // Resolve (context EXPR) when present. The materialized form is
+      // line-oriented: arrays join their stringified items by \n;
+      // strings pass through unchanged; null/undefined become null.
+      // This is the structural difference from llm_query — the child
+      // gets a clean document its grep/lines/chunk primitives can
+      // operate on, not a JSON-stringified blob.
+      let contextDoc: string | null = null;
+      if (term.context) {
+        const resolved = await evaluate(term.context, tools, bindings, log, depth + 1);
+        contextDoc = materializeContext(resolved);
+      }
+
+      log(
+        `[Solver] rlm_query prompt length: ${term.prompt.length} chars, ` +
+          `context: ${contextDoc === null ? "null" : `${contextDoc.length} chars`}`
+      );
+      const response = await tools.rlmQuery(term.prompt, contextDoc);
+      log(`[Solver] rlm_query response length: ${response.length} chars`);
+      return response;
+    }
+
+    case "rlm_batch": {
+      // Phase 2 — concurrent variant of `(map COLL (lambda x (rlm_query …)))`.
+      // Builds N (prompt, contextDoc) pairs from the inner rlm_query
+      // template and dispatches them through tools.rlmBatch in a
+      // single call. The implementation fans them out concurrently
+      // (typically Promise.all over child sessions); the solver
+      // itself is just the materialization-and-dispatch layer.
+      if (!tools.rlmBatch) {
+        throw new Error(
+          "rlm_batch is not available in this execution context. " +
+          "The RLM loop provides it once the parent threads an " +
+          "rlmBatch callback through SolverTools. Standalone " +
+          "NucleusEngine / HandleSession instances must pass an " +
+          "rlmBatch option to enable it."
+        );
+      }
+
+      const collection = await evaluate(term.collection, tools, bindings, log, depth + 1);
+      if (!Array.isArray(collection)) {
+        throw new Error(`rlm_batch: expected array, got ${typeof collection}`);
+      }
+
+      // Empty collection short-circuit — match llm_batch's behavior
+      // so callers don't pay a dispatch round-trip for zero work.
+      if (collection.length === 0) {
+        log(`[Solver] rlm_batch: empty collection, skipping dispatch`);
+        return [];
+      }
+
+      const items: Array<{ prompt: string; contextDoc: string | null }> = [];
+      for (const item of collection) {
+        // Bind the lambda param to the RAW item (no toItemString
+        // coercion). rlm_batch funnels each item through
+        // materializeContext, which knows how to render arrays as
+        // line-oriented documents and objects with a `.line` field
+        // as their line text. Stringifying the item up-front would
+        // collapse all that structure into a flat string and defeat
+        // the handle-as-document property we built for rlm_query.
+        const scopedBindings = new Map(bindings);
+        scopedBindings.set(term.param, item);
+
+        let contextDoc: string | null = null;
+        if (term.context) {
+          const resolved = await evaluate(
+            term.context,
+            tools,
+            scopedBindings,
+            log,
+            depth + 1
+          );
+          contextDoc = materializeContext(resolved);
+        }
+        items.push({ prompt: term.prompt, contextDoc });
+      }
+
+      log(
+        `[Solver] rlm_batch dispatching ${items.length} child sessions in a single call`
+      );
+      const responses = await tools.rlmBatch(items);
+      if (!Array.isArray(responses)) {
+        throw new Error(
+          `rlm_batch: tools.rlmBatch must return an array, got ${typeof responses}`
+        );
+      }
+      if (responses.length !== items.length) {
+        throw new Error(
+          `rlm_batch: expected ${items.length} responses, got ${responses.length}`
+        );
+      }
+      log(`[Solver] rlm_batch received ${responses.length} responses`);
+      return responses;
     }
 
     case "llm_batch": {

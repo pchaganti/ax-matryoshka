@@ -468,7 +468,18 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       const pattern = parseTerm(state, d);
       if (!pattern || pattern.tag !== "lit" || typeof pattern.value !== "string")
         return null;
-      return { tag: "grep", pattern: pattern.value };
+      // Optional second arg — any term that evaluates to a string.
+      // Phase 3 introduces this for multi-context grep, but the
+      // haystack can be any string-valued term (a binding, a literal,
+      // or `(context N)`).
+      let haystack: LCTerm | undefined;
+      const next = peek(state);
+      if (next && next.type !== "rparen") {
+        const expr = parseTerm(state, d);
+        if (!expr) return null;
+        haystack = expr;
+      }
+      return { tag: "grep", pattern: pattern.value, haystack };
     }
 
     case "fuzzy_search": {
@@ -1048,6 +1059,116 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       }
 
       return { tag: "llm_query", prompt: promptStr, bindings, oneOf, calibrate };
+    }
+
+    case "show_vars": {
+      // (show_vars) — no args. Reject any trailing tokens so a typo
+      // like (show_vars 1) surfaces as a parse error rather than
+      // being silently absorbed.
+      const next = peek(state);
+      if (next && next.type !== "rparen") return null;
+      return { tag: "show_vars" };
+    }
+
+    case "context": {
+      // (context N) — Phase 3 multi-context selector.
+      //
+      // Required: a non-negative integer literal index. The solver
+      // resolves to the Nth entry of `tools.contexts`, falling back
+      // to `tools.context` when index is 0 and `contexts` is unset.
+      // We validate at parse time so a typo like `(context "alpha")`
+      // surfaces as a clear parse error rather than a runtime
+      // mystery.
+      const idxTerm = parseTerm(state, d);
+      if (!idxTerm || idxTerm.tag !== "lit" || typeof idxTerm.value !== "number") {
+        return null;
+      }
+      const n = idxTerm.value;
+      if (!Number.isInteger(n) || n < 0) return null;
+      return { tag: "context", index: n };
+    }
+
+    case "rlm_query": {
+      // (rlm_query "prompt" [(context EXPR)])
+      //
+      // Required first argument: string literal prompt.
+      // Optional trailing form: (context EXPR) — the child's working
+      // document. EXPR may be any LC term; the solver resolves it
+      // before spawning the child. Only one (context …) form is
+      // allowed. Unknown trailing forms are a parse error so a typo
+      // doesn't silently degrade to the no-context shape.
+      const promptTerm = parseTerm(state, d);
+      if (!promptTerm || promptTerm.tag !== "lit" || typeof promptTerm.value !== "string") {
+        return null;
+      }
+      const promptStr = promptTerm.value;
+
+      // Mirror the safety cap on llm_query — keep an accidentally-
+      // huge literal from blowing the parser's working set.
+      const MAX_PROMPT_LENGTH = 500_000;
+      if (promptStr.length > MAX_PROMPT_LENGTH) {
+        return null;
+      }
+
+      let context: LCTerm | undefined;
+
+      while (true) {
+        const next = peek(state);
+        if (!next || next.type === "rparen") break;
+        if (next.type !== "lparen") return null;
+        consume(state);
+
+        const headTok = peek(state);
+        if (!headTok || headTok.type !== "symbol") return null;
+
+        if (headTok.value === "context") {
+          if (context !== undefined) return null; // duplicate
+          consume(state);
+          const expr = parseTerm(state, d);
+          if (!expr) return null; // (context) with no arg
+          const closing = peek(state);
+          if (!closing || closing.type !== "rparen") return null;
+          consume(state);
+          context = expr;
+          continue;
+        }
+
+        // Unknown trailing form — reject so typos surface as parse
+        // errors instead of silently being absorbed.
+        return null;
+      }
+
+      return { tag: "rlm_query", prompt: promptStr, context };
+    }
+
+    case "rlm_batch": {
+      // (rlm_batch COLLECTION (lambda X (rlm_query "prompt" [(context EXPR)])))
+      //
+      // Concurrent variant of `(map COLL (lambda x (rlm_query …)))`.
+      // Same surface as llm_batch, but the lambda body is an
+      // rlm_query (recursive child Nucleus session) instead of an
+      // llm_query (flat sub-LLM call). Solver collects the per-item
+      // (prompt, context) pairs and dispatches them through a single
+      // tools.rlmBatch call so the implementation can fan them out
+      // in parallel.
+      //
+      // Restriction: lambda body MUST be a direct rlm_query. Any
+      // wrapping (e.g. (if … (rlm_query …) "default")) breaks the
+      // static prompt/context extraction the batch path relies on.
+      const collection = parseTerm(state, d);
+      if (!collection) return null;
+
+      const lambdaTerm = parseTerm(state, d);
+      if (!lambdaTerm || lambdaTerm.tag !== "lambda") return null;
+      if (lambdaTerm.body.tag !== "rlm_query") return null;
+
+      return {
+        tag: "rlm_batch",
+        collection,
+        param: lambdaTerm.param,
+        prompt: lambdaTerm.body.prompt,
+        context: lambdaTerm.body.context,
+      };
     }
 
     case "llm_batch": {

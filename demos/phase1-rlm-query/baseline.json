@@ -1,0 +1,18 @@
+{
+  "mode": "baseline",
+  "scenario": "scaled-handle-as-document",
+  "docChars": 1823,
+  "docLines": 72,
+  "parentChars": 11045,
+  "childChars": 17555,
+  "totalChars": 28600,
+  "parentCalls": 3,
+  "childCalls": 10,
+  "totalCalls": 13,
+  "avgParentChars": 3682,
+  "avgChildChars": 1756,
+  "result": "[\n  \"0\",\n  \"0\",\n  \"0\",\n  \"0\",\n  \"0\"\n]",
+  "expectedTotalAuth": 16,
+  "observedSum": 0,
+  "correct": false
+}
