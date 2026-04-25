@@ -428,6 +428,18 @@ export interface RLMOptions {
    */
   maxErrors?: number;
   /**
+   * Phase 6 — compaction threshold in chars. When the FSM's prompt
+   * (system + user/assistant history concatenated) exceeds this
+   * threshold, the loop emits a one-shot summarization llm_query
+   * to condense turns 2..N into a single assistant message,
+   * then resumes with [system, first user, summary, latest turn].
+   * The full pre-compaction history is stashed as a binding
+   * (`_compaction_trace`) for retrieval. Default unset = no
+   * compaction. Use this to keep long-running sessions from
+   * blowing past the model's context window.
+   */
+  compactionThresholdChars?: number;
+  /**
    * Internal — current sub-RLM depth. Automatically incremented by
    * the sub-RLM spawner each time a `(llm_query …)` call recurses.
    * Never set this manually from user code; it's a private parameter
@@ -501,6 +513,7 @@ export async function runRLMFromContent(
     maxTimeoutMs,
     maxTokens,
     maxErrors,
+    compactionThresholdChars,
     _subRLMDepth = 0,
   } = options;
 
@@ -824,6 +837,7 @@ export async function runRLMFromContent(
       maxTimeoutMs,
       maxTokens,
       maxErrors,
+      compactionThresholdChars,
     });
 
     const engine = new FSMEngine<RLMContext>();
