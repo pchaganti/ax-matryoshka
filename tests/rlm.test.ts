@@ -115,7 +115,11 @@ describe("RLM Executor", () => {
     // NOTE: Now uses LC syntax - tests LC parse error context
     it("should include helpful error context for model recovery", async () => {
       mockLLM
-        .mockResolvedValueOnce('(grep "test" "extra_arg")')  // Invalid: grep takes one arg
+        // Invalid: grep requires a string-literal pattern. A bare
+        // numeric like 42 is a parse error in every grammar
+        // version (the old single-arg form AND the Phase 3 form
+        // that adds an optional haystack).
+        .mockResolvedValueOnce('(grep 42)')
         .mockResolvedValueOnce("<<<FINAL>>>\nrecovered\n<<<END>>>");
 
       await runRLM("test query", "./test-fixtures/small.txt", {

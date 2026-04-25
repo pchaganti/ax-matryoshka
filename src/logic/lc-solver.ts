@@ -24,6 +24,20 @@ import { SynthesisIntegrator } from "./synthesis-integrator.js";
 // Type for sandbox tools interface
 export interface SolverTools {
   grep: (pattern: string) => Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }>;
+  /**
+   * Phase 3 — grep over an arbitrary haystack instead of the default
+   * context. Used by `(grep "pat" HAYSTACK)`. The haystack can be
+   * any string the LLM constructs: another loaded context via
+   * `(context N)`, a binding's value, or a literal. Returns the
+   * same shape as `grep` (line numbers are 1-indexed within the
+   * haystack, not the default context). Optional — when undefined,
+   * the solver falls back to in-line regex matching so single-doc
+   * consumers don't have to wire it.
+   */
+  grepIn?: (
+    pattern: string,
+    haystack: string
+  ) => Array<{ match: string; line: string; lineNum: number; index: number; groups: string[] }>;
   fuzzy_search: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
   bm25: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
   semantic: (query: string, limit?: number) => Array<{ line: string; lineNum: number; score: number }>;
@@ -38,6 +52,19 @@ export interface SolverTools {
    * session lets the line array be garbage-collected.
    */
   lines: string[];
+  /**
+   * Phase 3 — multiple loaded documents addressable via `(context N)`.
+   *
+   * When set, `contexts[0]` is the default that primitives like grep
+   * fall back to when no haystack is supplied (i.e., it should mirror
+   * `context`). When unset, single-doc back-compat applies and
+   * `(context 0)` falls back to the legacy `context` field. The two
+   * fields coexist so single-doc consumers don't have to wire
+   * `contexts` and so multi-doc consumers don't have to keep `context`
+   * in sync — `context` is the source of truth for index 0 unless
+   * `contexts` overrides it.
+   */
+  contexts?: string[];
   /**
    * Optional sub-LLM invoker for the `(llm_query …)` primitive.
    *
@@ -429,6 +456,75 @@ async function evaluate(
         throw new Error(`Invalid regex pattern: ${regexValidation.error}`);
       }
 
+      // Phase 3 — optional haystack arg. The haystack MUST evaluate
+      // to a string. Numbers/booleans get rendered cleanly via
+      // String(); arrays/objects/null/undefined are rejected with a
+      // specific error so a typo (e.g. `(grep "X" RESULTS)` where
+      // RESULTS is the latest grep result array) doesn't silently
+      // coerce to "[object Object]" and produce garbage matches.
+      // Per project rule: correctness > performance — surface user
+      // mistakes loudly.
+      if (term.haystack) {
+        const hayValue = await evaluate(term.haystack, tools, bindings, log, depth + 1);
+        let haystack: string;
+        if (typeof hayValue === "string") {
+          haystack = hayValue;
+        } else if (typeof hayValue === "number" || typeof hayValue === "boolean") {
+          haystack = String(hayValue);
+        } else {
+          const shape = Array.isArray(hayValue)
+            ? `array(${hayValue.length})`
+            : hayValue === null
+              ? "null"
+              : hayValue === undefined
+                ? "undefined"
+                : typeof hayValue;
+          throw new Error(
+            `(grep "${term.pattern}" HAYSTACK): haystack must evaluate to a string, got ${shape}. ` +
+              `If you have an array, materialize it first (e.g., join lines) or grep an individual element.`
+          );
+        }
+        log(
+          `[Solver] Executing grep("${pattern}") over haystack (${haystack.length} chars)`
+        );
+        if (tools.grepIn) {
+          const results = tools.grepIn(pattern, haystack);
+          log(`[Solver] Found ${results.length} matches in haystack`);
+          return results;
+        }
+        // Fallback in-line search — same shape as the production
+        // grep callback. Used by test stubs that don't provide
+        // grepIn AND legacy SolverTools instances. ReDoS validated
+        // upstream by the same validateRegex call we already ran.
+        const flags = "gmi";
+        const regex = new RegExp(pattern, flags);
+        const lines = haystack.split("\n");
+        const results: Array<{
+          match: string;
+          line: string;
+          lineNum: number;
+          index: number;
+          groups: string[];
+        }> = [];
+        const MAX_HAYSTACK_MATCHES = 10_000;
+        let m: RegExpExecArray | null;
+        while ((m = regex.exec(haystack)) !== null) {
+          const beforeMatch = haystack.slice(0, m.index);
+          const lineNum = (beforeMatch.match(/\n/g) || []).length + 1;
+          results.push({
+            match: m[0],
+            line: lines[lineNum - 1] ?? "",
+            lineNum,
+            index: m.index,
+            groups: m.slice(1).filter((g): g is string => g !== undefined),
+          });
+          if (m[0].length === 0) regex.lastIndex++;
+          if (results.length >= MAX_HAYSTACK_MATCHES) break;
+        }
+        log(`[Solver] Found ${results.length} matches in haystack (in-line fallback)`);
+        return results;
+      }
+
       log(`[Solver] Executing grep("${pattern}")`);
       const results = tools.grep(pattern);
       log(`[Solver] Found ${results.length} matches`);
@@ -439,6 +535,26 @@ async function evaluate(
         });
       }
       return results;
+    }
+
+    case "context": {
+      // Phase 3 — `(context N)` selector. Returns the Nth loaded
+      // context's content. Falls back to `tools.context` when
+      // `contexts` is unset and the index is 0 — back-compat for
+      // single-doc workflows that haven't wired the new field.
+      const idx = term.index;
+      if (tools.contexts) {
+        if (idx < 0 || idx >= tools.contexts.length) {
+          throw new Error(
+            `(context ${idx}): index out of range — ${tools.contexts.length} context(s) loaded`
+          );
+        }
+        return tools.contexts[idx];
+      }
+      if (idx === 0) return tools.context;
+      throw new Error(
+        `(context ${idx}): only 1 context loaded — use runRLMFromContent with an array to enable multi-context`
+      );
     }
 
     case "fuzzy_search": {

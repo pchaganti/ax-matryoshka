@@ -468,7 +468,18 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       const pattern = parseTerm(state, d);
       if (!pattern || pattern.tag !== "lit" || typeof pattern.value !== "string")
         return null;
-      return { tag: "grep", pattern: pattern.value };
+      // Optional second arg — any term that evaluates to a string.
+      // Phase 3 introduces this for multi-context grep, but the
+      // haystack can be any string-valued term (a binding, a literal,
+      // or `(context N)`).
+      let haystack: LCTerm | undefined;
+      const next = peek(state);
+      if (next && next.type !== "rparen") {
+        const expr = parseTerm(state, d);
+        if (!expr) return null;
+        haystack = expr;
+      }
+      return { tag: "grep", pattern: pattern.value, haystack };
     }
 
     case "fuzzy_search": {
@@ -1048,6 +1059,24 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       }
 
       return { tag: "llm_query", prompt: promptStr, bindings, oneOf, calibrate };
+    }
+
+    case "context": {
+      // (context N) — Phase 3 multi-context selector.
+      //
+      // Required: a non-negative integer literal index. The solver
+      // resolves to the Nth entry of `tools.contexts`, falling back
+      // to `tools.context` when index is 0 and `contexts` is unset.
+      // We validate at parse time so a typo like `(context "alpha")`
+      // surfaces as a clear parse error rather than a runtime
+      // mystery.
+      const idxTerm = parseTerm(state, d);
+      if (!idxTerm || idxTerm.tag !== "lit" || typeof idxTerm.value !== "number") {
+        return null;
+      }
+      const n = idxTerm.value;
+      if (!Number.isInteger(n) || n < 0) return null;
+      return { tag: "context", index: n };
     }
 
     case "rlm_query": {

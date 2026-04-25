@@ -3,13 +3,13 @@
   "scenario": "scaled-handle-as-document",
   "docChars": 1823,
   "docLines": 72,
-  "parentChars": 11154,
+  "parentChars": 10934,
   "childChars": 20767,
-  "totalChars": 31921,
+  "totalChars": 31701,
   "parentCalls": 3,
   "childCalls": 10,
   "totalCalls": 13,
-  "avgParentChars": 3718,
+  "avgParentChars": 3645,
   "avgChildChars": 2077,
   "result": "[\n  \"3\",\n  \"3\",\n  \"3\",\n  \"5\",\n  \"2\"\n]",
   "expectedTotalAuth": 16,
@@ -23,6 +23,6 @@
   },
   "delta": {
     "avgChildCharsPctReduction": -18,
-    "totalCharsPctReduction": -12
+    "totalCharsPctReduction": -11
   }
 }

@@ -11,16 +11,16 @@
   "totalCalls": 13,
   "avgParentChars": 3497,
   "avgChildChars": 2077,
-  "elapsedMs": 426,
+  "elapsedMs": 431,
   "result": "[\n  \"3\",\n  \"3\",\n  \"3\",\n  \"5\",\n  \"2\"\n]",
   "expectedTotalAuth": 16,
   "observedSum": 16,
   "correct": true,
   "baseline": {
-    "elapsedMs": 1040,
+    "elapsedMs": 1030,
     "observedSum": 16
   },
   "delta": {
-    "speedupX": 2.44
+    "speedupX": 2.39
   }
 }

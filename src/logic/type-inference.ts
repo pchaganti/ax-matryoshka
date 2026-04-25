@@ -294,6 +294,9 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
     case "rlm_batch":
       return { tag: "array", element: { tag: "string" } };
 
+    case "context":
+      return { tag: "string" };
+
     default:
       return { tag: "any" };
   }

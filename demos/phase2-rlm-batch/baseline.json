@@ -11,7 +11,7 @@
   "totalCalls": 13,
   "avgParentChars": 3645,
   "avgChildChars": 2077,
-  "elapsedMs": 1036,
+  "elapsedMs": 1033,
   "result": "[\n  \"3\",\n  \"3\",\n  \"3\",\n  \"5\",\n  \"2\"\n]",
   "expectedTotalAuth": 16,
   "observedSum": 16,

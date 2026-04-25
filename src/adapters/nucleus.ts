@@ -220,7 +220,7 @@ function extractCode(response: string): string | null {
 
   // Check for plain S-expression in raw text
   // Find opening paren and balance to closing
-  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph", "communities", "community_of", "god_nodes", "surprising_connections", "bridge_nodes", "suggest_questions", "graph_report", "llm_query", "llm_batch", "rlm_query", "rlm_batch", "chunk_by_size", "chunk_by_lines", "chunk_by_regex"];
+  const KNOWN_COMMANDS = ["grep", "filter", "map", "reduce", "count", "sum", "lines", "fuzzy_search", "bm25", "semantic", "fuse", "dampen", "rerank", "text_stats", "match", "replace", "split", "parseInt", "parseFloat", "parseDate", "parseCurrency", "parseNumber", "coerce", "extract", "synthesize", "lambda", "if", "classify", "predicate", "define-fn", "apply-fn", "list_symbols", "get_symbol_body", "find_references", "callers", "callees", "ancestors", "descendants", "implementations", "dependents", "symbol_graph", "communities", "community_of", "god_nodes", "surprising_connections", "bridge_nodes", "suggest_questions", "graph_report", "llm_query", "llm_batch", "rlm_query", "rlm_batch", "context", "chunk_by_size", "chunk_by_lines", "chunk_by_regex"];
 
   const MAX_SEXP_ITERATIONS = 200;
   let sexpIterations = 0;

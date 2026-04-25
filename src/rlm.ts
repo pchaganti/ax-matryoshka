@@ -453,10 +453,16 @@ export async function runRLM(
  * the P3 sub-RLM spawner (which builds a sub-RLM over the interpolated
  * prompt rather than a file). Behaviorally identical to `runRLM` except
  * for the file-read step.
+ *
+ * Phase 3: `documentContent` may be either a single string (single-doc
+ * back-compat) or an array of strings (multi-context). When an array
+ * is supplied, the solver exposes each entry as `(context N)`; the
+ * primary context (index 0) is also the default for primitives that
+ * don't specify a haystack.
  */
 export async function runRLMFromContent(
   query: string,
-  documentContent: string,
+  documentContent: string | string[],
   options: RLMOptions
 ): Promise<unknown> {
   const {
@@ -521,12 +527,29 @@ export async function runRLMFromContent(
     }
   }
 
-  log(`\n[RLM] Loaded document: ${documentContent.length.toLocaleString()} characters (depth=${_subRLMDepth})`);
+  // Normalize documentContent into the (primary, contexts) split.
+  // - Single string: primary = the string, contexts = [the string].
+  // - Array: primary = first entry (back-compat for single-doc
+  //   primitives), contexts = the full array (addressable via
+  //   `(context N)`). Empty arrays are rejected — they'd leave the
+  //   solver with no document to work on.
+  const contexts: string[] = Array.isArray(documentContent)
+    ? documentContent
+    : [documentContent];
+  if (contexts.length === 0) {
+    throw new Error("runRLMFromContent: documentContent[] must have at least one entry");
+  }
+  const primaryContent: string = contexts[0];
+  log(
+    `\n[RLM] Loaded ${contexts.length} context(s): ${contexts
+      .map((c) => `${c.length.toLocaleString()} chars`)
+      .join(", ")} (depth=${_subRLMDepth})`
+  );
 
   // Build system prompt using the adapter (with RAG hints if enabled)
   const registry = createToolRegistry();
   const toolInterfaces = getToolInterfaces(registry);
-  const systemPrompt = adapter.buildSystemPrompt(documentContent.length, toolInterfaces, ragHints);
+  const systemPrompt = adapter.buildSystemPrompt(primaryContent.length, toolInterfaces, ragHints);
 
   log(`[RLM] Using adapter: ${adapter.name}`);
   log(`[RLM] Adapter type: ${adapter.name.includes("barliman") ? "Barliman (constraint-based synthesis)" : "Standard"}`);
@@ -699,12 +722,17 @@ export async function runRLMFromContent(
   // Phase 1 `(rlm_query …)` recursive primitive; rlmBatchDispatcher
   // enables Phase 2's concurrent `(rlm_batch …)` variant.
   const solverTools = createSolverTools(
-    documentContent,
+    primaryContent,
     llmClient,
     subRLMSpawner,
     rlmQuerySpawner,
     rlmBatchDispatcher
   );
+  // Phase 3 — expose the full contexts array. Index 0 is also
+  // available via the legacy `tools.context` field for
+  // back-compat. When a Phase-3-aware primitive (`(context N)`,
+  // `(grep "pat" (context N))`) runs, it reads `tools.contexts`.
+  solverTools.contexts = contexts;
 
   // Build user message with optional constraints
   let userMessage = `Query: ${query}`;

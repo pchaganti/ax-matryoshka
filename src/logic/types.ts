@@ -74,6 +74,7 @@ export type LCTerm =
   | LCLLMBatch
   | LCRlmQuery
   | LCRlmBatch
+  | LCContext
   | LCChunkBySize
   | LCChunkByLines
   | LCChunkByRegex;
@@ -94,11 +95,21 @@ export interface LCLit {
 }
 
 /**
- * (grep <pattern>) - search document for pattern
+ * (grep <pattern> [haystack]) - search a document for a pattern.
+ *
+ * The optional `haystack` is any term that evaluates to a string.
+ * When supplied, grep operates over THAT string instead of the
+ * default `tools.context`. Used to scope grep across multiple
+ * loaded contexts via `(context N)` or to grep a binding directly:
+ *
+ *   (grep "ERROR" (context 1))   ; grep the second loaded doc
+ *   (grep "X" $some_string)      ; grep a string binding
+ *   (grep "ERROR")               ; back-compat — grep tools.context
  */
 export interface LCGrep {
   tag: "grep";
   pattern: string;
+  haystack?: LCTerm;
 }
 
 /**
@@ -787,6 +798,27 @@ export interface LCRlmBatch {
    * to the current item before materialization.
    */
   context?: LCTerm;
+}
+
+/**
+ * (context N) — Phase 3 multi-context selector.
+ *
+ * Returns the Nth loaded context's content as a string. Contexts are
+ * loaded by `runRLMFromContent` (or its callers) and exposed via
+ * `SolverTools.contexts`. Index 0 is the default context for
+ * primitives that don't specify a haystack — back-compat for
+ * single-doc workflows. When `contexts` is undefined, `(context 0)`
+ * falls back to `tools.context` so single-doc consumers don't need
+ * to wire the new field.
+ *
+ * Usage patterns:
+ *   (grep "ERROR" (context 1))         — grep the second loaded doc
+ *   (rlm_query "scan" (context (context 2)))  — pass doc 2 as child doc
+ */
+export interface LCContext {
+  tag: "context";
+  /** Zero-based index into the loaded contexts array. */
+  index: number;
 }
 
 /**
