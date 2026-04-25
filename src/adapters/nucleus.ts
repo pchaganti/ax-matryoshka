@@ -252,7 +252,13 @@ function extractCode(response: string): string | null {
       const expr = response.slice(parenIdx, end);
       // Check the expression starts with a known command
       const exprContent = expr.slice(1).trim(); // remove leading (
-      const firstWord = exprContent.match(/^(\S+)/)?.[1];
+      // Match identifier characters only — terms like `(show_vars)`
+      // (no args) leave a `)` immediately after the head word, so a
+      // greedy `\S+` would capture "show_vars)" and miss the
+      // KNOWN_COMMANDS lookup. Constraining to identifier chars
+      // stops at the closing paren, the leading whitespace, or any
+      // non-identifier character.
+      const firstWord = exprContent.match(/^([A-Za-z_][A-Za-z0-9_-]*)/)?.[1];
       if (firstWord && KNOWN_COMMANDS.includes(firstWord)) {
         return expr;
       }
