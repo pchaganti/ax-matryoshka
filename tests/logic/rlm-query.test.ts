@@ -236,4 +236,41 @@ describe("rlm_query solver dispatch", () => {
     expect(result.success).toBe(false);
     expect(result.error ?? "").toMatch(/child session failed/);
   });
+
+  it("preserves an explicit empty array context (passes empty doc, not the prompt)", async () => {
+    // Bug fix: an explicit `(context EMPTY)` MUST reach the child as
+    // an empty document. Conflating it with the no-context shape (no
+    // `(context …)` form at all) silently masks "I expected results
+    // but got none" bugs. The contract: solver hands `""` to the
+    // rlmQuery callback when the user passed an empty binding;
+    // hands `null` only when the user omitted `(context …)`.
+    const parsed = parse('(rlm_query "count" (context RESULTS))');
+    let receivedContext: string | null | undefined = "<unset>";
+    const tools = makeTools({
+      rlmQuery: async (_p, c) => {
+        receivedContext = c;
+        return "0";
+      },
+    });
+    const bindings: Bindings = new Map([["RESULTS", []]]);
+    const result = await solve(parsed.term!, tools, bindings);
+    expect(result.success).toBe(true);
+    // Empty array → materialized to "", NOT null. The spawner can
+    // then decide to honor the user's explicit empty context vs.
+    // falling back to prompt-as-doc.
+    expect(receivedContext).toBe("");
+  });
+
+  it("surfaces an undefined-variable context as a solver error", async () => {
+    // Referencing a binding that hasn't been set should fail with a
+    // clear error, not silently produce a null/empty context that
+    // the child operates on as if everything were fine.
+    const parsed = parse('(rlm_query "p" (context UNDEFINED))');
+    const tools = makeTools({
+      rlmQuery: async () => "should not reach",
+    });
+    const result = await solve(parsed.term!, tools, new Map());
+    expect(result.success).toBe(false);
+    expect(result.error ?? "").toMatch(/UNDEFINED|unbound|undefined/i);
+  });
 });

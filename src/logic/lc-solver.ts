@@ -226,14 +226,22 @@ function canonicalizeOneOf(
  * document for a child Nucleus session.
  *
  * Strings pass through untouched. Arrays join their stringified items
- * by newlines so the child's `^anchor` regexes work — a primary
+ * by newlines so the child's `^anchor` regexes work — the primary
  * differentiator from the existing llm_query path, which JSON-
  * stringifies the binding and pollutes line starts with `[`/`{`/quotes.
  *
- * Each non-string array item is JSON-stringified compactly; a future
- * refinement could pull out a `line`/`text` field when grep result
- * objects are detected, but the conservative default keeps the surface
- * predictable. Numbers/booleans/null become their natural string form.
+ * Per-item stringification: grep-result-like objects (anything with a
+ * string `.line` field) yield that field's value, since that's the
+ * "one item per line" representation users expect when piping grep
+ * results into a child. Other objects fall back to compact JSON.
+ * Strings, numbers, booleans become their natural string form;
+ * null/undefined become "".
+ *
+ * Output is capped at MAX_CONTEXT_DOC_CHARS to bound child memory
+ * footprint; longer values are silently truncated. The cap is
+ * intentionally larger than llm_query's 500k interpolation cap
+ * because rlm_query passes the value as a child DOCUMENT (where the
+ * matryoshka 50MB doc limit applies), not as prompt text.
  */
 const MAX_CONTEXT_DOC_CHARS = 5_000_000;
 
@@ -241,9 +249,6 @@ function stringifyItem(item: unknown): string {
   if (item === null || item === undefined) return "";
   if (typeof item === "string") return item;
   if (typeof item === "number" || typeof item === "boolean") return String(item);
-  // For grep-result-like objects, prefer the `line` field — that's
-  // the most useful "one item per line" representation. Fall back to
-  // compact JSON for arbitrary shapes.
   if (typeof item === "object") {
     const obj = item as Record<string, unknown>;
     if (typeof obj.line === "string") return obj.line;
@@ -256,6 +261,13 @@ function stringifyItem(item: unknown): string {
   return String(item);
 }
 
+/**
+ * Top-level dispatch for `(rlm_query …)` context materialization.
+ * Returns a string; an empty string ("") is a valid output (e.g., the
+ * user passed `(context [])` — empty array). Callers MUST distinguish
+ * this from `null` (no `(context …)` form supplied) when deciding
+ * whether to fall back to using the prompt as the child's document.
+ */
 function materializeContext(value: unknown): string {
   let out: string;
   if (value === null || value === undefined) {

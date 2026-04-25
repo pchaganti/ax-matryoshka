@@ -554,8 +554,16 @@ export async function runRLMFromContent(
     ? async (subPrompt: string, contextDoc: string | null): Promise<string> => {
         const childMaxTurns = Math.max(1, Math.floor(maxTurns / 2));
         const childDepth = _subRLMDepth + 1;
-        const childDocument =
-          contextDoc !== null && contextDoc.length > 0 ? contextDoc : subPrompt;
+        // contextDoc === null means the user OMITTED the `(context …)`
+        // form — in that case fall back to using the prompt itself as
+        // the child's document so a no-context rlm_query still has
+        // something to operate on. An EMPTY string ("") means the
+        // user passed an explicit but empty context (e.g. (context
+        // []) — empty grep result, empty handle); preserve the user's
+        // intent and let the child see an empty document. Conflating
+        // the two would silently mask "I expected results but got
+        // none" bugs.
+        const childDocument = contextDoc !== null ? contextDoc : subPrompt;
         log(
           `[RLM] Spawning rlm_query child (depth ${childDepth}/${effectiveMaxDepth}) ` +
             `prompt=${subPrompt.length} chars, document=${childDocument.length} chars`
