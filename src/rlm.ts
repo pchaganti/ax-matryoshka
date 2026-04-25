@@ -405,6 +405,29 @@ export interface RLMOptions {
    */
   maxConcurrentSubcalls?: number;
   /**
+   * Phase 5 — wall-clock cap in milliseconds for the whole run
+   * (parent + all child sessions cumulatively for the parent's
+   * tree). When exceeded, the loop aborts cleanly between turns
+   * and returns a partial-answer string starting with
+   * "[aborted: timeout ...]". Default unset = no cap.
+   */
+  maxTimeoutMs?: number;
+  /**
+   * Phase 5 — total chars sent to + received from the LLM across
+   * all turns (a coarse proxy for token cost; provider-specific
+   * tokenization is left to the wire layer). When exceeded, the
+   * loop aborts cleanly with "[aborted: tokens ...]". Default
+   * unset = no cap.
+   */
+  maxTokens?: number;
+  /**
+   * Phase 5 — max consecutive code-execution / parse errors
+   * before the loop gives up. Catches runaway "the LLM is stuck
+   * emitting garbage" loops. Default unset = no cap (loop only
+   * stops at maxTurns).
+   */
+  maxErrors?: number;
+  /**
    * Internal — current sub-RLM depth. Automatically incremented by
    * the sub-RLM spawner each time a `(llm_query …)` call recurses.
    * Never set this manually from user code; it's a private parameter
@@ -475,6 +498,9 @@ export async function runRLMFromContent(
     sessionId: rawSessionId = `session-${Date.now()}`,
     subRLMMaxDepth = 0,
     maxConcurrentSubcalls = 4,
+    maxTimeoutMs,
+    maxTokens,
+    maxErrors,
     _subRLMDepth = 0,
   } = options;
 
@@ -525,6 +551,22 @@ export async function runRLMFromContent(
       log(`[RAG] Failed to retrieve hints: ${err instanceof Error ? err.message : String(err)}`);
       ragManager = null;
     }
+  }
+
+  // Phase 5 — record the run's start time so child spawners can
+  // propagate the REMAINING timeout budget. Without this, a parent
+  // configured with maxTimeoutMs=500 would spawn a child that
+  // ignores the cap and runs to its own maxTurns ceiling, blowing
+  // the parent's budget by a wide margin. Per project rule
+  // (correctness > performance): the budget is on the WHOLE TREE,
+  // not per-session.
+  const runStartTime = Date.now();
+  function remainingTimeoutMs(): number | undefined {
+    if (maxTimeoutMs === undefined) return undefined;
+    const left = maxTimeoutMs - (Date.now() - runStartTime);
+    // Hand at least 1ms so the child checks once and aborts cleanly
+    // rather than getting `undefined` and running unbounded.
+    return Math.max(1, left);
   }
 
   // Normalize documentContent into the (primary, contexts) split.
@@ -602,6 +644,9 @@ export async function runRLMFromContent(
             sessionId: `${sessionId}-sub${childDepth}`,
             subRLMMaxDepth: effectiveMaxDepth,
             _subRLMDepth: childDepth,
+            maxTimeoutMs: remainingTimeoutMs(),
+            maxTokens,
+            maxErrors,
           }
         );
         // runRLMFromContent normally returns a string (the final answer
@@ -654,6 +699,9 @@ export async function runRLMFromContent(
           sessionId: `${sessionId}-rlm${childDepth}`,
           subRLMMaxDepth: effectiveMaxDepth,
           _subRLMDepth: childDepth,
+          maxTimeoutMs: remainingTimeoutMs(),
+          maxTokens,
+          maxErrors,
         });
         if (typeof childResult === "string") return childResult;
         if (childResult === null || childResult === undefined) return "";
@@ -773,6 +821,9 @@ export async function runRLMFromContent(
       sessionId,
       maxTurns,
       log,
+      maxTimeoutMs,
+      maxTokens,
+      maxErrors,
     });
 
     const engine = new FSMEngine<RLMContext>();

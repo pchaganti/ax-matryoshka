@@ -68,6 +68,26 @@ export interface RLMContext {
   lastResultCount: number;
   previousResultCount: number;
 
+  // Phase 5 — resource limits + tracking. All optional; when unset
+  // the corresponding check is skipped and behavior matches pre-
+  // Phase-5. When set and exceeded, handleCheckLimits sets `result`
+  // to a partial-answer abort string starting with "[aborted: ...]".
+  maxTimeoutMs?: number;
+  maxTokens?: number;
+  maxErrors?: number;
+  startTime: number;
+  totalTokens: number;
+  consecutiveErrors: number;
+  /**
+   * Phase 5 — most recent meaningful solver result, formatted as a
+   * string. Populated unconditionally after every successful solver
+   * call (not gated by the same heuristics as
+   * `lastMeaningfulOutput`, which is filtered for stuck-pattern
+   * detection). Used by `formatAbort` so a limit-triggered exit
+   * always surfaces the best work-in-progress instead of "(none)".
+   */
+  bestPartialAnswer: string;
+
   // Termination
   result: string | null;
 }
@@ -198,6 +218,24 @@ function verifyAndReturnResult(
   };
 }
 
+/**
+ * Phase 5 — render a partial-answer abort string. The format is
+ * "[aborted: REASON DETAIL]\n\nBest partial answer:\n<content>" so
+ * a parent rlm_query receives a single string it can either inline
+ * or detect via the "[aborted:" prefix. Per project rule
+ * (correctness > performance): never silently swallow completed
+ * work — the partial answer is always surfaced when present.
+ */
+function formatAbort(
+  reason: "timeout" | "tokens" | "errors",
+  detail: string,
+  ctx: RLMContext
+): string {
+  const partial =
+    ctx.bestPartialAnswer || ctx.lastMeaningfulOutput || "(none)";
+  return `[aborted: ${reason} ${detail}]\n\nBest partial answer:\n${partial}`;
+}
+
 // ===== STATE HANDLERS =====
 
 async function handleQueryLLM(ctx: RLMContext): Promise<RLMContext> {
@@ -205,12 +243,83 @@ async function handleQueryLLM(ctx: RLMContext): Promise<RLMContext> {
   ctx.log(`\n${"─".repeat(50)}`);
   ctx.log(`[Turn ${ctx.turn}/${ctx.maxTurns}] Querying LLM...`);
 
+  // Phase 5 — pre-call limit checks. Hitting any limit terminates
+  // the loop with a partial-answer abort string. The check runs
+  // BEFORE the LLM call so we don't waste a round-trip after the
+  // ceiling is crossed. Limits skipped when not configured (back-
+  // compat).
+  if (ctx.maxTimeoutMs !== undefined) {
+    const elapsed = Date.now() - ctx.startTime;
+    if (elapsed > ctx.maxTimeoutMs) {
+      ctx.result = formatAbort("timeout", `${elapsed}ms of ${ctx.maxTimeoutMs}ms`, ctx);
+      ctx.log(`[Turn ${ctx.turn}] Aborting — timeout (${elapsed}ms)`);
+      return ctx;
+    }
+  }
+  if (ctx.maxTokens !== undefined && ctx.totalTokens > ctx.maxTokens) {
+    ctx.result = formatAbort(
+      "tokens",
+      `${ctx.totalTokens} of ${ctx.maxTokens} chars`,
+      ctx
+    );
+    ctx.log(`[Turn ${ctx.turn}] Aborting — token cap (${ctx.totalTokens})`);
+    return ctx;
+  }
+  if (
+    ctx.maxErrors !== undefined &&
+    ctx.consecutiveErrors >= ctx.maxErrors
+  ) {
+    ctx.result = formatAbort(
+      "errors",
+      `${ctx.consecutiveErrors} consecutive`,
+      ctx
+    );
+    ctx.log(
+      `[Turn ${ctx.turn}] Aborting — error cap (${ctx.consecutiveErrors} consecutive)`
+    );
+    return ctx;
+  }
+
   const prompt = ctx.history.map((h) => `${h.role.toUpperCase()}: ${h.content}`).join("\n\n");
+  ctx.totalTokens += prompt.length;
   let response: string;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   try {
-    response = await ctx.llmClient(prompt);
+    // Phase 5 — race the LLM call against the remaining timeout
+    // budget. Without this, a hung call stays hung past the cap;
+    // the pre-call check at the top of the NEXT turn never runs
+    // because the FSM is blocked on this await. Only triggers when
+    // maxTimeoutMs is configured.
+    if (ctx.maxTimeoutMs !== undefined) {
+      const remaining = ctx.maxTimeoutMs - (Date.now() - ctx.startTime);
+      if (remaining <= 0) {
+        ctx.result = formatAbort("timeout", `${ctx.maxTimeoutMs}ms`, ctx);
+        return ctx;
+      }
+      response = await Promise.race([
+        ctx.llmClient(prompt),
+        new Promise<never>((_, reject) => {
+          timeoutHandle = setTimeout(
+            () => reject(new Error("__RLM_TIMEOUT__")),
+            remaining
+          );
+        }),
+      ]);
+    } else {
+      response = await ctx.llmClient(prompt);
+    }
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
+    if (errMsg === "__RLM_TIMEOUT__") {
+      const elapsed = Date.now() - ctx.startTime;
+      ctx.result = formatAbort(
+        "timeout",
+        `${elapsed}ms of ${ctx.maxTimeoutMs}ms`,
+        ctx
+      );
+      ctx.log(`[Turn ${ctx.turn}] Aborting — timeout hit during LLM call`);
+      return ctx;
+    }
     ctx.log(`[Turn ${ctx.turn}] LLM error: ${errMsg}`);
     ctx.history.push({
       role: "user",
@@ -218,7 +327,10 @@ async function handleQueryLLM(ctx: RLMContext): Promise<RLMContext> {
     });
     ctx.noCodeCount++;
     return ctx;
+  } finally {
+    if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
+  ctx.totalTokens += response.length;
 
   if (!response) {
     ctx.result = `Error: LLM returned empty response at turn ${ctx.turn}`;
@@ -249,6 +361,12 @@ function handleParseResponse(ctx: RLMContext): RLMContext {
   if (!ctx.extractedCode) {
     ctx.log(`[Turn ${ctx.turn}] No Nucleus command extracted`);
     ctx.noCodeCount++;
+    // Phase 5 — a response with no extractable code counts toward
+    // the consecutive-error budget. Without this, an LLM stuck
+    // emitting prose instead of S-expressions would never trip
+    // maxErrors and would just run to maxTurns. Reset is wherever
+    // a successful execution clears consecutiveErrors.
+    ctx.consecutiveErrors++;
     return ctx;
   }
 
@@ -306,6 +424,10 @@ function handleValidate(ctx: RLMContext): RLMContext {
   if (!lcResult.success || !lcResult.term) {
     ctx.log(`[Turn ${ctx.turn}] LC parse error: ${lcResult.error}`);
     ctx.parseError = lcResult.error || "Parse error";
+    // Phase 5 — parse errors count toward the consecutive-error
+    // budget. Without this, an LLM stuck in a syntax-error loop
+    // would never trip maxErrors.
+    ctx.consecutiveErrors++;
     ctx.history.push({
       role: "user",
       content: ctx.adapter.getErrorFeedback(ctx.parseError, ctx.extractedCode),
@@ -520,6 +642,7 @@ function handleAnalyze(ctx: RLMContext): RLMContext {
     ctx.log(`[Turn ${ctx.turn}] Error: ${result.error}`);
     feedback += `Error: ${result.error}\n`;
     ctx.lastExecutionHadError = true;
+    ctx.consecutiveErrors++;
 
     if (ctx.ragManager) {
       ctx.ragManager.recordFailure({
@@ -533,6 +656,7 @@ function handleAnalyze(ctx: RLMContext): RLMContext {
     }
   } else {
     ctx.lastExecutionHadError = false;
+    ctx.consecutiveErrors = 0;
   }
 
   if (result.value !== undefined && result.value !== null) {
@@ -545,6 +669,43 @@ function handleAnalyze(ctx: RLMContext): RLMContext {
     }
     ctx.log(`[Turn ${ctx.turn}] Result: ${resultStr}`);
     feedback += `Result: ${truncate(resultStr)}\n`;
+    // Phase 5 — record this as the best-known partial answer.
+    // Updated on every meaningful solver call so a limit-hit abort
+    // always has work to surface. Selectivity rules:
+    //   - Empty arrays: skip (not meaningful as a fallback).
+    //   - Strings: only adopt if we have nothing yet OR the new
+    //     string is substantially longer. Avoids overwriting a
+    //     useful array with a sub-RLM's "Max turns reached" /
+    //     "[aborted: …]" failure message that would otherwise
+    //     replace it as the most-recent result.
+    //   - Anything else (arrays w/ content, numbers, structured
+    //     objects): adopt unconditionally.
+    const MAX_PARTIAL = 10_000;
+    const truncated =
+      resultStr.length > MAX_PARTIAL
+        ? resultStr.slice(0, MAX_PARTIAL) + "\n…[truncated]"
+        : resultStr;
+    const isEmptyArray = Array.isArray(result.value) && result.value.length === 0;
+    // Strings starting with "[aborted:" came back from a child
+    // session whose own resource limits tripped. Treating that as
+    // a "best partial" pollutes the parent's surface — the child's
+    // failure narrative replaces useful parent-side work like a
+    // grep result. Skip those strings entirely so the parent keeps
+    // whatever genuine progress it had.
+    const isAbortString =
+      typeof result.value === "string" && result.value.startsWith("[aborted:");
+    if (!isEmptyArray && !isAbortString) {
+      if (typeof result.value === "string") {
+        if (
+          ctx.bestPartialAnswer.length === 0 ||
+          truncated.length > ctx.bestPartialAnswer.length * 1.5
+        ) {
+          ctx.bestPartialAnswer = truncated;
+        }
+      } else {
+        ctx.bestPartialAnswer = truncated;
+      }
+    }
   }
 
   const classifierGuidance = generateClassifierGuidance(result.logs, ctx.query);
@@ -750,6 +911,9 @@ export function createInitialContext(opts: {
   sessionId: string;
   maxTurns: number;
   log: (msg: string) => void;
+  maxTimeoutMs?: number;
+  maxTokens?: number;
+  maxErrors?: number;
 }): RLMContext {
   return {
     query: opts.query,
@@ -786,6 +950,14 @@ export function createInitialContext(opts: {
     lastMeaningfulOutput: "",
     lastResultCount: 0,
     previousResultCount: 0,
+
+    maxTimeoutMs: opts.maxTimeoutMs,
+    maxTokens: opts.maxTokens,
+    maxErrors: opts.maxErrors,
+    startTime: Date.now(),
+    totalTokens: 0,
+    consecutiveErrors: 0,
+    bestPartialAnswer: "",
 
     result: null,
   };
