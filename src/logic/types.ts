@@ -75,6 +75,7 @@ export type LCTerm =
   | LCRlmQuery
   | LCRlmBatch
   | LCContext
+  | LCShowVars
   | LCChunkBySize
   | LCChunkByLines
   | LCChunkByRegex;
@@ -819,6 +820,21 @@ export interface LCContext {
   tag: "context";
   /** Zero-based index into the loaded contexts array. */
   index: number;
+}
+
+/**
+ * (show_vars) — Phase 4 binding-introspection term.
+ *
+ * Returns a string summarizing every binding currently in scope:
+ * one entry per name with a shape descriptor (Array(N), String(N),
+ * Number(v), Boolean(v), object). Lets a query inspect what's
+ * available without a separate tool call. The Python RLM's
+ * `SHOW_VARS()` helper is the spiritual cousin.
+ *
+ * Returns "No bindings" (or similar) when the map is empty.
+ */
+export interface LCShowVars {
+  tag: "show_vars";
 }
 
 /**

@@ -333,10 +333,11 @@ describe("RLM FSM States", () => {
       expect(result.result).not.toContain("FINAL_VAR(_1)");
     });
 
-    it("leaves FINAL_VAR(unknown) pass-through when name is not bound", async () => {
-      // Defensive: if the LLM references a binding that doesn't exist,
-      // don't crash — leave the marker in place so the user sees the
-      // mistake. The alternative (silent stripping) hides errors.
+    it("surfaces a clear error when FINAL_VAR references an unknown binding", async () => {
+      // Phase 4: don't silently pass through `FINAL_VAR(unknown)` as
+      // literal text — that lets an unresolved marker flow as if it
+      // were a valid answer. Replace it with a clear bracketed
+      // error string the user (or a parent rlm_query) can detect.
       const document = "foo";
       let turnNum = 0;
       const llmResponses = [
@@ -359,8 +360,10 @@ describe("RLM FSM States", () => {
       const engine = new FSMEngine<RLMContext>();
       const result = await engine.run(buildRLMSpec(), ctx);
       expect(result.result).not.toBeNull();
-      // Unknown binding stays visible so the error is obvious.
-      expect(result.result).toContain("FINAL_VAR(_99)");
+      // The literal marker is REPLACED with a clear bracketed error.
+      expect(result.result).not.toMatch(/FINAL_VAR\(_99\)/);
+      expect(result.result).toMatch(/FINAL_VAR error|unknown binding/i);
+      expect(result.result).toContain("_99");
     });
 
     it("resolves FINAL_VAR(_N) even when it's the only thing in the final answer", async () => {

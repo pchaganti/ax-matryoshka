@@ -1061,6 +1061,15 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       return { tag: "llm_query", prompt: promptStr, bindings, oneOf, calibrate };
     }
 
+    case "show_vars": {
+      // (show_vars) — no args. Reject any trailing tokens so a typo
+      // like (show_vars 1) surfaces as a parse error rather than
+      // being silently absorbed.
+      const next = peek(state);
+      if (next && next.type !== "rparen") return null;
+      return { tag: "show_vars" };
+    }
+
     case "context": {
       // (context N) — Phase 3 multi-context selector.
       //

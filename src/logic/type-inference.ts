@@ -297,6 +297,9 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
     case "context":
       return { tag: "string" };
 
+    case "show_vars":
+      return { tag: "string" };
+
     default:
       return { tag: "any" };
   }

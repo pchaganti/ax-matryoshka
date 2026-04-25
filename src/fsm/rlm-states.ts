@@ -131,10 +131,20 @@ function expandFinalVar(answer: string, bindings: Bindings): string {
   // through this helper.
   if (!answer.includes("FINAL_VAR(")) return answer;
 
-  return answer.replace(FINAL_VAR_REGEX, (match, name: string) => {
+  return answer.replace(FINAL_VAR_REGEX, (_match, name: string) => {
     if (!bindings.has(name)) {
-      // Unknown binding: pass through so the error is visible.
-      return match;
+      // Unknown binding: surface a clear error string instead of
+      // the literal `FINAL_VAR(name)` so callers (and the user)
+      // can DETECT the failure. Silent pass-through let an
+      // unresolved marker flow through as if it were an answer
+      // — a real correctness bug for child→parent FINAL_VAR
+      // round-trips. Per project rule: correctness > performance.
+      const available = [...bindings.keys()].slice(0, 8).join(", ");
+      const more = bindings.size > 8 ? `, ...+${bindings.size - 8} more` : "";
+      return (
+        `[FINAL_VAR error: unknown binding "${name}". ` +
+        `Available: ${available || "(none)"}${more}]`
+      );
     }
     const value = bindings.get(name);
     let serialized: string;

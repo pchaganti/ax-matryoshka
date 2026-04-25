@@ -537,6 +537,40 @@ async function evaluate(
       return results;
     }
 
+    case "show_vars": {
+      // Phase 4 — binding introspection. Returns a string summary
+      // that can be inlined into a sub-LLM prompt, used in a
+      // FINAL_VAR substitution, or just passed back to the user as
+      // the answer. Format mirrors `lattice_bindings` in spirit but
+      // is reachable from inside a query.
+      if (bindings.size === 0) {
+        return "No bindings yet — run a query to populate RESULTS or a binding name.";
+      }
+      const lines: string[] = [];
+      for (const [name, value] of bindings) {
+        let shape: string;
+        if (Array.isArray(value)) {
+          shape = `Array(${value.length})`;
+        } else if (typeof value === "string") {
+          shape = `String(${value.length})`;
+        } else if (typeof value === "number") {
+          shape = `Number(${value})`;
+        } else if (typeof value === "boolean") {
+          shape = `Boolean(${value})`;
+        } else if (value === null) {
+          shape = "null";
+        } else if (value === undefined) {
+          shape = "undefined";
+        } else if (typeof value === "object") {
+          shape = "object";
+        } else {
+          shape = typeof value;
+        }
+        lines.push(`  ${name}: ${shape}`);
+      }
+      return `Bindings (${bindings.size}):\n${lines.join("\n")}`;
+    }
+
     case "context": {
       // Phase 3 — `(context N)` selector. Returns the Nth loaded
       // context's content. Falls back to `tools.context` when
