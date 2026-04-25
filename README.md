@@ -54,6 +54,102 @@ The LLM outputs commands in the Nucleus DSL—an S-expression language designed 
 <<<FINAL>>>13000000<<<END>>>
 ```
 
+#### Feature availability by execution path
+
+Matryoshka has two execution paths and not every primitive works in both:
+
+| Feature | `runRLM` (CLI / programmatic) | `lattice-mcp` (MCP server) |
+|---|---|---|
+| `(grep …)`, `(filter …)`, `(map …)`, etc. | ✅ | ✅ |
+| `(llm_query …)`, `(llm_batch …)` | ✅ | ✅ via MCP sampling protocol |
+| `(rlm_query …)`, `(rlm_batch …)` | ✅ | ❌ throws "not available in this execution context" |
+| `(context N)` selector | ✅ (multi-doc via `runRLMFromContent(query, string[])`) | partial — `(context 0)` works; multi-doc loading not exposed via `lattice_load` |
+| `(grep "X" haystack)` | ✅ | ✅ |
+| `(show_vars)` | ✅ | ✅ |
+| `FINAL_VAR(name)` resolution | ✅ | N/A — MCP returns query results directly |
+| `maxTimeoutMs` / `maxTokens` / `maxErrors` | ✅ | ❌ — MCP has its own session timeout |
+| `compactionThresholdChars` | ✅ | ❌ — MCP doesn't have a multi-turn FSM history |
+
+The recursive (`rlm_query`/`rlm_batch`) and resource-limit features were built for the `runRLM` FSM loop. Wiring them into `lattice-mcp-server` would require additional plumbing (child-session spawning, MCP-protocol propagation of timeouts) that hasn't been done.
+
+#### Recursive Primitives
+
+`rlm_query` spawns a child Nucleus session with its own FSM loop. The child runs to FINAL and returns a string — useful when a sub-task needs multi-turn reasoning over a structured handle:
+
+```scheme
+; Child sees the resolved handle as its working document, NOT a
+; JSON-stringified prompt blob. Lets the child use grep/lines/
+; chunk_by_lines over arrays without JSON-syntax noise.
+(rlm_query "extract dates" (context RESULTS))
+
+; No (context …) → child's document is the prompt itself.
+(rlm_query "summarize each error type")
+```
+
+`rlm_batch` is the concurrent variant — N child sessions run in parallel up to `maxConcurrentSubcalls` (default 4):
+
+```scheme
+(rlm_batch (chunk_by_lines 100)
+  (lambda c (rlm_query "extract metrics" (context c))))
+```
+
+Each item produces one entry in the returned array, in input order. Per-item failures surface as `"Error: rlm_batch item N failed — …"` strings without aborting the rest of the batch.
+
+#### Multi-Context Loading
+
+Pass `string[]` to `runRLMFromContent` to load multiple documents. Address them via `(context N)`; index 0 is the default for primitives that don't specify a haystack:
+
+```scheme
+(grep "DEPLOY" (context 0))   ; deploy.log
+(grep "OUTAGE" (context 2))   ; comms.log
+
+; (context N) is just a term — pipe it anywhere a string is expected
+(rlm_query "scan" (context (context 1)))   ; child sees doc 1
+```
+
+Per-doc line numbers come back, so the LLM can cite "doc 0 line 4, doc 2 line 2" with confidence rather than inventing absolute offsets across a concatenation.
+
+#### Introspection
+
+```scheme
+(show_vars)   ; Returns a string summary of every binding currently
+              ; in scope. Useful before a (filter RESULTS …) or a
+              ; FINAL_VAR(name) reference when the LLM lost track of
+              ; what's bound. Same surface as the `lattice_bindings`
+              ; MCP tool but reachable from inside a query.
+```
+
+Unknown FINAL_VAR markers surface a clear error rather than passing the literal text through:
+
+```
+<<<FINAL>>>FINAL_VAR(_99)<<<END>>>
+→ "[FINAL_VAR error: unknown binding "_99". Available: _1, RESULTS]"
+```
+
+#### Resource Limits
+
+All optional. With none set, behavior is unchanged:
+
+```typescript
+runRLM(query, file, {
+  maxTimeoutMs: 30_000,    // wall-clock cap, propagates to children
+  maxTokens: 100_000,      // cumulative chars sent + received
+  maxErrors: 5,            // consecutive parse/execution errors
+  compactionThresholdChars: 50_000,  // summarize history when prompt grows past this
+})
+```
+
+When a limit hits, the run terminates cleanly with a string of the form:
+
+```
+[aborted: timeout 32100ms of 30000ms]
+
+Best partial answer:
+<the most recent meaningful solver result>
+```
+
+The partial answer is always preserved when present — completed work is never silently lost on abort.
+
 ### The Lattice Engine
 
 The Lattice engine (`src/logic/`) processes Nucleus commands:

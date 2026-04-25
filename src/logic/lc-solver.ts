@@ -543,11 +543,21 @@ async function evaluate(
       // FINAL_VAR substitution, or just passed back to the user as
       // the answer. Format mirrors `lattice_bindings` in spirit but
       // is reachable from inside a query.
-      if (bindings.size === 0) {
+      //
+      // Internal bindings start with `_` followed by a non-digit
+      // character (e.g., `_sessionDB`, `_compaction_trace`). These
+      // are private plumbing the user shouldn't see — surfacing
+      // them would expose internal state and confuse the LLM about
+      // what it can FINAL_VAR-reference. User-visible bindings:
+      // RESULTS, plain names, and `_<digits>` (per-turn results).
+      const isInternal = (name: string): boolean =>
+        name.startsWith("_") && name.length > 1 && !/^_\d/.test(name);
+      const visibleEntries = [...bindings].filter(([n]) => !isInternal(n));
+      if (visibleEntries.length === 0) {
         return "No bindings yet — run a query to populate RESULTS or a binding name.";
       }
       const lines: string[] = [];
-      for (const [name, value] of bindings) {
+      for (const [name, value] of visibleEntries) {
         let shape: string;
         if (Array.isArray(value)) {
           shape = `Array(${value.length})`;
@@ -568,7 +578,7 @@ async function evaluate(
         }
         lines.push(`  ${name}: ${shape}`);
       }
-      return `Bindings (${bindings.size}):\n${lines.join("\n")}`;
+      return `Bindings (${visibleEntries.length}):\n${lines.join("\n")}`;
     }
 
     case "context": {
