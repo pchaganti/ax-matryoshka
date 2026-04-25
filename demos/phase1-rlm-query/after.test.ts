@@ -63,10 +63,13 @@ describe("Phase 1 — (rlm_query …) handle-as-context path", () => {
       documentContent: SCENARIO_A_DOC,
       parentResponder: fromScript(SCENARIO_A_PHASE1_PARENT_SCRIPT),
       childResponder: SCENARIO_A_CHILD_RESPONDER,
-      // (rlm_query …) opts in per call. We leave subRLMMaxDepth at 0
-      // to prove that the new term recurses on its own, not via the
-      // existing flag.
-      subRLMMaxDepth: 0,
+      // (rlm_query …) opts in at the term level — the LLM picks
+      // recursion. The runtime depth budget is shared with llm_query
+      // for Phase 1 (future phases may split it), so we set
+      // subRLMMaxDepth >= 1 to enable recursion at all. The
+      // before/after delta is still meaningful because baseline runs
+      // with the same depth budget.
+      subRLMMaxDepth: 1,
       maxTurns: 6,
     });
 

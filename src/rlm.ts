@@ -38,7 +38,8 @@ import { buildRLMSpec, createInitialContext, type RLMContext } from "./fsm/rlm-s
 function createSolverTools(
   context: string,
   llmClient?: LLMQueryFn,
-  subRLMSpawner?: (prompt: string) => Promise<string>
+  subRLMSpawner?: (prompt: string) => Promise<string>,
+  rlmQuerySpawner?: (prompt: string, contextDoc: string | null) => Promise<string>
 ): SolverTools {
   const MAX_SOLVER_LINES = 500_000;
   let lines = context.split("\n");
@@ -203,6 +204,29 @@ function createSolverTools(
               "like <<<FINAL>>> or S-expressions — your caller uses your " +
               "response as a plain string.\n\n" +
               subPrompt;
+            const response = await llmClient(framedPrompt);
+            return String(response ?? "");
+          }
+        : undefined,
+
+    // Phase 1 hook for `(rlm_query …)`. Same priority order as
+    // llmQuery: spawner if available (recursive child Nucleus FSM
+    // with handle-as-document semantics), else flat llmClient with
+    // prompt+context concatenated, else undefined.
+    rlmQuery: rlmQuerySpawner
+      ? rlmQuerySpawner
+      : llmClient
+        ? async (subPrompt: string, contextDoc: string | null) => {
+            const composed =
+              contextDoc !== null && contextDoc.length > 0
+                ? `${subPrompt}\n\nContext:\n${contextDoc}`
+                : subPrompt;
+            const framedPrompt =
+              "You are a sub-LLM invoked by a parent RLM run. Answer the " +
+              "prompt concisely and directly. Do not emit control tags " +
+              "like <<<FINAL>>> or S-expressions — your caller uses your " +
+              "response as a plain string.\n\n" +
+              composed;
             const response = await llmClient(framedPrompt);
             return String(response ?? "");
           }
@@ -517,10 +541,55 @@ export async function runRLMFromContent(
       }
     : undefined;
 
+  // Phase 1 — `(rlm_query …)` spawner. Same depth budget as the
+  // llm_query spawner; when at the depth cap, the solver layer's
+  // built-in flat fallback handles the call. The spawner here always
+  // implements the FULL recursive semantics: spawn a child
+  // runRLMFromContent with the rlm_query prompt as the child's query
+  // and the resolved (context …) value as the child's working
+  // document. Null contextDoc → child's document is the prompt
+  // itself (mirrors subRLMSpawner so callers without a `(context …)`
+  // clause still get a working child).
+  const rlmQuerySpawner = _subRLMDepth < effectiveMaxDepth
+    ? async (subPrompt: string, contextDoc: string | null): Promise<string> => {
+        const childMaxTurns = Math.max(1, Math.floor(maxTurns / 2));
+        const childDepth = _subRLMDepth + 1;
+        const childDocument =
+          contextDoc !== null && contextDoc.length > 0 ? contextDoc : subPrompt;
+        log(
+          `[RLM] Spawning rlm_query child (depth ${childDepth}/${effectiveMaxDepth}) ` +
+            `prompt=${subPrompt.length} chars, document=${childDocument.length} chars`
+        );
+        const childResult = await runRLMFromContent(subPrompt, childDocument, {
+          llmClient,
+          adapter,
+          maxTurns: childMaxTurns,
+          verbose,
+          ragEnabled: false,
+          sessionId: `${sessionId}-rlm${childDepth}`,
+          subRLMMaxDepth: effectiveMaxDepth,
+          _subRLMDepth: childDepth,
+        });
+        if (typeof childResult === "string") return childResult;
+        if (childResult === null || childResult === undefined) return "";
+        try {
+          return JSON.stringify(childResult);
+        } catch {
+          return String(childResult);
+        }
+      }
+    : undefined;
+
   // Create solver tools for document operations. Passing llmClient here
   // enables the `(llm_query …)` LC primitive; passing subRLMSpawner
-  // upgrades it from flat to recursive.
-  const solverTools = createSolverTools(documentContent, llmClient, subRLMSpawner);
+  // upgrades it from flat to recursive. rlmQuerySpawner enables the
+  // Phase 1 `(rlm_query …)` recursive primitive.
+  const solverTools = createSolverTools(
+    documentContent,
+    llmClient,
+    subRLMSpawner,
+    rlmQuerySpawner
+  );
 
   // Build user message with optional constraints
   let userMessage = `Query: ${query}`;

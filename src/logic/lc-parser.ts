@@ -1050,6 +1050,59 @@ function parseList(state: ParserState, depth: number = 0): LCTerm | null {
       return { tag: "llm_query", prompt: promptStr, bindings, oneOf, calibrate };
     }
 
+    case "rlm_query": {
+      // (rlm_query "prompt" [(context EXPR)])
+      //
+      // Required first argument: string literal prompt.
+      // Optional trailing form: (context EXPR) — the child's working
+      // document. EXPR may be any LC term; the solver resolves it
+      // before spawning the child. Only one (context …) form is
+      // allowed. Unknown trailing forms are a parse error so a typo
+      // doesn't silently degrade to the no-context shape.
+      const promptTerm = parseTerm(state, d);
+      if (!promptTerm || promptTerm.tag !== "lit" || typeof promptTerm.value !== "string") {
+        return null;
+      }
+      const promptStr = promptTerm.value;
+
+      // Mirror the safety cap on llm_query — keep an accidentally-
+      // huge literal from blowing the parser's working set.
+      const MAX_PROMPT_LENGTH = 500_000;
+      if (promptStr.length > MAX_PROMPT_LENGTH) {
+        return null;
+      }
+
+      let context: LCTerm | undefined;
+
+      while (true) {
+        const next = peek(state);
+        if (!next || next.type === "rparen") break;
+        if (next.type !== "lparen") return null;
+        consume(state);
+
+        const headTok = peek(state);
+        if (!headTok || headTok.type !== "symbol") return null;
+
+        if (headTok.value === "context") {
+          if (context !== undefined) return null; // duplicate
+          consume(state);
+          const expr = parseTerm(state, d);
+          if (!expr) return null; // (context) with no arg
+          const closing = peek(state);
+          if (!closing || closing.type !== "rparen") return null;
+          consume(state);
+          context = expr;
+          continue;
+        }
+
+        // Unknown trailing form — reject so typos surface as parse
+        // errors instead of silently being absorbed.
+        return null;
+      }
+
+      return { tag: "rlm_query", prompt: promptStr, context };
+    }
+
     case "llm_batch": {
       // (llm_batch COLLECTION (lambda X (llm_query "prompt" [(name bind) ...])))
       //

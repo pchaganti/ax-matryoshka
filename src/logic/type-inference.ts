@@ -288,6 +288,9 @@ function infer(term: LCTerm, env: TypeEnv): LCType {
     case "llm_batch":
       return { tag: "array", element: { tag: "string" } };
 
+    case "rlm_query":
+      return { tag: "string" };
+
     default:
       return { tag: "any" };
   }

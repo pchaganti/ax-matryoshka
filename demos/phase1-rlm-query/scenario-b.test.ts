@@ -78,7 +78,7 @@ describe("Phase 1 scenario B — handle-as-document for child grep", () => {
       documentContent: SCENARIO_B_DOC,
       parentResponder: fromScript(SCENARIO_B_PHASE1_PARENT_SCRIPT),
       childResponder: SCENARIO_B_CHILD_RESPONDER,
-      subRLMMaxDepth: 0,
+      subRLMMaxDepth: 1,
       maxTurns: 6,
     });
 

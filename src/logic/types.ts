@@ -72,6 +72,7 @@ export type LCTerm =
   | LCGraphReport
   | LCLLMQuery
   | LCLLMBatch
+  | LCRlmQuery
   | LCChunkBySize
   | LCChunkByLines
   | LCChunkByRegex;
@@ -711,6 +712,45 @@ export interface LCLLMBatch {
    * committing to per-item ratings.
    */
   calibrate?: boolean;
+}
+
+/**
+ * (rlm_query "prompt" [(context EXPR)]) — Phase 1 recursive primitive.
+ *
+ * Spawns a CHILD Nucleus FSM session. The child runs its own loop —
+ * emitting Nucleus terms, executing them, accumulating bindings —
+ * until it produces a FINAL answer. That FINAL string becomes the
+ * bound value of this term in the parent.
+ *
+ * The optional `(context EXPR)` form supplies the child's working
+ * document. EXPR is evaluated against the parent's bindings; if the
+ * value is an array, items are stringified and joined by newlines so
+ * the child's `(grep …)` / `(lines …)` / `(chunk_by_lines …)`
+ * primitives operate on a clean line-oriented document. If the value
+ * is a string, it is used as-is. If `(context …)` is omitted, the
+ * child's document is the prompt itself (matching the existing
+ * `subRLMSpawner` semantics for backwards compat).
+ *
+ * Differs from `(llm_query …)`:
+ *   - llm_query interpolates bindings into the prompt; the result is
+ *     a FLAT sub-LLM call (or, when subRLMMaxDepth > 0, a recursive
+ *     child whose document IS the interpolated prompt).
+ *   - rlm_query separates the child's QUERY (the prompt) from the
+ *     child's WORKING DOCUMENT (the resolved context). The child can
+ *     run document-level primitives over a structured handle without
+ *     the JSON-stringification noise the llm_query path imposes.
+ */
+export interface LCRlmQuery {
+  tag: "rlm_query";
+  /** Query string handed to the child as its top-level user message. */
+  prompt: string;
+  /**
+   * Optional context expression. Evaluated by the solver; the result
+   * is materialized into a line-oriented string and used as the
+   * child's working document. Omitted when the prompt itself is the
+   * complete instruction.
+   */
+  context?: LCTerm;
 }
 
 /**

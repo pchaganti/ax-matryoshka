@@ -28,8 +28,12 @@ export interface BenchMetrics {
 }
 
 /**
- * The framing prefix `runRLM` injects into a child sub-RLM's user
- * message. Used to attribute scripted-LLM calls to parent vs child.
+ * The framing prefix `runRLM` injects into a `(llm_query …)`-driven
+ * child sub-RLM's user message. Used as ONE of two child-detection
+ * signals; the other is "the prompt's `Query:` line is something
+ * other than the parent's original query," which catches
+ * `(rlm_query …)` children whose user message is `Query: <rlm_query
+ * prompt>`.
  */
 export const CHILD_FRAMING_PREFIX = "Analyze and answer based on";
 
@@ -54,10 +58,17 @@ export type Responder = (prompt: string, turn: number) => string;
  * Each child invocation gets its own per-child turn inference (via
  * `inferTurn`), so multiple children with the same script don't share
  * a global counter.
+ *
+ * `parentQuery` (when supplied) is matched against the prompt's
+ * `Query:` line — when the line carries something else, the call is
+ * attributed to a child. This catches `(rlm_query …)` children, whose
+ * user message is `Query: <rlm_query prompt>` rather than the
+ * `subRLMSpawner`'s `Analyze and answer based on …` framing.
  */
 export function makeScriptedLLM(
   parentResponder: Responder,
-  childResponder: Responder
+  childResponder: Responder,
+  parentQuery?: string
 ): { llm: (p: string) => Promise<string>; metrics: BenchMetrics } {
   const metrics: BenchMetrics = {
     parentChars: 0,
@@ -72,7 +83,22 @@ export function makeScriptedLLM(
   return {
     metrics,
     llm: async (prompt: string) => {
-      const isChild = prompt.includes(CHILD_FRAMING_PREFIX);
+      let isChild = prompt.includes(CHILD_FRAMING_PREFIX);
+      if (!isChild && parentQuery) {
+        // Look at the LATEST `Query:` line in the prompt (the user
+        // message). If it doesn't carry the parent's original query,
+        // this is a child invocation (e.g. an `(rlm_query …)` child
+        // whose user message is `Query: <rlm_query prompt>`).
+        const lastQueryIdx = prompt.lastIndexOf("Query: ");
+        if (lastQueryIdx >= 0) {
+          const after = prompt.slice(lastQueryIdx + "Query: ".length);
+          const newlineIdx = after.indexOf("\n");
+          const queryLine = (newlineIdx >= 0 ? after.slice(0, newlineIdx) : after).trim();
+          if (queryLine && queryLine !== parentQuery.trim()) {
+            isChild = true;
+          }
+        }
+      }
       const turn = inferTurn(prompt);
       metrics.totalCalls++;
       metrics.totalChars += prompt.length;
@@ -123,7 +149,11 @@ export interface RunOptions {
 export async function runBench(
   opts: RunOptions
 ): Promise<{ result: string; metrics: BenchMetrics }> {
-  const { llm, metrics } = makeScriptedLLM(opts.parentResponder, opts.childResponder);
+  const { llm, metrics } = makeScriptedLLM(
+    opts.parentResponder,
+    opts.childResponder,
+    opts.query
+  );
   const path = await writeFixture(opts.documentContent);
   const result = await runRLM(opts.query, path, {
     llmClient: llm,

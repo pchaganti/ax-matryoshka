@@ -74,6 +74,23 @@ export interface SolverTools {
     prompts: string[],
     options?: { calibrate?: boolean }
   ) => Promise<string[]>;
+  /**
+   * Optional recursive child-session invoker for the `(rlm_query …)`
+   * primitive. Phase 1 of the recursive-Nucleus port.
+   *
+   * The solver evaluates the optional `(context EXPR)` form, stringifies
+   * the resulting value into a clean line-oriented document (one item
+   * per line for arrays, the string itself for strings, `null` when no
+   * context is supplied), and dispatches through this callback. The
+   * callback is responsible for spawning a child Nucleus FSM session
+   * with that document, running it to completion, and returning the
+   * child's FINAL string.
+   *
+   * When undefined, `(rlm_query …)` fails with a clear error naming
+   * the execution context — the same pattern llmQuery uses for the
+   * standalone-vs-RLM-loop distinction.
+   */
+  rlmQuery?: (prompt: string, contextDoc: string | null) => Promise<string>;
 }
 
 /**
@@ -202,6 +219,62 @@ function canonicalizeOneOf(
     }
   }
   return null;
+}
+
+/**
+ * Convert a resolved `(context EXPR)` value into a clean line-oriented
+ * document for a child Nucleus session.
+ *
+ * Strings pass through untouched. Arrays join their stringified items
+ * by newlines so the child's `^anchor` regexes work — a primary
+ * differentiator from the existing llm_query path, which JSON-
+ * stringifies the binding and pollutes line starts with `[`/`{`/quotes.
+ *
+ * Each non-string array item is JSON-stringified compactly; a future
+ * refinement could pull out a `line`/`text` field when grep result
+ * objects are detected, but the conservative default keeps the surface
+ * predictable. Numbers/booleans/null become their natural string form.
+ */
+const MAX_CONTEXT_DOC_CHARS = 5_000_000;
+
+function stringifyItem(item: unknown): string {
+  if (item === null || item === undefined) return "";
+  if (typeof item === "string") return item;
+  if (typeof item === "number" || typeof item === "boolean") return String(item);
+  // For grep-result-like objects, prefer the `line` field — that's
+  // the most useful "one item per line" representation. Fall back to
+  // compact JSON for arbitrary shapes.
+  if (typeof item === "object") {
+    const obj = item as Record<string, unknown>;
+    if (typeof obj.line === "string") return obj.line;
+    try {
+      return JSON.stringify(item);
+    } catch {
+      return String(item);
+    }
+  }
+  return String(item);
+}
+
+function materializeContext(value: unknown): string {
+  let out: string;
+  if (value === null || value === undefined) {
+    out = "";
+  } else if (typeof value === "string") {
+    out = value;
+  } else if (Array.isArray(value)) {
+    out = value.map(stringifyItem).join("\n");
+  } else if (typeof value === "number" || typeof value === "boolean") {
+    out = String(value);
+  } else {
+    // Object that isn't an array — use the same line-extraction
+    // heuristic as for array items.
+    out = stringifyItem(value);
+  }
+  if (out.length > MAX_CONTEXT_DOC_CHARS) {
+    out = out.slice(0, MAX_CONTEXT_DOC_CHARS);
+  }
+  return out;
 }
 
 /**
@@ -1429,6 +1502,44 @@ async function evaluate(
         }
         return canonical;
       }
+      return response;
+    }
+
+    case "rlm_query": {
+      // Phase 1 recursive primitive — spawn a child Nucleus FSM with
+      // an explicit query and (optional) clean line-oriented document.
+      // The actual child-spawning logic lives behind the `rlmQuery`
+      // callback the parent's RLM loop wires up; this case is just
+      // the materialization-and-dispatch layer.
+      if (!tools.rlmQuery) {
+        throw new Error(
+          "rlm_query is not available in this execution context. " +
+          "The RLM loop provides it once the parent threads an " +
+          "rlmQuery callback through SolverTools. Standalone " +
+          "NucleusEngine / HandleSession instances must pass an " +
+          "rlmQuery option to enable it."
+        );
+      }
+
+      // Resolve (context EXPR) when present. The materialized form is
+      // line-oriented: arrays join their stringified items by \n;
+      // strings pass through unchanged; null/undefined become null.
+      // This is the structural difference from llm_query — the child
+      // gets a clean document its grep/lines/chunk primitives can
+      // operate on, not a JSON-stringified blob.
+      let contextDoc: string | null = null;
+      if (term.context) {
+        const resolved = await evaluate(term.context, tools, bindings, log, depth + 1);
+        contextDoc = materializeContext(resolved);
+      }
+
+      log(
+        `[Solver] rlm_query prompt length: ${term.prompt.length} chars, ` +
+          `context: ${contextDoc === null ? "null" : `${contextDoc.length} chars`}`
+      );
+      const response = await tools.rlmQuery(term.prompt, contextDoc);
+      log(`[Solver] rlm_query response length: ${response.length} chars`);
+      log(`[Solver] rlm_query response length: ${response.length} chars`);
       return response;
     }
 
