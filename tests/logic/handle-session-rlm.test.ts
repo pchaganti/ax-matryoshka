@@ -44,6 +44,36 @@ describe("HandleSession — rlm_query plumbing", () => {
     session.close();
   });
 
+  it("preserves an explicit empty context binding (does not silently fall back to prompt)", async () => {
+    // Same correctness contract that rlm.ts's rlmQuerySpawner
+    // honors: contextDoc === null means "user omitted the
+    // (context …) form" (fall back to prompt-as-doc); empty
+    // string means "user passed explicit empty handle"
+    // (preserve the user's intent so they see "no results"
+    // rather than the prompt being used as document).
+    let receivedContext: string | null | undefined = "<unset>";
+    const session = new HandleSession({
+      rlmQuery: async (_p, c) => {
+        receivedContext = c;
+        return "ok";
+      },
+    });
+    await session.loadContentWithSymbols("doc", "/tmp/x.txt");
+    // Bind RESULTS to an empty array so the materializer produces "".
+    // (Use grep with a non-matching pattern to get an empty array.)
+    const probe = await session.execute('(grep "NEVER_MATCHES")');
+    expect(probe.success).toBe(true);
+    const result = await session.execute(
+      '(rlm_query "task" (context RESULTS))'
+    );
+    expect(result.success).toBe(true);
+    // Must reach the child as "" (empty), NOT null (no-context).
+    // Without this contract, a binding that legitimately has no
+    // matches would silently swap in the prompt — masking bugs.
+    expect(receivedContext).toBe("");
+    session.close();
+  });
+
   it("dispatches (rlm_query \"p\" (context $h)) materializing the binding to the child", async () => {
     // Same handle-as-document semantics Phase 1 introduced — the
     // MCP path must preserve this so a child sees clean line-

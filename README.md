@@ -62,7 +62,7 @@ Matryoshka has two execution paths and not every primitive works in both:
 |---|---|---|
 | `(grep …)`, `(filter …)`, `(map …)`, etc. | ✅ | ✅ |
 | `(llm_query …)`, `(llm_batch …)` | ✅ | ✅ via MCP sampling protocol |
-| `(rlm_query …)`, `(rlm_batch …)` | ✅ | ✅ — child Nucleus session spawns via the same MCP sampling bridge; the user sees M suspensions per call where M = child's turn count to FINAL |
+| `(rlm_query …)`, `(rlm_batch …)` | ✅ (concurrent rlm_batch) | ✅ — child Nucleus session spawns via the same MCP sampling bridge; M suspensions per `rlm_query` call. `rlm_batch` runs **sequentially** (children one at a time) because the multi-turn suspension protocol only carries one pending request at a time — concurrent children would lose suspensions. Round-trip count is the same; wall-clock is N×slower for non-sampling clients. |
 | `(context N)` selector | ✅ (multi-doc via `runRLMFromContent(query, string[])`) | partial — `(context 0)` works; multi-doc loading not exposed via `lattice_load` |
 | `(grep "X" haystack)` | ✅ | ✅ |
 | `(show_vars)` | ✅ | ✅ (internal `_<name>` bindings filtered out) |
@@ -86,14 +86,15 @@ The resource-limit features remain `runRLM`-only. The recursive primitives (`rlm
 (rlm_query "summarize each error type")
 ```
 
-`rlm_batch` is the concurrent variant — N child sessions run in parallel up to `maxConcurrentSubcalls` (default 4):
+`rlm_batch` runs the same per-item recursion across a collection. Each item produces one entry in the returned array, in input order. Per-item failures surface as `"Error: rlm_batch item N failed — …"` strings without aborting the rest of the batch:
 
 ```scheme
 (rlm_batch (chunk_by_lines 100)
   (lambda c (rlm_query "extract metrics" (context c))))
 ```
 
-Each item produces one entry in the returned array, in input order. Per-item failures surface as `"Error: rlm_batch item N failed — …"` strings without aborting the rest of the batch.
+- **`runRLM`**: children fan out concurrently via a worker pool capped at `maxConcurrentSubcalls` (default 4).
+- **`lattice-mcp`**: children run **sequentially** because the multi-turn suspension protocol can carry only one pending request at a time. Round-trip count is identical to the concurrent path (N children × M turns each); only wall-clock differs.
 
 #### Multi-Context Loading
 

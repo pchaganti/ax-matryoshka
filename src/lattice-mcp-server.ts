@@ -1409,11 +1409,16 @@ async function main() {
     if (!samplingBridge) {
       return "Error: rlm_query unavailable — samplingBridge not initialized";
     }
-    // Child's working document: explicit context if supplied,
-    // else fall back to the prompt itself (mirrors runRLM's
-    // rlmQuerySpawner contract).
-    const childDoc =
-      contextDoc !== null && contextDoc.length > 0 ? contextDoc : prompt;
+    // Child's working document. contextDoc === null means the user
+    // OMITTED the (context …) form — fall back to the prompt so a
+    // no-context rlm_query still has something to operate on. An
+    // EMPTY string ("") means the user passed an explicit but
+    // empty context (e.g., `(context [])` — empty handle); preserve
+    // their intent and let the child see an empty document.
+    // Conflating the two would silently mask "I expected results
+    // but got none" bugs — same correctness fix applied in
+    // rlm.ts's rlmQuerySpawner during the Phase 1 review.
+    const childDoc = contextDoc !== null ? contextDoc : prompt;
     try {
       const result = await runRLMFromContent(prompt, childDoc, {
         llmClient: samplingBridge,
@@ -1432,10 +1437,27 @@ async function main() {
     }
   };
 
-  // Phase 2 — concurrent variant for `(rlm_batch …)`. Fans out to
-  // N samplingRlmBridge calls via Promise.all. Each child runs
-  // independently, sharing the parent's MCP llmClient. Errors in
-  // one item don't abort the rest — the slot gets a marker string.
+  // Phase 2 — sequential variant for `(rlm_batch …)` in the MCP
+  // path. We run children ONE AT A TIME instead of via Promise.all
+  // because the multi-turn suspension protocol can only carry ONE
+  // pending llm_query suspension at a time: if 5 children all
+  // suspend in parallel, only the first suspension reaches the
+  // user via the lattice_query reply, and the other 4 hang
+  // forever in pendingQueries with no way for the user to respond
+  // to them. Sequential dispatch trades parallelism for protocol
+  // correctness.
+  //
+  // For sampling-capable clients (samplingBridge uses
+  // server.createMessage directly, no suspension), concurrent
+  // dispatch would work — but rlm_batch already only matters when
+  // each child runs multiple turns, and serializing N children
+  // each running M turns = N*M round-trips either way. The
+  // round-trip count is identical; only wall-clock differs.
+  // Per project rule (correctness > performance): take the
+  // correct sequential path uniformly.
+  //
+  // Per-item errors still surface as marker strings without
+  // aborting the rest of the batch.
   samplingRlmBatchBridge = async (
     items: Array<{ prompt: string; contextDoc: string | null }>
   ): Promise<string[]> => {
@@ -1444,16 +1466,16 @@ async function main() {
         (_, i) => `Error: rlm_batch item ${i} — samplingRlmBridge not initialized`
       );
     }
-    return Promise.all(
-      items.map(async (it, idx) => {
-        try {
-          return await samplingRlmBridge!(it.prompt, it.contextDoc);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          return `Error: rlm_batch item ${idx} failed — ${msg}`;
-        }
-      })
-    );
+    const results: string[] = [];
+    for (let idx = 0; idx < items.length; idx++) {
+      try {
+        results.push(await samplingRlmBridge(items[idx].prompt, items[idx].contextDoc));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        results.push(`Error: rlm_batch item ${idx} failed — ${msg}`);
+      }
+    }
+    return results;
   };
 
   await server.connect(transport);
