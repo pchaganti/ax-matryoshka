@@ -135,6 +135,24 @@ export interface HandleSessionOptions {
     prompts: string[],
     options?: { calibrate?: boolean }
   ) => Promise<string[]>;
+  /**
+   * Optional recursive child-session bridge for `(rlm_query …)`.
+   * When wired (typically by lattice-mcp-server's
+   * samplingRlmBridge), the Phase 1 recursive primitive becomes
+   * available to MCP users — same surface as runRLM. The bridge is
+   * responsible for spawning a child Nucleus FSM and routing its
+   * LLM calls back through the MCP client.
+   */
+  rlmQuery?: (prompt: string, contextDoc: string | null) => Promise<string>;
+  /**
+   * Optional batched recursive bridge for `(rlm_batch …)`.
+   * Receives N (prompt, contextDoc) pairs in one call; returns N
+   * response strings in matching order. Implementation typically
+   * fans out to N rlmQuery calls in parallel.
+   */
+  rlmBatch?: (
+    items: Array<{ prompt: string; contextDoc: string | null }>
+  ) => Promise<string[]>;
 }
 
 export class HandleSession {
@@ -178,6 +196,8 @@ export class HandleSession {
       verbose: options.verbose,
       llmQuery: options.llmQuery,
       llmBatch: options.llmBatch,
+      rlmQuery: options.rlmQuery,
+      rlmBatch: options.rlmBatch,
     });
     this.db = new SessionDB();
     this.registry = new HandleRegistry(this.db);

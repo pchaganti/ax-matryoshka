@@ -60,6 +60,27 @@ export interface NucleusEngineOptions {
     prompts: string[],
     options?: { calibrate?: boolean }
   ) => Promise<string[]>;
+  /**
+   * Optional recursive child-session bridge for `(rlm_query …)`.
+   *
+   * When wired (typically via the MCP path's samplingRlmBridge),
+   * spawning a child Nucleus FSM is delegated to this callback.
+   * The contract: receive (prompt, materialized contextDoc) and
+   * return the child's FINAL string. The MCP bridge implementation
+   * runs `runRLMFromContent` with the same llmClient as the parent
+   * so the child's LLM calls flow through the same MCP protocol.
+   */
+  rlmQuery?: (prompt: string, contextDoc: string | null) => Promise<string>;
+  /**
+   * Optional batched recursive bridge for `(rlm_batch …)`.
+   *
+   * Receives N (prompt, contextDoc) pairs in one call and must
+   * return N response strings in matching order. The MCP bridge
+   * fans out to N rlmQuery calls in parallel.
+   */
+  rlmBatch?: (
+    items: Array<{ prompt: string; contextDoc: string | null }>
+  ) => Promise<string[]>;
 }
 
 /**
@@ -78,6 +99,10 @@ function createSolverTools(
   llmBatch?: (
     prompts: string[],
     options?: { calibrate?: boolean }
+  ) => Promise<string[]>,
+  rlmQuery?: (prompt: string, contextDoc: string | null) => Promise<string>,
+  rlmBatch?: (
+    items: Array<{ prompt: string; contextDoc: string | null }>
   ) => Promise<string[]>
 ): SolverTools {
   const lines = context.split("\n");
@@ -239,6 +264,12 @@ function createSolverTools(
     // Batched sibling of llmQuery — dispatches all N prompts from
     // `(llm_batch …)` in a single call. Omitted means `(llm_batch …)` throws.
     llmBatch,
+    // Phase 1/2 — recursive child Nucleus session bridges. Wired
+    // by the MCP path (samplingRlmBridge / samplingRlmBatchBridge)
+    // so `(rlm_query …)` and `(rlm_batch …)` work end-to-end via
+    // the same llmClient suspension protocol the parent uses.
+    rlmQuery,
+    rlmBatch,
   };
 }
 
@@ -269,11 +300,17 @@ export class NucleusEngine {
     prompts: string[],
     options?: { calibrate?: boolean }
   ) => Promise<string[]>;
+  private rlmQuery?: (prompt: string, contextDoc: string | null) => Promise<string>;
+  private rlmBatch?: (
+    items: Array<{ prompt: string; contextDoc: string | null }>
+  ) => Promise<string[]>;
 
   constructor(options: NucleusEngineOptions = {}) {
     this.verbose = options.verbose ?? false;
     this.llmQuery = options.llmQuery;
     this.llmBatch = options.llmBatch;
+    this.rlmQuery = options.rlmQuery;
+    this.rlmBatch = options.rlmBatch;
   }
 
   /**
@@ -290,7 +327,16 @@ export class NucleusEngine {
   loadContent(content: string): void {
     const trimmed = content.trim();
     this.context = trimmed.length > 0 ? content : "";
-    this.solverTools = trimmed.length > 0 ? createSolverTools(content, this.llmQuery, this.llmBatch) : null;
+    this.solverTools =
+      trimmed.length > 0
+        ? createSolverTools(
+            content,
+            this.llmQuery,
+            this.llmBatch,
+            this.rlmQuery,
+            this.rlmBatch
+          )
+        : null;
     this.bindings.clear();
     this.turnCounter = 0;
 

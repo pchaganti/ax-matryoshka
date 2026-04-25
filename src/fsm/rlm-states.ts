@@ -78,6 +78,18 @@ export interface RLMContext {
   startTime: number;
   totalTokens: number;
   consecutiveErrors: number;
+  compactionThresholdChars?: number;
+  compactionCount: number;
+  /**
+   * Number of consecutive compaction failures (e.g., the summarize
+   * llm call threw). Once this hits the cap, we stop attempting
+   * compaction for the rest of the run — otherwise a failing
+   * summarize call would loop on every turn since the threshold
+   * check never advances. Per project rule (correctness >
+   * performance): better to let the run hit its other limits
+   * cleanly than to spin in the compaction loop forever.
+   */
+  compactionFailures: number;
   /**
    * Phase 5 — most recent meaningful solver result, formatted as a
    * string. Populated unconditionally after every successful solver
@@ -236,6 +248,106 @@ function formatAbort(
   return `[aborted: ${reason} ${detail}]\n\nBest partial answer:\n${partial}`;
 }
 
+/**
+ * Phase 6 — render the prompt the FSM would send to the LLM right
+ * now. Used to measure prompt size for compaction decisions before
+ * the actual handleQueryLLM build step. Kept in sync with that
+ * builder by literally being the same join.
+ */
+function renderPrompt(history: RLMContext["history"]): string {
+  return history.map((h) => `${h.role.toUpperCase()}: ${h.content}`).join("\n\n");
+}
+
+/**
+ * Phase 6 — summarize turns 2..N into a single assistant message
+ * and trim the history to [system, first user, summary, latest
+ * user-feedback turn]. Stashes the full pre-compaction history as
+ * the `_compaction_trace` solver binding so a follow-up
+ * `FINAL_VAR(_compaction_trace)` can retrieve it.
+ *
+ * Re-entrant via `compactionCount`: the binding name carries the
+ * count when there are multiple events
+ * (`_compaction_trace_2`, etc.) so a third compaction doesn't
+ * destroy the previously stashed trace.
+ *
+ * Heuristic: keep the most recent ASSISTANT response and any user
+ * feedback that came AFTER it untouched, so the LLM still sees the
+ * latest action and result on the next turn. Earlier turns are
+ * folded into the summary.
+ */
+async function compactHistory(ctx: RLMContext): Promise<void> {
+  if (ctx.history.length < 4) return; // nothing useful to compact
+
+  // Stash the full pre-compaction history first so it can be
+  // recovered later. Render as a string for FINAL_VAR consumption.
+  const traceText = ctx.history
+    .map((h) => `[${h.role}] ${h.content}`)
+    .join("\n---\n");
+  const stashName =
+    ctx.compactionCount === 0
+      ? "_compaction_trace"
+      : `_compaction_trace_${ctx.compactionCount + 1}`;
+  ctx.solverBindings.set(stashName, traceText);
+
+  // Prepare the summarization prompt. We send the FULL prior
+  // history wrapped in an instruction asking for a tight summary
+  // that preserves intermediate values + binding names, so the
+  // post-compaction LLM can reference earlier work.
+  const historyText = ctx.history
+    .slice(2) // skip system + initial user (kept verbatim)
+    .map((h) => `[${h.role}] ${h.content}`)
+    .join("\n");
+  const summarizePrompt =
+    "Summarize your progress so far. Include: " +
+    "(1) which steps/sub-tasks you completed; " +
+    "(2) any concrete intermediate results (counts, matches, " +
+    "binding names like RESULTS or _N) — preserve these exactly; " +
+    "(3) what your next action should be. " +
+    "Be concise (1-3 paragraphs). Conversation:\n" +
+    historyText;
+
+  ctx.log(
+    `[Compaction #${ctx.compactionCount + 1}] firing — history is ${
+      historyText.length
+    } chars`
+  );
+  let summary: string;
+  try {
+    summary = await ctx.llmClient(summarizePrompt);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    ctx.log(`[Compaction] summarization failed: ${msg} — skipping compaction`);
+    // Roll back the stash; if we couldn't summarize, leaving the
+    // binding around could mislead.
+    ctx.solverBindings.delete(stashName);
+    ctx.compactionFailures++;
+    return;
+  }
+
+  // Replace history[2..N] with the summary. Keep system + initial
+  // user verbatim. Future turns build on this trimmed shape.
+  const system = ctx.history[0];
+  const initialUser = ctx.history[1];
+  ctx.history = [
+    system,
+    initialUser,
+    {
+      role: "assistant",
+      content: `Summary (after compaction #${ctx.compactionCount + 1}):\n${summary}`,
+    },
+    {
+      role: "user",
+      content:
+        "The conversation above has been compacted. " +
+        "Continue from the summary. Do NOT repeat completed work; " +
+        "the binding names and intermediate values mentioned in the " +
+        "summary are still available via the solver bindings. " +
+        "Your next action:",
+    },
+  ];
+  ctx.compactionCount++;
+}
+
 // ===== STATE HANDLERS =====
 
 async function handleQueryLLM(ctx: RLMContext): Promise<RLMContext> {
@@ -280,7 +392,27 @@ async function handleQueryLLM(ctx: RLMContext): Promise<RLMContext> {
     return ctx;
   }
 
-  const prompt = ctx.history.map((h) => `${h.role.toUpperCase()}: ${h.content}`).join("\n\n");
+  // Phase 6 — check whether the next prompt would exceed the
+  // compaction threshold. When it would, summarize prior turns
+  // first so the actual LLM call sees a smaller history. Skipped
+  // when the threshold is unset (back-compat) OR when prior
+  // compaction attempts have failed too many times — letting the
+  // run hit other limits cleanly is better than spinning forever
+  // in a failing compaction loop (a failing summarize call
+  // doesn't shrink history, so the threshold check would re-fire
+  // on every turn).
+  const COMPACTION_FAILURE_CAP = 2;
+  if (
+    ctx.compactionThresholdChars !== undefined &&
+    ctx.compactionFailures < COMPACTION_FAILURE_CAP
+  ) {
+    const projected = renderPrompt(ctx.history);
+    if (projected.length > ctx.compactionThresholdChars) {
+      await compactHistory(ctx);
+    }
+  }
+
+  const prompt = renderPrompt(ctx.history);
   ctx.totalTokens += prompt.length;
   let response: string;
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
@@ -914,6 +1046,7 @@ export function createInitialContext(opts: {
   maxTimeoutMs?: number;
   maxTokens?: number;
   maxErrors?: number;
+  compactionThresholdChars?: number;
 }): RLMContext {
   return {
     query: opts.query,
@@ -958,6 +1091,9 @@ export function createInitialContext(opts: {
     totalTokens: 0,
     consecutiveErrors: 0,
     bestPartialAnswer: "",
+    compactionThresholdChars: opts.compactionThresholdChars,
+    compactionCount: 0,
+    compactionFailures: 0,
 
     result: null,
   };

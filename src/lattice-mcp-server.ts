@@ -33,6 +33,8 @@ import { stat } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { HandleSession, type HandleResult } from "./engine/handle-session.js";
+import { runRLMFromContent } from "./rlm.js";
+import { createNucleusAdapter } from "./adapters/nucleus.js";
 import { getVersion } from "./version.js";
 import { hasTraversalSegment } from "./utils/path-safety.js";
 import {
@@ -50,6 +52,20 @@ import {
 // returned as a plain string.
 let samplingBridge: ((prompt: string) => Promise<string>) | null = null;
 let samplingBatchBridge: ((prompts: string[]) => Promise<string[]>) | null = null;
+// Phase 1/2 — recursive Nucleus session bridges. Spawn a child
+// runRLMFromContent inside the solver; the child's LLM calls flow
+// through samplingBridge so each child turn fires through the same
+// MCP suspension/sampling protocol the parent uses. The MCP user
+// experiences M suspensions per (rlm_query …) call, where M is
+// the child's turn count to FINAL.
+let samplingRlmBridge:
+  | ((prompt: string, contextDoc: string | null) => Promise<string>)
+  | null = null;
+let samplingRlmBatchBridge:
+  | ((
+      items: Array<{ prompt: string; contextDoc: string | null }>
+    ) => Promise<string[]>)
+  | null = null;
 
 // Default cap for sub-LLM responses. The MCP sampling protocol requires a
 // maxTokens value; we keep it modest so sub-LLM calls stay cheap and the
@@ -416,6 +432,26 @@ serial llm_query suspensions. 92% round-trip reduction on N=12, 99% on
 N=100 — protocol overhead dominates map+llm_query cost, not per-item work.
 Use map+llm_query only when per-item judgment references prior items or
 the lambda body isn't a direct (llm_query …).
+
+RLM_QUERY (recursive child Nucleus session — for sub-tasks needing multi-step reasoning):
+  (rlm_query "prompt")                                     No context — child sees prompt as its document
+  (rlm_query "extract" (context RESULTS))                  Pass a binding as the child's working document
+  (rlm_query "scan" (context (chunk_by_lines 100)))        Pass a fresh result handle
+Spawns a child Nucleus session that runs its OWN multi-turn loop —
+greps, chunks, sub-LLM calls, etc. — until it produces a FINAL.
+Differs from (llm_query …) which is a single LLM call: rlm_query
+gives the child a structured working document and lets it iterate.
+The child's LLM calls flow through the same MCP sampling bridge,
+so you'll see M suspensions per (rlm_query …) call where M is the
+child's turn count to FINAL.
+
+RLM_BATCH (concurrent variant — N child sessions in parallel):
+  (rlm_batch chunks (lambda c (rlm_query "extract" (context c))))
+  (rlm_batch RESULTS (lambda x (rlm_query "deep dive" (context x))))
+Drop-in replacement for (map COLL (lambda x (rlm_query …))) when
+per-item recursion is independent. All N child sessions run
+concurrently; per-item failures surface as
+"Error: rlm_batch item N failed — …" without aborting the rest.
 
 ONE_OF (enum validation — makes downstream filter/count reliable):
   (llm_query "Rate: {x}" (x y) (one_of "low" "medium" "high"))
@@ -869,6 +905,8 @@ async function handleToolCall(name: string, args: Record<string, unknown>): Prom
           const newSession = new HandleSession({
             llmQuery: samplingBridge ?? undefined,
             llmBatch: samplingBatchBridge ?? undefined,
+            rlmQuery: samplingRlmBridge ?? undefined,
+            rlmBatch: samplingRlmBatchBridge ?? undefined,
           });
           try {
             stats = await newSession.loadFile(filePath);
@@ -1355,9 +1393,95 @@ async function main() {
     return promise;
   };
 
+  // Phase 1 — recursive child Nucleus session for `(rlm_query …)`.
+  // Spawns runRLMFromContent inside the solver. The child's
+  // llmClient is `samplingBridge` (the same one the parent uses),
+  // so each child turn fires through the same MCP suspension /
+  // sampling protocol. The MCP user experiences M suspensions per
+  // (rlm_query …) call where M is the child's turn count to FINAL.
+  //
+  // This is the bridge that closes the runRLM-vs-MCP feature gap
+  // for recursive primitives.
+  samplingRlmBridge = async (
+    prompt: string,
+    contextDoc: string | null
+  ): Promise<string> => {
+    if (!samplingBridge) {
+      return "Error: rlm_query unavailable — samplingBridge not initialized";
+    }
+    // Child's working document. contextDoc === null means the user
+    // OMITTED the (context …) form — fall back to the prompt so a
+    // no-context rlm_query still has something to operate on. An
+    // EMPTY string ("") means the user passed an explicit but
+    // empty context (e.g., `(context [])` — empty handle); preserve
+    // their intent and let the child see an empty document.
+    // Conflating the two would silently mask "I expected results
+    // but got none" bugs — same correctness fix applied in
+    // rlm.ts's rlmQuerySpawner during the Phase 1 review.
+    const childDoc = contextDoc !== null ? contextDoc : prompt;
+    try {
+      const result = await runRLMFromContent(prompt, childDoc, {
+        llmClient: samplingBridge,
+        adapter: createNucleusAdapter(),
+        // Conservative cap — every child turn is an MCP round-trip
+        // for the user. 4 turns lets the child grep + analyze +
+        // FINAL with one slack turn. Configurable later if needed.
+        maxTurns: 4,
+        ragEnabled: false,
+        verbose: false,
+      });
+      return typeof result === "string" ? result : JSON.stringify(result);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return `Error: rlm_query child failed — ${msg}`;
+    }
+  };
+
+  // Phase 2 — sequential variant for `(rlm_batch …)` in the MCP
+  // path. We run children ONE AT A TIME instead of via Promise.all
+  // because the multi-turn suspension protocol can only carry ONE
+  // pending llm_query suspension at a time: if 5 children all
+  // suspend in parallel, only the first suspension reaches the
+  // user via the lattice_query reply, and the other 4 hang
+  // forever in pendingQueries with no way for the user to respond
+  // to them. Sequential dispatch trades parallelism for protocol
+  // correctness.
+  //
+  // For sampling-capable clients (samplingBridge uses
+  // server.createMessage directly, no suspension), concurrent
+  // dispatch would work — but rlm_batch already only matters when
+  // each child runs multiple turns, and serializing N children
+  // each running M turns = N*M round-trips either way. The
+  // round-trip count is identical; only wall-clock differs.
+  // Per project rule (correctness > performance): take the
+  // correct sequential path uniformly.
+  //
+  // Per-item errors still surface as marker strings without
+  // aborting the rest of the batch.
+  samplingRlmBatchBridge = async (
+    items: Array<{ prompt: string; contextDoc: string | null }>
+  ): Promise<string[]> => {
+    if (!samplingRlmBridge) {
+      return items.map(
+        (_, i) => `Error: rlm_batch item ${i} — samplingRlmBridge not initialized`
+      );
+    }
+    const results: string[] = [];
+    for (let idx = 0; idx < items.length; idx++) {
+      try {
+        results.push(await samplingRlmBridge(items[idx].prompt, items[idx].contextDoc));
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        results.push(`Error: rlm_batch item ${idx} failed — ${msg}`);
+      }
+    }
+    return results;
+  };
+
   await server.connect(transport);
 
   console.error("[Lattice] LLM query bridge installed — (llm_query ...) uses MCP sampling when available, multi-turn protocol otherwise");
+  console.error("[Lattice] RLM bridge installed — (rlm_query …) and (rlm_batch …) spawn child Nucleus sessions");
 
   console.error("[Lattice] MCP server started (handle-based mode)");
   console.error(`[Lattice] Session timeout: ${SESSION_TIMEOUT_MS / 1000}s`);

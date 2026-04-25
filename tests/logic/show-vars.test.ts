@@ -95,4 +95,44 @@ describe("(show_vars) solver", () => {
     const out = result.value as string;
     expect(out).toMatch(/no bindings|no variables|empty/i);
   });
+
+  it("filters out internal bindings (_sessionDB, _compaction_trace, etc.)", async () => {
+    // Internal plumbing names start with `_` and a non-digit char.
+    // They MUST NOT surface via show_vars — leaking session DB
+    // refs or pre-compaction traces to the LLM exposes private
+    // state and clutters the user-visible binding list.
+    const parsed = parse("(show_vars)");
+    const tools = makeTools();
+    const bindings = new Map<string, unknown>([
+      ["_sessionDB", { internal: true }],
+      ["_compaction_trace", "long history dump"],
+      ["RESULTS", [1, 2, 3]],
+      ["_1", "turn-1 result"],
+      ["_2", 42],
+    ]);
+    const result = await solve(parsed.term!, tools, bindings);
+    expect(result.success).toBe(true);
+    const out = result.value as string;
+    // User-visible bindings are present.
+    expect(out).toContain("RESULTS");
+    expect(out).toContain("_1");
+    expect(out).toContain("_2");
+    // Internal bindings are NOT.
+    expect(out).not.toContain("_sessionDB");
+    expect(out).not.toContain("_compaction_trace");
+    // Count reflects user-visible only.
+    expect(out).toMatch(/Bindings \(3\):/);
+  });
+
+  it("returns the friendly empty-state message when only internal bindings exist", async () => {
+    const parsed = parse("(show_vars)");
+    const tools = makeTools();
+    const bindings = new Map<string, unknown>([
+      ["_sessionDB", { internal: true }],
+    ]);
+    const result = await solve(parsed.term!, tools, bindings);
+    expect(result.success).toBe(true);
+    const out = result.value as string;
+    expect(out).toMatch(/no bindings/i);
+  });
 });
