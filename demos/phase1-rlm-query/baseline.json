@@ -1,0 +1,15 @@
+{
+  "mode": "baseline",
+  "scenario": "structured-extraction",
+  "docChars": 5545,
+  "docLines": 120,
+  "parentChars": 18145,
+  "childChars": 97706,
+  "totalChars": 115851,
+  "parentCalls": 3,
+  "childCalls": 48,
+  "totalCalls": 51,
+  "avgParentChars": 6048,
+  "avgChildChars": 2036,
+  "result": "[\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\",\n  \"extracted\"\n]"
+}
