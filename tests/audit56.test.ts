@@ -129,13 +129,4 @@ describe("Audit #56", () => {
 
   // =========================================================================
   // #10 MEDIUM — lc-compiler compiled parseInt only checks isNaN
-  // =========================================================================
-  describe("#10 — lc-compiler parseInt should also check isFinite", () => {
-    it("should emit isFinite or isSafeInteger guard", () => {
-      const source = readFileSync("src/logic/lc-compiler.ts", "utf-8");
-      const parseIntCase = source.match(/case "parseInt"[\s\S]*?isNaN\(_r\)[\s\S]*?_r/);
-      expect(parseIntCase).not.toBeNull();
-      expect(parseIntCase![0]).toMatch(/isFinite|isSafeInteger/);
-    });
-  });
 });

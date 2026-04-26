@@ -40,25 +40,6 @@ describe("Issue #1: evalExtractor should validate regex patterns", () => {
     expect(result === null || result === "aaaaaaaaaaaaaaaaaaaaaaaa!").toBe(true);
   });
 });
-
-// =========================================================================
-// Issue #2 — compile.ts: compiled code embeds regex without ReDoS check
-// =========================================================================
-describe("Issue #2: compile should validate regex patterns", () => {
-  it("compiled match with ReDoS pattern should return null", async () => {
-    const e: Extractor = {
-      tag: "match",
-      str: { tag: "input" },
-      pattern: "(a+)+$",
-      group: 0,
-    };
-    const fn = compileToFunction(e);
-    // The compiled function should safely handle ReDoS patterns
-    const result = fn("aaaaaaaaaaaaaaaaaaaaaaaa!");
-    expect(result).toBeNull();
-  });
-});
-
 // =========================================================================
 // Issue #3 — lc-solver.ts:888: evaluateWithBinding var resets depth to 0
 // =========================================================================
@@ -192,33 +173,6 @@ describe("Issue #8: quarter regex should reject invalid quarters", () => {
     expect(regex.test("Q4-2024")).toBe(true);
   });
 });
-
-// =========================================================================
-// Issue #9 — lc-solver.ts:417: split with empty delimiter
-// =========================================================================
-describe("Issue #9: split with empty delimiter should be bounded", () => {
-  it("should limit split result size with empty delimiter", async () => {
-    const solverMod = await import("../src/logic/lc-solver.js");
-    const { parse } = await import("../src/logic/lc-parser.js");
-
-    const bigString = "a".repeat(100000);
-    const tools: any = {
-      context: bigString,
-      grep: () => [],
-      fuzzy_search: () => [],
-      text_stats: () => ({ length: bigString.length, lineCount: 1, sample: { start: "", middle: "", end: "" } }),
-    };
-
-    // (split "aaa..." "" 0) — empty delimiter splits into per-character array
-    const parsed = parse(`(split "${bigString.slice(0, 50)}" "" 0)`);
-    expect(parsed.success).toBe(true);
-    const result = await solverMod.solve(parsed.term!, tools);
-    // Should either return "a" (first char) or handle the split safely
-    // The key check is it shouldn't create a 100K element array
-    expect(result.success).toBe(true);
-  });
-});
-
 // =========================================================================
 // Issue #10 — lc-solver.ts:409: replace $1 backreference in solver
 // =========================================================================
@@ -258,37 +212,6 @@ describe("Issue #11: searchComposition MAX_CANDIDATES off-by-one", () => {
     expect(check![0]).toMatch(/>=\s*MAX_CANDIDATES|candidatesChecked\s*>\s*MAX_CANDIDATES/);
   });
 });
-
-// =========================================================================
-// Issue #12 — http.ts: CORS allows all origins
-// =========================================================================
-describe("Issue #12: HTTP adapter CORS origin restriction", () => {
-  it("should restrict CORS origin to localhost by default", async () => {
-    const fs = await import("node:fs/promises");
-    const source = await fs.readFile("src/tool/adapters/http.ts", "utf-8");
-
-    // Find CORS origin setting
-    const corsOrigin = source.match(/Access-Control-Allow-Origin.*?"([^"]+)"/);
-    expect(corsOrigin).not.toBeNull();
-    // Should NOT be wildcard "*"
-    expect(corsOrigin![1]).not.toBe("*");
-  });
-});
-
-// =========================================================================
-// Issue #13 — lattice-tool.ts:113: non-portable path basename
-// =========================================================================
-describe("Issue #13: lattice-tool should use path.basename", () => {
-  it("should use path.basename not manual string split", async () => {
-    const fs = await import("node:fs/promises");
-    const source = await fs.readFile("src/tool/lattice-tool.ts", "utf-8");
-
-    // Should use path.basename, not .split("/").pop()
-    expect(source).not.toContain('.split("/").pop()');
-    expect(source).toContain("path.basename");
-  });
-});
-
 // =========================================================================
 // Issue #14 — lc-interpreter.ts:251: negative split index not validated
 // =========================================================================

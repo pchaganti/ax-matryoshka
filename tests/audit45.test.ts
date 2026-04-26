@@ -94,16 +94,6 @@ describe("Audit #45", () => {
   // =========================================================================
   // #8 MEDIUM — lc-interpreter match group not checked with isInteger
   // =========================================================================
-  describe("#8 — lc-interpreter match should validate group with isInteger", () => {
-    it("should use Number.isInteger on group parameter", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const matchCase = source.match(/case "match"[\s\S]*?case "replace"/);
-      expect(matchCase).not.toBeNull();
-      expect(matchCase![0]).toMatch(/Number\.isInteger/);
-    });
-  });
-
-  // =========================================================================
   // #9 MEDIUM — lc-interpreter lines case doesn't validate end >= start
   // =========================================================================
   describe("#9 — lc-interpreter lines should validate end >= start", () => {

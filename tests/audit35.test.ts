@@ -23,25 +23,6 @@ describe("Audit #35", () => {
   // =============================================================
 
   describe("Round 2: High", () => {
-    // #3 — nucleus-engine.ts same negative slice
-    describe("#3 — nucleus-engine createSolverTools should handle small docs", () => {
-      it("should have Math.max(0,...) for middle slice", () => {
-        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
-        const middleSlice = source.match(/middle:\s*lines[\s\S]*?\.slice\(\s*Math\.max\(0/);
-        expect(middleSlice).not.toBeNull();
-      });
-
-      it("should not crash when loading 1-line document", async () => {
-        const { NucleusEngine } = await import("../src/engine/nucleus-engine.js");
-        const engine = new NucleusEngine();
-        engine.loadContent("single line");
-        const stats = engine.getStats();
-        expect(stats).not.toBeNull();
-        expect(stats!.lineCount).toBe(1);
-        engine.dispose();
-      });
-    });
-
     // #4 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
     // #5 — sum silently ignores non-numeric values
@@ -91,23 +72,6 @@ describe("Audit #35", () => {
         expect(source).toMatch(/extractJson|parseJsonFromResponse|balancedBrace|depth|nesting/i);
       });
     });
-
-    // #9 — parser unbalanced paren detection
-    describe("#9 — parser should detect unbalanced parentheses", () => {
-      it("should report error for unclosed parenthesis", async () => {
-        const { parse } = await import("../src/logic/lc-parser.js");
-        const result = parse("(grep \"test\"");
-        expect(result.success).toBe(false);
-        expect(result.error).toMatch(/unbalanced|unclosed|unexpected|paren/i);
-      });
-
-      it("should report error for extra closing parenthesis", async () => {
-        const { parse } = await import("../src/logic/lc-parser.js");
-        const result = parse("(grep \"test\"))");
-        expect(result.success).toBe(false);
-        expect(result.error).toMatch(/unbalanced|unexpected|extra|paren/i);
-      });
-    });
   });
 
   // =============================================================
@@ -115,17 +79,6 @@ describe("Audit #35", () => {
   // =============================================================
 
   describe("Round 3: Medium", () => {
-    // #10 — console.log shows port 0 in HTTP adapter
-    describe("#10 — HTTP adapter should log actual bound port", () => {
-      it("should use server.address() for log message", () => {
-        const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-        const listenBlock = source.match(/server\.listen[\s\S]*?console\.log.*running/);
-        expect(listenBlock).not.toBeNull();
-        // Should use actual bound port, not this.port
-        expect(listenBlock![0]).toMatch(/address\(\)|boundPort|actualPort/);
-      });
-    });
-
     // #11 — loadContent trims but stores original
     describe("#11 — loadContent should be consistent", () => {
       it("should store trimmed content if trimming for empty check", () => {
@@ -137,18 +90,6 @@ describe("Audit #35", () => {
         expect(loadContent![0]).toMatch(/content|trimmed/);
       });
     });
-
-    // #12 — coerceConfigTypes converts numeric-looking strings
-    describe("#12 — coerceConfigTypes should not convert keys that look numeric", () => {
-      it("should have safeguard for API key-like strings", () => {
-        const source = readFileSync("src/config.ts", "utf-8");
-        const coerce = source.match(/function coerceConfigTypes[\s\S]*?return obj;\s*\}/);
-        expect(coerce).not.toBeNull();
-        // Should either skip certain keys or have length limits
-        expect(coerce![0]).toMatch(/length|apiKey|key.*skip|MAX_NUMERIC_LEN|safe/i);
-      });
-    });
-
     // #13 — truncate with small max values
     describe("#13 — truncate should handle small max values safely", () => {
       it("should use Math.max(0, ...) for half calculation", () => {

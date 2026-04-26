@@ -298,14 +298,6 @@ describe("Audit16 #12: fts5 search highlights regex", () => {
 });
 
 // === Issue #13: CORS wildcard in http.ts ===
-describe("Audit16 #13: CORS configuration", () => {
-  it("CORS should be disabled by default", async () => {
-    // Just verify the module loads and has cors option
-    const mod = await import("../src/tool/adapters/http.js");
-    expect(mod).toBeDefined();
-  });
-});
-
 // === Issue #14: knowledge base eviction formula ===
 describe("Audit16 #14: knowledge base eviction score", () => {
   it("eviction score should weight usageCount over successCount", async () => {

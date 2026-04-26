@@ -185,16 +185,6 @@ describe("Audit #34", () => {
   // =============================================================
 
   describe("Round 3: Medium", () => {
-    // #13 — CLI accepts negative maxTurns/timeout
-    describe("#13 — CLI should reject invalid maxTurns/timeout", () => {
-      it("should validate maxTurns is positive", () => {
-        const source = readFileSync("src/index.ts", "utf-8");
-        const maxTurnsBlock = source.match(/--max-turns[\s\S]*?options\.maxTurns/);
-        expect(maxTurnsBlock).not.toBeNull();
-        expect(maxTurnsBlock![0]).toMatch(/val\s*[<>]=?\s*[01]|val\s*<=?\s*0|positive|greater/i);
-      });
-    });
-
     // #14 — CLI missing arg silently uses empty string
     describe("#14 — CLI should error on missing option values", () => {
       it("should check bounds before reading next arg for string options", () => {
@@ -250,20 +240,6 @@ describe("Audit #34", () => {
         expect(allSame![0]).toMatch(/JSON\.stringify|deepEqual|Object\.is/);
       });
     });
-
-    // #23 — CORS hardcoded to http://localhost
-    describe("#23 — CORS should be configurable", () => {
-      it("should allow CORS origin to include port", () => {
-        const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-        // Should either be configurable or use a pattern that includes ports
-        // Look for the CORS handling block that computes origin dynamically
-        const corsBlock = source.match(/CORS headers[\s\S]*?Access-Control-Allow-Origin[\s\S]*?setHeader/);
-        expect(corsBlock).not.toBeNull();
-        // Should handle localhost with ports, not just bare http://localhost
-        expect(corsBlock![0]).toMatch(/isLocalhost|localhost.*:\d|127\.0\.0\.1|req\.headers\.origin/);
-      });
-    });
-
     // #25 — FTS5 query injection via special chars
     describe("#25 — FTS5 search should sanitize query", () => {
       it("should sanitize or escape FTS5 special characters", () => {

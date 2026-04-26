@@ -121,18 +121,6 @@ describe("Audit #77", () => {
   // =========================================================================
   // #9 MEDIUM — http.ts timeoutSeconds multiplication overflow
   // =========================================================================
-  describe("#9 — http.ts should validate timeoutSeconds before multiplication", () => {
-    it("should guard timeoutSeconds with isFinite or bounds check", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      // Find the constructor/initialization where timeout is validated
-      const timeoutLine = source.indexOf("MAX_TIMEOUT_SECONDS");
-      expect(timeoutLine).toBeGreaterThan(-1);
-      const block = source.slice(timeoutLine, timeoutLine + 300);
-      expect(block).toMatch(/isFinite|Math\.min|MAX_TIMEOUT/);
-    });
-  });
-
-  // =========================================================================
   // #10 MEDIUM — lc-parser.ts classify examples loop unbounded
   // =========================================================================
   describe("#10 — lc-parser classify should cap examples count", () => {

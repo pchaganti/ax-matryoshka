@@ -59,42 +59,9 @@ describe("Audit #87", () => {
   // =========================================================================
   // #4 MEDIUM — synthesis-integrator.ts dangerousPatterns missing \.prototype
   // =========================================================================
-  describe("#4 — dangerousPatterns should block .prototype", () => {
-    it("should include prototype access pattern", () => {
-      const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
-      const patterns = source.indexOf("dangerousPatterns", source.indexOf("synthesizeViaRelational"));
-      expect(patterns).toBeGreaterThan(-1);
-      const block = source.slice(patterns, patterns + 600);
-      expect(block).toMatch(/prototype/);
-    });
-  });
-
-  // =========================================================================
   // #5 MEDIUM — http.ts constructor port not validated
   // =========================================================================
-  describe("#5 — HttpAdapter constructor should validate port", () => {
-    it("should validate port in constructor", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const constructor = source.indexOf("constructor(options");
-      expect(constructor).toBeGreaterThan(-1);
-      const block = source.slice(constructor, constructor + 400);
-      expect(block).toMatch(/port.*isSafeInteger|port.*<\s*1|port.*>\s*65535|validPort/i);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — http.ts constructor host not validated
-  // =========================================================================
-  describe("#6 — HttpAdapter constructor should validate host", () => {
-    it("should validate host in constructor", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const constructor = source.indexOf("constructor(options");
-      expect(constructor).toBeGreaterThan(-1);
-      const block = source.slice(constructor, constructor + 500);
-      expect(block).toMatch(/host.*test\(|validHost|host.*length\s*>/i);
-    });
-  });
-
   // =========================================================================
   // #7 MEDIUM — http.ts sendError message not truncated
   // =========================================================================

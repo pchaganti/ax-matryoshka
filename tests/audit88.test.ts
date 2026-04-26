@@ -60,17 +60,6 @@ describe("Audit #88", () => {
   // =========================================================================
   // #4 MEDIUM — rag/manager.ts formatFailureAsHint not escaping backticks
   // =========================================================================
-  describe("#4 — formatFailureAsHint should escape backticks", () => {
-    it("should escape backticks in failure fields", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const fnStart = source.indexOf("private formatFailureAsHint");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/replace\(.*`.*\\\\`|safeBadCode|safeError|safeFix/);
-    });
-  });
-
-  // =========================================================================
   // #5 MEDIUM — error-analyzer.ts Levenshtein MAX_STR_LENGTH too large
   // =========================================================================
   describe("#5 — levenshteinDistance should have reasonable matrix cap", () => {

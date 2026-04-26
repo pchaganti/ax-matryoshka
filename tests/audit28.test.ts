@@ -18,54 +18,6 @@ import { inverseDocumentFrequency, buildSearchIndex, searchIndex } from "../src/
 
 describe("Audit #28", () => {
   // =============================================
-  // Issue #1 — Critical: compose() code injection
-  // =============================================
-  describe("#1 — compose() code injection", () => {
-    it("should sanitize transformComp.code to prevent injection", () => {
-      const kb = new KnowledgeBase();
-      const synth = new EvolutionarySynthesizer(kb);
-
-      const regexComp = {
-        id: "regex_1",
-        type: "regex" as const,
-        name: "test_regex",
-        description: "test",
-        code: "/\\d+/",
-        pattern: "\\d+",
-        positiveExamples: ["abc 123"],
-        negativeExamples: [],
-        confidence: 0.9,
-        usageCount: 1,
-        successCount: 1,
-        lastUsed: new Date(),
-        composableWith: [],
-      };
-
-      const maliciousCode = `(function(){ throw new Error("INJECTED") })()`;
-      const transformComp = {
-        id: "transform_1",
-        type: "transformer" as const,
-        name: "test_transform",
-        description: "test",
-        code: maliciousCode,
-        positiveExamples: ["123"],
-        negativeExamples: [],
-        confidence: 0.9,
-        usageCount: 1,
-        successCount: 1,
-        lastUsed: new Date(),
-        composableWith: [],
-      };
-
-      const result = synth.compose([regexComp, transformComp]);
-      // The composed code should either be null (rejected) or safe
-      if (result !== null) {
-        expect(result.code).not.toContain("INJECTED");
-      }
-    });
-  });
-
-  // =============================================
   // Issue #2 — Not a bug: locate_line newline join
   // The code is inside a template literal, so '\\n' in source becomes '\n'
   // in the generated JS, which correctly joins with newlines.

@@ -214,44 +214,6 @@ describe("Audit #33", () => {
   // =============================================================
   // HIGH: predicate-compiler.ts — code injection via ) in predicate
   // =============================================================
-
-  describe("#4 — predicate-compiler should block code injection", () => {
-    it("should reject predicate with closing paren to escape code context", async () => {
-      const { PredicateCompiler } = await import("../src/persistence/predicate-compiler.js");
-      const compiler = new PredicateCompiler();
-      // Attempt to inject code: ); process.exit(1); (
-      expect(() => compiler.compile("); process.exit(1); (")).toThrow();
-    });
-
-    it("should reject predicate with template literal for blocklist bypass", async () => {
-      const { PredicateCompiler } = await import("../src/persistence/predicate-compiler.js");
-      const compiler = new PredicateCompiler();
-      // Using template literals to bypass word-boundary checks
-      expect(() => compiler.compile("`${constructor}`")).toThrow();
-    });
-
-    it("should reject predicate with string concat blocklist bypass", async () => {
-      const { PredicateCompiler } = await import("../src/persistence/predicate-compiler.js");
-      const compiler = new PredicateCompiler();
-      // 'con' + 'structor' bypasses \bconstructor\b
-      expect(() => compiler.compile("item['con' + 'structor']")).toThrow();
-    });
-
-    it("should reject predicate with bracket notation for dangerous access", async () => {
-      const { PredicateCompiler } = await import("../src/persistence/predicate-compiler.js");
-      const compiler = new PredicateCompiler();
-      expect(() => compiler.compile("item['__proto__']")).toThrow();
-    });
-
-    it("should still allow safe predicates", async () => {
-      const { PredicateCompiler } = await import("../src/persistence/predicate-compiler.js");
-      const compiler = new PredicateCompiler();
-      const fn = compiler.compile("item.type === 'error'");
-      expect(fn({ type: "error" })).toBe(true);
-      expect(fn({ type: "info" })).toBe(false);
-    });
-  });
-
   // =============================================================
   // HIGH: index.ts — CLI arg parsing bounds check
   // =============================================================

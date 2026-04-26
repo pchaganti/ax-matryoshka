@@ -121,13 +121,6 @@ describe("Audit23 #4: session-db createHandle stringify safety", () => {
 });
 
 // === Issue #5: HTTP adapter error message off-by-one ===
-describe("Audit23 #5: HTTP adapter arg parsing error message", () => {
-  it("should be importable without errors", async () => {
-    const mod = await import("../src/tool/adapters/http.js");
-    expect(mod).toBeDefined();
-  });
-});
-
 // === Issue #6: sandbox-tools locate_line negative index ===
 describe("Audit23 #6: sandbox locate_line negative index", () => {
   it("should be importable without errors", async () => {

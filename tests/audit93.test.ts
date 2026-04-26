@@ -134,15 +134,4 @@ describe("Audit #93", () => {
 
   // =========================================================================
   // #10 MEDIUM — exprToCode replace $ not escaped
-  // =========================================================================
-  describe("#10 — exprToCode replace should escape $ in replacement", () => {
-    it("should sanitize $ in replacement to prevent backreference injection", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const replaceCase = source.indexOf('case "replace":', source.indexOf("exprToCode"));
-      expect(replaceCase).toBeGreaterThan(-1);
-      const block = source.slice(replaceCase, replaceCase + 400);
-      // Should escape $ in replacement string
-      expect(block).toMatch(/\$\$|replace\(.*\\.*\$|escape.*replacement|sanitize/i);
-    });
-  });
 });

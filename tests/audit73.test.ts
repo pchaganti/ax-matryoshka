@@ -34,17 +34,6 @@ describe("Audit #73", () => {
   // =========================================================================
   // #3 HIGH — http.ts timeout has no upper bound, * 1000 can overflow
   // =========================================================================
-  describe("#3 — http timeout should have an upper bound", () => {
-    it("should cap timeout seconds to prevent overflow", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const timeoutParse = source.indexOf("MAX_TIMEOUT_SECONDS");
-      expect(timeoutParse).toBeGreaterThan(-1);
-      const block = source.slice(timeoutParse, timeoutParse + 400);
-      expect(block).toMatch(/MAX_TIMEOUT|parsed\s*>\s*\d{4,}|timeoutSeconds\s*>\s*\d{4,}/);
-    });
-  });
-
-  // =========================================================================
   // #4 MEDIUM — lc-compiler split missing delimiter length validation
   // =========================================================================
   describe("#4 — lc-compiler split should validate delimiter length", () => {

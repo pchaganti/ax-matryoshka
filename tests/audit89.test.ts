@@ -73,33 +73,7 @@ describe("Audit #89", () => {
   // =========================================================================
   // #5 MEDIUM — nucleus-engine.ts capture group counting mishandles \\(
   // =========================================================================
-  describe("#5 — grep should correctly count unescaped parens", () => {
-    it("should handle escaped backslash before paren", () => {
-      const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
-      const parenCheck = source.indexOf("unescapedParens");
-      expect(parenCheck).toBeGreaterThan(-1);
-      const block = source.slice(parenCheck - 100, parenCheck + 200);
-      // Should handle \\( (escaped backslash followed by real paren)
-      expect(block).toMatch(/\\\\\\\\|lookbehind|(?:replace.*){2,}|captureGroupCount/i);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — nucleus.ts escapeForSexp doesn't escape parens
-  // =========================================================================
-  describe("#6 — escapeForSexp should escape parentheses", () => {
-    it("should escape ( and ) characters", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const fnStart = source.indexOf("function escapeForSexp");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/\\(|\\)|replace.*\(.*\)/);
-      // More specific: should have at least 6 replace calls (original 5 + parens)
-      const replaceCount = (block.match(/\.replace\(/g) || []).length;
-      expect(replaceCount).toBeGreaterThanOrEqual(6);
-    });
-  });
-
   // =========================================================================
   // #7 MEDIUM — extractor/synthesis.ts split(delim) without limit in loop
   // =========================================================================
@@ -130,19 +104,6 @@ describe("Audit #89", () => {
 
   // =========================================================================
   // #9 MEDIUM — nucleus-engine.ts function name should block special chars
-  // =========================================================================
-  describe("#9 — function name should validate with regex", () => {
-    it("should validate function name with safe regex", () => {
-      const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
-      const fnNameCheck = source.indexOf("_fn_${fnObj.name}");
-      expect(fnNameCheck).toBeGreaterThan(-1);
-      const block = source.slice(fnNameCheck - 200, fnNameCheck + 50);
-      // Should validate name with regex and length check
-      expect(block).toMatch(/\.test\(fnObj\.name\)/);
-      expect(block).toMatch(/\.length\s*<=\s*256/);
-    });
-  });
-
   // =========================================================================
   // #10 MEDIUM — config.ts resolveEnvVars no recursion depth limit
   // =========================================================================

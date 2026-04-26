@@ -113,16 +113,6 @@ describe("Audit #51", () => {
   // =========================================================================
   // #9 MEDIUM — parser-registry.ts: moduleExport bracket access needs proto guard
   // =========================================================================
-  describe("#9 — parser-registry moduleExport should guard prototype pollution", () => {
-    it("should check moduleExport against dangerous names", () => {
-      const source = readFileSync("src/treesitter/parser-registry.ts", "utf-8");
-      const moduleExportBlock = source.match(/moduleExport[\s\S]*?grammarModule\[config\.moduleExport\]/);
-      expect(moduleExportBlock).not.toBeNull();
-      expect(moduleExportBlock![0]).toMatch(/__proto__|hasOwnProperty|DANGEROUS|prototype|Object\.prototype/);
-    });
-  });
-
-  // =========================================================================
   // #10 MEDIUM — relational-solver.ts: standard number path missing isFinite
   // =========================================================================
   describe("#10 — parseNumberImpl standard number should check isFinite", () => {

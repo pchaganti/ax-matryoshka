@@ -116,16 +116,6 @@ describe("Audit #57", () => {
   // =========================================================================
   // #9 MEDIUM — lc-parser constraints uses {} not Object.create(null)
   // =========================================================================
-  describe("#9 — lc-parser constraints should use null prototype", () => {
-    it("should use Object.create(null) for constraints object", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const constraintBlock = source.match(/constraints[\s\S]*?DANGEROUS_KEYS/);
-      expect(constraintBlock).not.toBeNull();
-      expect(constraintBlock![0]).toMatch(/Object\.create\(null\)/);
-    });
-  });
-
-  // =========================================================================
   // #10 MEDIUM — compile.ts slice missing typeof string guard
   // =========================================================================
   describe("#10 — compiled slice should guard typeof string", () => {

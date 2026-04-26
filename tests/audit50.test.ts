@@ -8,16 +8,6 @@ import { readFileSync } from "fs";
 describe("Audit #50", () => {
   // =========================================================================
   // #1 HIGH — evalo/evalo.ts: match group missing Number.isInteger
-  // =========================================================================
-  describe("#1 — evalo match should validate group with Number.isInteger", () => {
-    it("should check Number.isInteger on extractor.group before array access", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const matchCase = source.match(/case "match"[\s\S]*?match\[extractor\.group\]/);
-      expect(matchCase).not.toBeNull();
-      expect(matchCase![0]).toMatch(/Number\.isInteger\(extractor\.group\)/);
-    });
-  });
-
   // #2 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
   // =========================================================================

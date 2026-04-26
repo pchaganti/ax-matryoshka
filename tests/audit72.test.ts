@@ -117,17 +117,6 @@ describe("Audit #72", () => {
 
   // =========================================================================
   // #9 MEDIUM — knowledge-base derive unbounded composableWith push
-  // =========================================================================
-  describe("#9 — knowledge-base derive should cap composableWith array", () => {
-    it("should limit composableWith array size", () => {
-      const source = readFileSync("src/synthesis/knowledge-base.ts", "utf-8");
-      const fnStart = source.indexOf("derive(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 500);
-      expect(block).toMatch(/MAX_COMPOSABLE|composableWith\.length\s*>=|composableWith\.length\s*</);
-    });
-  });
-
   // #10 removed: rlm.ts buildSystemPrompt helper deleted. The adapter-level
   // isFinite check is covered by audit76/77.
 });

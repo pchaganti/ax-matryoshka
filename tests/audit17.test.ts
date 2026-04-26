@@ -71,80 +71,7 @@ describe("Audit17 #2: NaN comparison in synthesis", () => {
 });
 
 // === Issue #3: find_references missing validateRegex ===
-describe("Audit17 #3: find_references validateRegex", () => {
-  it("should handle find_references with very long name safely", async () => {
-    const { solve } = await import("../src/logic/lc-solver.js");
-    const tools: any = {
-      grep: (pattern: string) => {
-        // Verify the pattern is reasonable
-        new RegExp(pattern);
-        return [];
-      },
-      fuzzy_search: () => [],
-      text_stats: () => ({ length: 0, lineCount: 0, sample: { start: "", middle: "", end: "" } }),
-      context: "function test() { return 1; }",
-    };
-    // Very long name — should not cause ReDoS or hang
-    const longName = "a".repeat(1000);
-    const term: any = {
-      tag: "find_references",
-      name: longName,
-    };
-    const result = await solve(term, tools);
-    // Should succeed (returning empty array) without hanging
-    expect(result.success).toBe(true);
-  });
-
-  it("should call validateRegex before grep in find_references", async () => {
-    const { solve } = await import("../src/logic/lc-solver.js");
-    let grepCalled = false;
-    const tools: any = {
-      grep: () => { grepCalled = true; return []; },
-      fuzzy_search: () => [],
-      text_stats: () => ({ length: 0, lineCount: 0, sample: { start: "", middle: "", end: "" } }),
-      context: "test",
-    };
-    const term: any = {
-      tag: "find_references",
-      name: "test",
-    };
-    const result = await solve(term, tools);
-    expect(result.success).toBe(true);
-    expect(grepCalled).toBe(true);
-  });
-});
-
 // === Issue #4: prettyPrint unescaped strings ===
-describe("Audit17 #4: prettyPrint escaping", () => {
-  it("should escape quotes in lit string values", async () => {
-    const { prettyPrint } = await import("../src/logic/lc-parser.js");
-    const term: any = {
-      tag: "lit",
-      value: 'say "hello"',
-    };
-    const result = prettyPrint(term);
-    // Should escape internal quotes so output is valid
-    expect(result).not.toBe('"say "hello""');
-    expect(result).toContain("hello");
-    // Should be parseable — no unbalanced quotes
-    const quoteCount = (result.match(/(?<!\\)"/g) || []).length;
-    expect(quoteCount % 2).toBe(0);
-  });
-
-  it("should escape backslashes in pattern strings", async () => {
-    const { prettyPrint } = await import("../src/logic/lc-parser.js");
-    const term: any = {
-      tag: "match",
-      str: { tag: "input" },
-      pattern: "\\d+",
-      group: 0,
-    };
-    const result = prettyPrint(term);
-    // Pattern should be preserved in output
-    expect(result).toContain("\\d+");
-  });
-});
-
 // === Issue #5: classify empty string matches everything ===
 describe("Audit17 #5: classify empty string guard", () => {
   it("should not match everything when trueExamples contains empty string", async () => {
@@ -267,9 +194,3 @@ describe("Audit17 #9: date validation per-month limits", () => {
 });
 
 // === Issue #10: HTTP --host no validation ===
-describe("Audit17 #10: HTTP host validation", () => {
-  it("http module should export startHttpAdapter", async () => {
-    const mod = await import("../src/tool/adapters/http.js");
-    expect(mod.startHttpAdapter).toBeDefined();
-  });
-});

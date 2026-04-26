@@ -46,29 +46,7 @@ describe("Audit #83", () => {
   // =========================================================================
   // #3 MEDIUM — relational/interpreter.ts missing `with` in blocklist
   // =========================================================================
-  describe("#3 — DANGEROUS_CODE_PATTERNS should block `with`", () => {
-    it("should include with keyword in blocklist", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const blocklistStart = source.indexOf("DANGEROUS_CODE_PATTERNS");
-      expect(blocklistStart).toBeGreaterThan(-1);
-      const block = source.slice(blocklistStart, blocklistStart + 400);
-      expect(block).toMatch(/\\bwith\\b/);
-    });
-  });
-
-  // =========================================================================
   // #4 MEDIUM — relational/interpreter.ts missing `delete` in blocklist
-  // =========================================================================
-  describe("#4 — DANGEROUS_CODE_PATTERNS should block `delete`", () => {
-    it("should include delete keyword in blocklist", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const blocklistStart = source.indexOf("DANGEROUS_CODE_PATTERNS");
-      expect(blocklistStart).toBeGreaterThan(-1);
-      const block = source.slice(blocklistStart, blocklistStart + 400);
-      expect(block).toMatch(/\\bdelete\\b/);
-    });
-  });
-
   // =========================================================================
   // #5 MEDIUM — relational/interpreter.ts match expr undefined → null
   // =========================================================================

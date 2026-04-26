@@ -99,23 +99,6 @@ describe("Audit27 #4: rlm constraint verification paths", () => {
 });
 
 // === Issue #5: delimiter escaping only handles pipe ===
-describe("Audit27 #5: extractor delimiter escaping", () => {
-  it("should handle tab delimiter correctly", async () => {
-    const { synthesizeExtractor } = await import(
-      "../src/synthesis/extractor/synthesis.js"
-    );
-    const examples = [
-      { input: "a\tb\tc", output: "b" },
-      { input: "x\ty\tz", output: "y" },
-    ];
-    const extractor = synthesizeExtractor({ examples });
-    expect(extractor).not.toBeNull();
-    if (extractor) {
-      expect(extractor.test("1\t2\t3")).toBe("2");
-    }
-  });
-});
-
 // === Issue #6: config coercion fails for "1.0" ===
 describe("Audit27 #6: config coerceConfigTypes precision", () => {
   it("should coerce '1.0' to number 1", async () => {

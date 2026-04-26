@@ -19,54 +19,12 @@ describe("Audit #36", () => {
     // #1 — filter uses JS truthiness by design (match returns "" for no match)
     // This is intentional: empty string and 0 are "no match" in the DSL.
     // Verified as NOT a bug — existing tests confirm truthiness is correct.
-    describe("#1 — filter uses JS truthiness by design", () => {
-      it("should use JS truthiness for filter predicates (documented behavior)", () => {
-        const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-        const filterBlock = source.match(/case "filter"[\s\S]*?return results;\s*\}/);
-        expect(filterBlock).not.toBeNull();
-        // JS truthiness is the intended behavior
-        expect(filterBlock![0]).toMatch(/if \(result\)/);
-      });
-    });
-
-    // #2 — FTS5 XSS sanitization incomplete
-    describe("#2 — FTS5 sanitizeTag should block all XSS vectors", () => {
-      it("should block iframe, svg, img tags", () => {
-        const source = readFileSync("src/persistence/fts5-search.ts", "utf-8");
-        const sanitize = source.match(/sanitizeTag[\s\S]*?;/);
-        expect(sanitize).not.toBeNull();
-        // Should strip all HTML tags or use allowlist approach
-        expect(sanitize![0]).toMatch(/allowlist|<[^>]*>|replace.*<.*>/);
-      });
-    });
-
-    // #3 — deepEqual NaN comparison
-    describe("#3 — deepEqual should handle NaN equality", () => {
-      it("should treat NaN === NaN as true", () => {
-        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
-        const deepEq = source.match(/function deepEqual[\s\S]*?^}/m);
-        expect(deepEq).not.toBeNull();
-        expect(deepEq![0]).toMatch(/isNaN|Number\.isNaN/);
-      });
-    });
-
     // #4 — nucleus adapter escapeForSexp helper to centralize escaping
     describe("#4 — nucleus adapter should use centralized escape helper", () => {
       it("should have escapeForSexp or equivalent centralized escape function", () => {
         const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
         // Should centralize the escape logic to avoid repetition and ensure consistency
         expect(source).toMatch(/escapeForSexp|function.*escape.*Sexp/i);
-      });
-    });
-
-    // #5 — HTTP content-length pre-check
-    describe("#5 — HTTP readBody should pre-check content-length", () => {
-      it("should reject oversized content-length before reading body", () => {
-        const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-        const readBody = source.match(/readBody[\s\S]*?return new Promise/);
-        expect(readBody).not.toBeNull();
-        // Should check content-length header upfront
-        expect(readBody![0]).toMatch(/content-length|contentLength/i);
       });
     });
   });

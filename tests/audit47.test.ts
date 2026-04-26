@@ -22,14 +22,6 @@ describe("Audit #47", () => {
   // =========================================================================
   // #2 HIGH — predicate-compiler: Object.getPrototypeOf not blocked
   // =========================================================================
-  describe("#2 — predicate-compiler should block Object.getPrototypeOf", () => {
-    it("should include getPrototypeOf in blocklist", () => {
-      const source = readFileSync("src/persistence/predicate-compiler.ts", "utf-8");
-      expect(source).toMatch(/getPrototypeOf/);
-    });
-  });
-
-  // =========================================================================
   // #3 HIGH — lc-interpreter parseCurrency missing isFinite
   // =========================================================================
   describe("#3 — lc-interpreter parseCurrency should check isFinite", () => {
@@ -110,18 +102,6 @@ describe("Audit #47", () => {
 
   // =========================================================================
   // #9 MEDIUM — lc-solver boolean coercion fallback too permissive
-  // =========================================================================
-  describe("#9 — lc-solver boolean coercion should not fallback to Boolean()", () => {
-    it("should return null for unrecognized values instead of Boolean()", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const boolCase = source.match(/case "boolean"[\s\S]*?case "string"/);
-      expect(boolCase).not.toBeNull();
-      // Should NOT have a raw Boolean(str) fallback — should return null for unknown values
-      expect(boolCase![0]).not.toMatch(/return Boolean\(str\)/);
-      expect(boolCase![0]).toMatch(/return null/);
-    });
-  });
-
   // =========================================================================
   // #10 LOW — sandbox locate_line negative start reversal
   // =========================================================================

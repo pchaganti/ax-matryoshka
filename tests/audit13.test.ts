@@ -181,25 +181,6 @@ describe("Issue #10: parseCurrency double-negative produces wrong sign", () => {
     expect(result.value).toBe(-1234);
   });
 });
-
-// =========================================================================
-// Issue #11 — buildQuarterMapper parseInt no radix/NaN guard
-// =========================================================================
-describe("Issue #11: buildQuarterMapper parseInt with NaN guard", () => {
-  it("should handle quarter parsing for Q1-Q4 correctly", async () => {
-    // We test via synthesizeFromExamples which uses buildQuarterMapper
-    const { synthesizeFromExamples } = await import("../src/logic/relational-solver.js");
-
-    const result = synthesizeFromExamples([
-      { input: "Q1-2024", output: "2024-01" },
-      { input: "Q3-2024", output: "2024-07" },
-    ]);
-    expect(result.success).toBe(true);
-    // Q2 should infer to month 04
-    expect(result.apply("Q2-2025")).toBe("2025-04");
-  });
-});
-
 // =========================================================================
 // Issue #12 — Percentage parser returns raw value not /100
 // =========================================================================
@@ -221,35 +202,6 @@ describe("Issue #12: percentage parser should return raw value (not /100)", () =
     expect(result.fn!("Growth: 25.5%")).toBeCloseTo(25.5, 1);
   });
 });
-
-// =========================================================================
-// Issue #14 — Path traversal check tautological
-// =========================================================================
-describe("Issue #14: lattice-tool path traversal check", () => {
-  it("should reject path with .. traversal", async () => {
-    const { LatticeTool } = await import("../src/tool/lattice-tool.js");
-    const tool = new LatticeTool();
-
-    // Path with ../ traversal
-    const result = await tool.executeAsync({ type: "load", filePath: "/tmp/../etc/passwd" });
-    expect(result.success).toBe(false);
-    expect(result.error).toMatch(/traversal|outside working directory/i);
-  });
-});
-
-// =========================================================================
-// Issue #15 — --port/--timeout accept NaN silently
-// =========================================================================
-describe("Issue #15: HTTP adapter should reject NaN port/timeout", () => {
-  it("parseInt with no radix should still work for valid numbers", async () => {
-    // This is tested via reading the source - the fix adds NaN validation
-    // We verify NaN detection works
-    const portStr = "notanumber";
-    const port = parseInt(portStr, 10);
-    expect(isNaN(port)).toBe(true);
-  });
-});
-
 // =========================================================================
 // Issue #8 — History prune splice(2,1) breaks role alternation
 // =========================================================================

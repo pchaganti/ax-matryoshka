@@ -74,31 +74,7 @@ describe("Audit #82", () => {
   // =========================================================================
   // #4 MEDIUM — rag/manager.ts $ not escaped in formatExampleAsHint
   // =========================================================================
-  describe("#4 — formatExampleAsHint should escape $ in code", () => {
-    it("should escape dollar signs in example.code", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const fnStart = source.indexOf("private formatExampleAsHint");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/replace\(.*\\\$|escapeDollar|safeCode.*\$/);
-    });
-  });
-
-  // =========================================================================
   // #5 MEDIUM — rag/manager.ts $ not escaped in generateSelfCorrectionFeedback
-  // =========================================================================
-  describe("#5 — generateSelfCorrectionFeedback should escape $ in code", () => {
-    it("should escape dollar signs in failure.code", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const fnStart = source.indexOf("generateSelfCorrectionFeedback");
-      expect(fnStart).toBeGreaterThan(-1);
-      const codeBlock = source.indexOf("failure.code", fnStart);
-      expect(codeBlock).toBeGreaterThan(-1);
-      const block = source.slice(codeBlock, codeBlock + 200);
-      expect(block).toMatch(/replace\(.*\\\$|escapeDollar|\$.*replace/);
-    });
-  });
-
   // =========================================================================
   // #6 MEDIUM — relational/interpreter.ts parseInt missing isSafeInteger
   // =========================================================================

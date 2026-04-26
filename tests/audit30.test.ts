@@ -21,36 +21,6 @@ import { SessionDB } from "../src/persistence/session-db.js";
 
 describe("Audit #30", () => {
   // =============================================
-  // Issue #1 — High: lattice-tool formatResponse unsafe cast
-  // =============================================
-  describe("#1 — lattice-tool formatResponse type safety", () => {
-    it("should not crash when line property is not a string", () => {
-      const source = readFileSync("src/tool/lattice-tool.ts", "utf-8");
-      // After fix, the code should check typeof gr.line === "string" before calling .slice()
-      const castMatch = source.match(
-        /if\s*\(typeof item === "object" && item !== null && "line" in item\)\s*\{([^}]+)\}/
-      );
-      expect(castMatch).not.toBeNull();
-      // Should have a typeof check for line before using .slice()
-      expect(castMatch![1]).toMatch(/typeof.*line.*===.*"string"/);
-    });
-  });
-
-  // =============================================
-  // Issue #2 — High: extractor delimiter escaping
-  // =============================================
-  describe("#2 — extractor delimiter escaping", () => {
-    it("should escape newlines in delimiter for code generation", () => {
-      const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
-      // Find the escapedDelim line — should handle newline escaping
-      const escapeSection = source.match(/const escapedDelim = delim([^;]+);/);
-      expect(escapeSection).not.toBeNull();
-      // Should escape newlines (\n) and carriage returns (\r)
-      expect(escapeSection![1]).toMatch(/\\n/);
-    });
-  });
-
-  // =============================================
   // Issue #3 — Medium: deepEqual no depth limit
   // =============================================
   describe("#3 — deepEqual depth limit", () => {

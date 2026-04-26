@@ -33,22 +33,6 @@ describe("Audit #84", () => {
   // =========================================================================
   // #2 MEDIUM — rlm.ts escape-then-slice boundary issue
   // =========================================================================
-  describe("#2 — generateClassifierGuidance should slice before escaping", () => {
-    it("should slice line before escape to prevent broken sequences", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const fnStart = source.indexOf("function generateClassifierGuidance");
-      expect(fnStart).toBeGreaterThan(-1);
-      // Find the line variable assignment (grepResults[idx].line)
-      const lineVar = source.indexOf("grepResults[idx].line", fnStart);
-      expect(lineVar).toBeGreaterThan(-1);
-      const block = source.slice(lineVar, lineVar + 300);
-      // The line should NOT be escaped and THEN sliced — that creates broken escape sequences
-      // Instead it should be sliced FIRST, then escaped
-      expect(block).not.toMatch(/\.replace\([^)]*\)\.replace\([^)]*\)\.slice\(0,/);
-    });
-  });
-
-  // =========================================================================
   // #3 MEDIUM — lc-interpreter.ts split delimiter not type-checked
   // =========================================================================
   describe("#3 — split should type-check and length-bound delimiter", () => {

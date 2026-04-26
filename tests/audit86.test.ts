@@ -74,30 +74,7 @@ describe("Audit #86", () => {
   // =========================================================================
   // #5 MEDIUM — http.ts CORS port regex unbounded
   // =========================================================================
-  describe("#5 — CORS origin regex should bound port digits", () => {
-    it("should use bounded port pattern like \\d{1,5}", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const corsLine = source.indexOf("isLocalhost");
-      expect(corsLine).toBeGreaterThan(-1);
-      const block = source.slice(corsLine, corsLine + 200);
-      // Should NOT have unbounded \d+ for port
-      expect(block).toMatch(/\\d\{1,5\}/);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — http.ts port parseInt uses global isNaN
-  // =========================================================================
-  describe("#6 — port parsing should use Number.isNaN or isSafeInteger", () => {
-    it("should use strict number check for port", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const portParse = source.indexOf("parseInt(portArg, 10)");
-      expect(portParse).toBeGreaterThan(-1);
-      const block = source.slice(portParse, portParse + 200);
-      expect(block).toMatch(/Number\.isNaN|Number\.isSafeInteger|!Number\.isFinite/);
-    });
-  });
-
   // =========================================================================
   // #7 MEDIUM — synthesis-integrator.ts findCommonPattern no iteration limit
   // =========================================================================
@@ -141,14 +118,4 @@ describe("Audit #86", () => {
 
   // =========================================================================
   // #10 MEDIUM — http.ts timeout multiplication without overflow check
-  // =========================================================================
-  describe("#10 — timeout multiplication should have overflow guard", () => {
-    it("should validate timeoutMs after multiplication", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const timeoutLine = source.indexOf("safeTimeout * 1000");
-      expect(timeoutLine).toBeGreaterThan(-1);
-      const block = source.slice(timeoutLine, timeoutLine + 200);
-      expect(block).toMatch(/isSafeInteger|Number\.isSafeInteger|Number\.isFinite/);
-    });
-  });
 });

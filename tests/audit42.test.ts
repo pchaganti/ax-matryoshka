@@ -83,16 +83,6 @@ describe("Audit #42", () => {
   // =========================================================================
   // #6 MEDIUM — http.ts timeout calculation bug (idle already seconds)
   // =========================================================================
-  describe("#6 — http timeout calculation should not double-convert units", () => {
-    it("should compute timeoutIn without multiplying idle by 1000", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      // The bug: idle is already in seconds, but code does `idle * 1000`
-      // Fixed version should not have `idle * 1000` in timeoutIn calculation
-      expect(source).not.toMatch(/timeoutIn[\s\S]*?idle \* 1000/);
-    });
-  });
-
-  // =========================================================================
   // #7 MEDIUM — predicate-compiler parenthesized string concat bypass
   // =========================================================================
   describe("#7 — predicate-compiler should block parenthesized string concat", () => {

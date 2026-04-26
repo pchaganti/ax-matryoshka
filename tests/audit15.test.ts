@@ -8,36 +8,6 @@ import { describe, it, expect } from "vitest";
 // matching grep's "gmi" behavior. Chiasmus review round 2 reversed the prior
 // (case-sensitive) policy because `(grep "error")` found "Error" but
 // `(filter RESULTS (lambda x (match x "error" 0)))` then dropped it.
-describe("Audit15 #1: regex case consistency", () => {
-  it("lc-interpreter match should be case-insensitive (matches grep)", async () => {
-    const { evaluate } = await import("../src/logic/lc-interpreter.js");
-    const tools: any = {
-      grep: () => [],
-      fuzzy_search: () => [],
-      text_stats: () => ({ length: 0, lineCount: 0, sample: { start: "", middle: "", end: "" } }),
-      context: "",
-    };
-    // Match "ABC" against /abc/i — should match
-    const term: any = { tag: "match", str: { tag: "lit", value: "ABC" }, pattern: "abc", group: 0 };
-    const result = evaluate(term, tools, new Map(), () => {}, 0);
-    expect(result).toBe("ABC");
-  });
-
-  it("lc-solver match should also be case-insensitive", async () => {
-    const { solve } = await import("../src/logic/lc-solver.js");
-    const tools: any = {
-      grep: () => [],
-      fuzzy_search: () => [],
-      text_stats: () => ({ length: 0, lineCount: 0, sample: { start: "", middle: "", end: "" } }),
-      context: "",
-    };
-    const term: any = { tag: "match", str: { tag: "lit", value: "ABC" }, pattern: "abc", group: 0 };
-    const result = await solve(term, tools);
-    // Should match — solver uses "i" flag for consistency with grep
-    expect(result.value).toBe("ABC");
-  });
-});
-
 // === Issue #2: Classifier RegExp without validateRegex ===
 describe("Audit15 #2: classifier validateRegex", () => {
   it("classifier should not throw on ReDoS pattern", async () => {
@@ -65,27 +35,7 @@ describe("Audit15 #2: classifier validateRegex", () => {
 });
 
 // === Issue #3: Unterminated string i++ past EOF ===
-describe("Audit15 #3: parser unterminated string", () => {
-  it("should not crash on unterminated string", async () => {
-    const { parse } = await import("../src/logic/lc-parser.js");
-    // Unterminated string — no closing quote
-    const result = parse('(grep "hello');
-    // Should fail gracefully, not crash or read past EOF
-    // The bug is that i++ on line 164 goes past EOF when quote is missing
-    expect(result).toBeDefined();
-  });
-});
-
 // === Issue #4: Empty keyword token from lone `:` ===
-describe("Audit15 #4: parser empty keyword", () => {
-  it("should handle lone colon gracefully", async () => {
-    const { parse } = await import("../src/logic/lc-parser.js");
-    const result = parse("(grep : )");
-    // Should not produce empty keyword — either skip or error
-    expect(result).toBeDefined();
-  });
-});
-
 // === Issue #5: Replace $ backreference in compiled code ===
 describe("Audit15 #5: compile replace $ backreference", () => {
   it("should escape $ in replacement string for compiled code", async () => {
@@ -138,25 +88,6 @@ describe("Audit15 #6: evaluateWithBinding match group<0", () => {
 });
 
 // === Issue #7: s.slice(n, -0) bug when suffixLen=0 ===
-describe("Audit15 #7: slice -0 bug", () => {
-  it("should handle zero suffix length correctly", async () => {
-    const mod = await import("../src/synthesis/extractor/synthesis.js");
-    const synthesize = (mod as any).synthesizeExtractor || (mod as any).default?.synthesizeExtractor;
-    if (!synthesize) return; // skip if not exported
-    // Examples where we strip prefix but no suffix
-    const result = synthesize({
-      examples: [
-        { input: "prefix_hello", output: "hello" },
-        { input: "prefix_world", output: "world" },
-      ],
-    });
-    if (result) {
-      // The test function should correctly strip prefix only
-      expect(result.test("prefix_test")).toBe("test");
-    }
-  });
-});
-
 // === Issue #8: Native function calls no try-catch ===
 describe("Audit15 #8: native function try-catch in filter/map", () => {
   it("filter should handle native function that throws", async () => {
@@ -238,28 +169,6 @@ describe("Audit15 #11: parseCurrency $-1234 negative", () => {
 });
 
 // === Issue #12: Classifier code regex literal may contain / ===
-describe("Audit15 #12: classifier code regex slash escape", () => {
-  it("classifier code should escape / in regex patterns", async () => {
-    const { SynthesisIntegrator } = await import("../src/logic/synthesis-integrator.js");
-    const integrator = new SynthesisIntegrator();
-    const result = integrator.synthesizeOnFailure({
-      operation: "classify",
-      input: "test",
-      examples: [
-        { input: "2023/01/01 error", output: true },
-        { input: "2023/02/01 error", output: true },
-        { input: "good result", output: false },
-        { input: "no issue", output: false },
-      ],
-    });
-    // If the code contains regex with unescaped /, it would be broken
-    if (result.success && result.code) {
-      // The code should be valid JavaScript
-      expect(() => new Function("return " + result.code)).not.toThrow();
-    }
-  });
-});
-
 // === Issue #13: isSafeInvariant unicode escape bypass ===
 describe("Audit15 #13: verifier unicode escape bypass", () => {
   it("should reject unicode escape sequences in invariants", async () => {

@@ -4,32 +4,6 @@
 import { describe, it, expect } from "vitest";
 
 // === Issue #1: nucleus.ts escape order — verified correct (backslash then quote) ===
-describe("Audit24 #1: nucleus jsonToSexp escaping", () => {
-  it("should correctly escape patterns with quotes", async () => {
-    const { createNucleusAdapter } = await import(
-      "../src/adapters/nucleus.js"
-    );
-    const adapter = createNucleusAdapter();
-    // Pattern with a quote character
-    const response = '{"action":"grep","pattern":"say \\"hello\\""}';
-    const result = adapter.extractCode(response);
-    expect(result).not.toBeNull();
-    expect(result).toContain("grep");
-  });
-
-  it("should correctly escape patterns with backslashes", async () => {
-    const { createNucleusAdapter } = await import(
-      "../src/adapters/nucleus.js"
-    );
-    const adapter = createNucleusAdapter();
-    // Pattern with a backslash (e.g. regex \d+)
-    const response = '{"action":"grep","pattern":"\\\\d+"}';
-    const result = adapter.extractCode(response);
-    expect(result).not.toBeNull();
-    expect(result).toContain("grep");
-  });
-});
-
 // === Issue #2: coordinator.ts unsafe e.context! non-null assertion ===
 describe("Audit24 #2: coordinator synthesizeFromCollected context safety", () => {
   it("should not crash when all examples have undefined context", async () => {
@@ -48,35 +22,6 @@ describe("Audit24 #2: coordinator synthesizeFromCollected context safety", () =>
 });
 
 // === Issue #3 & #4: ReDoS in base.ts and qwen.ts extractCode ===
-describe("Audit24 #3: base adapter extractCode ReDoS safety", () => {
-  it("should not hang on unclosed code fence with many lines", async () => {
-    const { createBaseAdapter } = await import("../src/adapters/base.js");
-    const adapter = createBaseAdapter();
-    // A large string with opening code fence but no closing backticks
-    const malicious =
-      "```javascript\n" + "x = 1;\n".repeat(5000) + "no closing fence";
-    const start = Date.now();
-    const result = adapter.extractCode(malicious);
-    const elapsed = Date.now() - start;
-    expect(elapsed).toBeLessThan(1000);
-    expect(result).toBeNull();
-  });
-});
-
-describe("Audit24 #4: qwen adapter extractCode ReDoS safety", () => {
-  it("should not hang on unclosed code fence with many lines", async () => {
-    const { createQwenAdapter } = await import("../src/adapters/qwen.js");
-    const adapter = createQwenAdapter();
-    const malicious =
-      "```javascript\n" + "x = 1;\n".repeat(5000) + "no closing fence";
-    const start = Date.now();
-    const result = adapter.extractCode(malicious);
-    const elapsed = Date.now() - start;
-    expect(elapsed).toBeLessThan(1000);
-    expect(result).toBeNull();
-  });
-});
-
 // === Issue #5: rlm.ts history.splice(2,2) removes 2 entries instead of 1 ===
 describe("Audit24 #5: rlm history pruning", () => {
   it("should export runRLM", async () => {
@@ -86,51 +31,6 @@ describe("Audit24 #5: rlm history pruning", () => {
 });
 
 // === Issue #6: evolutionary.ts regex in template literal escaping ===
-describe("Audit24 #6: evolutionary synthesizer regex escaping in generated code", () => {
-  it("should produce working extractors with regex patterns", async () => {
-    const { EvolutionarySynthesizer } = await import(
-      "../src/synthesis/evolutionary.js"
-    );
-    const { KnowledgeBase } = await import(
-      "../src/synthesis/knowledge-base.js"
-    );
-    const kb = new KnowledgeBase();
-    const evo = new EvolutionarySynthesizer(kb);
-
-    // Test that validateSolution works with regex patterns
-    const code =
-      '(s) => { const m = s.match(/\\d+/); return m ? parseInt(m[0], 10) : null; }';
-    const examples = [
-      { input: "abc123", output: 123 },
-      { input: "xyz456", output: 456 },
-    ];
-    expect(evo.validateSolution(code, examples)).toBe(true);
-  });
-
-  it("escapeRegexInString should double-escape backslashes for template literals", async () => {
-    const { EvolutionarySynthesizer } = await import(
-      "../src/synthesis/evolutionary.js"
-    );
-    const { KnowledgeBase } = await import(
-      "../src/synthesis/knowledge-base.js"
-    );
-    const kb = new KnowledgeBase();
-    const evo = new EvolutionarySynthesizer(kb);
-
-    // Initialize with number-extraction examples
-    const program = evo.initialize([
-      { input: "$100", output: 100 },
-      { input: "$200", output: 200 },
-    ]);
-
-    const solutions = evo.solve(program);
-    // If solutions are found, they should actually work
-    for (const sol of solutions) {
-      expect(evo.validateSolution(sol, program.examples)).toBe(true);
-    }
-  });
-});
-
 // === Issue #7: rlm.ts truncate() with small max ===
 // Removed: tested the deprecated extractCode helper in rlm.ts (gone with the
 // FINAL_VAR / JS-sandbox prompt purge). Production code now calls

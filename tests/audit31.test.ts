@@ -8,20 +8,6 @@ import { readFileSync } from "fs";
 
 describe("Audit #31", () => {
   // =============================================
-  // Issue #1 — High: findDistinguishingPattern returns unescaped words as regex
-  // =============================================
-  describe("#1 — findDistinguishingPattern regex escaping", () => {
-    it("should escape regex metacharacters in fallback word patterns", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      // Find the fallback section that returns words from true examples
-      const fallback = source.match(/Fallback: use the most common word[\s\S]*?return null;\s*\}/);
-      expect(fallback).not.toBeNull();
-      // The returned word should be escaped for safe use in regex
-      expect(fallback![0]).toMatch(/escapeRegex|replace\(|escape/i);
-    });
-  });
-
-  // =============================================
   // Issue #2 — High: checkpoint restore doesn't clear RESULTS
   // =============================================
   describe("#2 — checkpoint restore clears stale RESULTS", () => {
@@ -67,20 +53,6 @@ describe("Audit #31", () => {
       expect(splitCase).not.toBeNull();
       // split returns array of strings, not a single string
       expect(splitCase![0]).not.toMatch(/tag:\s*"string"\s*\}/);
-    });
-  });
-
-  // =============================================
-  // Issue #5 — Medium: rlm.ts double-escaping in classify guidance
-  // =============================================
-  describe("#5 — rlm.ts classify guidance escaping", () => {
-    it("should escape backslashes and quotes for S-expression safety", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      // Find the buildClassifyGuidance function's escaping section
-      const escapeSection = source.match(/Escape.*quotes for S-expression[\s\S]*?examples\.push/);
-      expect(escapeSection).not.toBeNull();
-      // Should escape both backslashes and double quotes for S-expression safety
-      expect(escapeSection![0]).toMatch(/replace/);
     });
   });
 });

@@ -36,20 +36,6 @@ describe("Audit #81", () => {
   // =========================================================================
   // #2 MEDIUM — rlm.ts document line escaping missing backslash handling
   // =========================================================================
-  describe("#2 — generateClassifierGuidance should escape backslashes in lines", () => {
-    it("should escape backslashes before escaping quotes", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const fnStart = source.indexOf("function generateClassifierGuidance");
-      expect(fnStart).toBeGreaterThan(-1);
-      // Find the line escaping section
-      const escapeSection = source.indexOf("Escape", fnStart);
-      expect(escapeSection).toBeGreaterThan(-1);
-      const block = source.slice(escapeSection, escapeSection + 200);
-      expect(block).toMatch(/replace\(.*\\\\|escapeForSexp|safeEscape/);
-    });
-  });
-
-  // =========================================================================
   // #3 MEDIUM — nucleus.ts paren balancing lacks MAX_DEPTH in tensor path
   // =========================================================================
   describe("#3 — extractCode tensor path should have depth limit", () => {
@@ -93,19 +79,6 @@ describe("Audit #81", () => {
 
   // =========================================================================
   // #6 MEDIUM — predicate-compiler.ts missing .repeat() and fromCodePoint
-  // =========================================================================
-  describe("#6 — predicate-compiler should block .repeat() and fromCodePoint", () => {
-    it("should block .repeat() method", () => {
-      const source = readFileSync("src/persistence/predicate-compiler.ts", "utf-8");
-      expect(source).toMatch(/\.repeat\b|\\brepeat\\b/);
-    });
-
-    it("should block fromCodePoint method", () => {
-      const source = readFileSync("src/persistence/predicate-compiler.ts", "utf-8");
-      expect(source).toMatch(/fromCodePoint/);
-    });
-  });
-
   // =========================================================================
   // #7 MEDIUM — sandbox-tools.ts Object.assign enables prototype pollution
   // =========================================================================

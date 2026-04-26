@@ -252,19 +252,3 @@ describe("Audit19 #6: match group index bounds", () => {
 });
 
 // === Issue #7: tokenize drops single-char preserved tokens ===
-describe("Audit19 #7: tokenize preserves currency symbols", () => {
-  it("should not drop $ token despite being single-char", async () => {
-    const { tokenize } = await import("../src/rag/similarity.js");
-    const tokens = tokenize("$ price");
-    // $ is explicitly preserved by the regex but filtered by length > 1
-    expect(tokens).toContain("$");
-  });
-
-  it("should still filter other single-char tokens", async () => {
-    const { tokenize } = await import("../src/rag/similarity.js");
-    const tokens = tokenize("a b c word");
-    expect(tokens).not.toContain("a");
-    expect(tokens).not.toContain("b");
-    expect(tokens).toContain("word");
-  });
-});

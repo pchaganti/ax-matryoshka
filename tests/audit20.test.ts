@@ -4,26 +4,6 @@
 import { describe, it, expect } from "vitest";
 
 // === Issue #1: Regex literal injection in predicate code string ===
-describe("Audit20 #1: synthesis-integrator predicate code injection", () => {
-  it("should use safe regex representation in code string", async () => {
-    const mod = await import("../src/logic/synthesis-integrator.js");
-    const SynthesisIntegrator = mod.SynthesisIntegrator;
-    const integrator = new SynthesisIntegrator();
-
-    // Synthesize a predicate with examples that would produce a pattern
-    const result = integrator.synthesizePredicate([
-      { input: "error found", output: true },
-      { input: "all good", output: false },
-    ]);
-
-    if (result.success && result.code) {
-      // The code string should NOT contain unescaped regex literals
-      // It should use new RegExp() or JSON.stringify for the pattern
-      expect(result.code).not.toMatch(/\/(.*?)\/\.test/);
-    }
-  });
-});
-
 // === Issue #2: evalo NaN comparison using === ===
 describe("Audit20 #2: evalo NaN-safe comparison", () => {
   it("evalo should match NaN output with NaN result", async () => {

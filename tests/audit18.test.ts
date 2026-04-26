@@ -28,14 +28,6 @@ describe("Audit18 #1: validateRegex curly brace quantifiers", () => {
 });
 
 // === Issue #2: extract_with_regex no validation ===
-describe("Audit18 #2: extract_with_regex validation", () => {
-  it("should reject ReDoS patterns in extract_with_regex", async () => {
-    // We test indirectly — the sandbox tools module should exist
-    const mod = await import("../src/synthesis/sandbox-tools.js");
-    expect(mod).toBeDefined();
-  });
-});
-
 // === Issue #3: testRegex doesn't call validateRegex ===
 describe("Audit18 #3: testRegex calls validateRegex", () => {
   it("should reject ReDoS pattern in testRegex", async () => {

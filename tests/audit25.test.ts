@@ -133,13 +133,6 @@ describe("Audit25 #6: extractor delimiter field beyond index 9", () => {
 });
 
 // === Issue #7: HTTP Content-Type check too permissive ===
-describe("Audit25 #7: HTTP adapter content-type validation", () => {
-  it("should be importable", async () => {
-    const mod = await import("../src/tool/adapters/http.js");
-    expect(mod.HttpAdapter).toBeDefined();
-  });
-});
-
 // === Issue #8: match.slice(1) can contain undefined groups ===
 describe("Audit25 #8: grep groups filter undefined", () => {
   it("should not have undefined in groups array", async () => {
@@ -197,9 +190,3 @@ describe("Audit25 #11: synthesis-integrator hash", () => {
 });
 
 // === Issue #12: headersTimeout without keepAliveTimeout ===
-describe("Audit25 #12: HTTP adapter timeouts", () => {
-  it("should be importable", async () => {
-    const mod = await import("../src/tool/adapters/http.js");
-    expect(mod.HttpAdapter).toBeDefined();
-  });
-});

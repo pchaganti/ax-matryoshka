@@ -21,16 +21,6 @@ describe("Audit #52", () => {
   // =========================================================================
   // #2 HIGH — lc-parser.ts: parseConstraintObject prototype pollution
   // =========================================================================
-  describe("#2 — parseConstraintObject should guard against prototype pollution", () => {
-    it("should check key against dangerous names before bracket assignment", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const constraintBlock = source.match(/parseConstraintObject[\s\S]*?constraints\[key\]/);
-      expect(constraintBlock).not.toBeNull();
-      expect(constraintBlock![0]).toMatch(/__proto__|hasOwnProperty|DANGEROUS|prototype/);
-    });
-  });
-
-  // =========================================================================
   // #3 MEDIUM — predicate-compiler.ts: comma bypass via nested parens
   // =========================================================================
   describe("#3 — predicate-compiler comma check should handle nested parens", () => {

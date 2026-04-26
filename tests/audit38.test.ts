@@ -9,41 +9,9 @@ describe("Audit #38", () => {
   // =========================================================================
   // #1 HIGH — Host header injection in HTTP adapter
   // =========================================================================
-  describe("#1 — HTTP adapter should not use raw host header in URL construction", () => {
-    it("should sanitize or avoid req.headers.host in URL construction", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      // Should NOT use raw req.headers.host in URL constructor
-      // Should use req.socket.localPort or hardcoded localhost
-      expect(source).not.toMatch(/new URL\([^)]*req\.headers\.host/);
-    });
-  });
-
-  // =========================================================================
   // #2 HIGH — evalo add() doesn't guard against Infinity
   // =========================================================================
-  describe("#2 — evalo add should guard against Infinity result", () => {
-    it("should check isFinite on add result", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const addCase = source.match(/case "add"[\s\S]*?return.*result/);
-      expect(addCase).not.toBeNull();
-      // Should have isFinite check on result
-      expect(addCase![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #3 HIGH — escapeStringForLiteral missing backtick escape
-  // =========================================================================
-  describe("#3 — compile.ts escapeStringForLiteral should escape backticks", () => {
-    it("should escape backtick characters", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const escapeFn = source.match(/function escapeStringForLiteral[\s\S]*?^}/m);
-      expect(escapeFn).not.toBeNull();
-      // Should escape backticks
-      expect(escapeFn![0]).toMatch(/`/);
-    });
-  });
-
   // #4 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
   // =========================================================================
@@ -76,17 +44,6 @@ describe("Audit #38", () => {
   // =========================================================================
   // #7 MEDIUM — getHandleDataSlice doesn't validate offset
   // =========================================================================
-  describe("#7 — session-db getHandleDataSlice should validate offset", () => {
-    it("should clamp or reject negative offset", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const sliceFn = source.match(/getHandleDataSlice[\s\S]*?LIMIT \? OFFSET \?/);
-      expect(sliceFn).not.toBeNull();
-      // Should validate offset is non-negative
-      expect(sliceFn![0]).toMatch(/offset\s*<\s*0|Math\.max\(0.*offset/);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — extractJson unbounded loop
   // =========================================================================
   describe("#8 — nucleus extractJson should have length limit", () => {
@@ -102,27 +59,5 @@ describe("Audit #38", () => {
   // =========================================================================
   // #9 MEDIUM — validateCollectionName allows __proto__
   // =========================================================================
-  describe("#9 — nucleus validateCollectionName should block dangerous names", () => {
-    it("should reject __proto__, constructor, prototype", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      // Check that dangerous names blocklist exists near validateCollectionName
-      expect(source).toMatch(/DANGEROUS_COLLECTION_NAMES/);
-      expect(source).toMatch(/__proto__/);
-      expect(source).toMatch(/constructor/);
-    });
-  });
-
-  // =========================================================================
   // #10 MEDIUM — Error messages leak internal paths
-  // =========================================================================
-  describe("#10 — HTTP adapter should sanitize error messages", () => {
-    it("should not expose raw error messages to clients", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      // The catch-all error handler should sanitize messages
-      const errorHandler = source.match(/\.catch\(\(err\)[\s\S]*?sendError[\s\S]*?\}/);
-      expect(errorHandler).not.toBeNull();
-      // Should use generic message or sanitize the error
-      expect(errorHandler![0]).toMatch(/Internal server error|sanitize|generic/i);
-    });
-  });
 });

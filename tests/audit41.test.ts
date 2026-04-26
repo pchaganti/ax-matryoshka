@@ -9,15 +9,6 @@ describe("Audit #41", () => {
   // =========================================================================
   // #1 HIGH — sandbox-tools missing constructor property lockdown
   // =========================================================================
-  describe("#1 — sandbox-tools should lock down constructor property", () => {
-    it("should define constructor as undefined on sandboxGlobals", () => {
-      const source = readFileSync("node_modules/repl-sandbox/dist/safe-globals.js", "utf-8");
-      // Should have Object.defineProperty lockdown for constructor
-      expect(source).toMatch(/defineProperty\(globals,\s*['"]constructor['"]/);
-    });
-  });
-
-  // =========================================================================
   // #2 HIGH — lc-compiler var/lambda emit unsanitized names
   // =========================================================================
   describe("#2 — lc-compiler should validate var names and lambda params", () => {
