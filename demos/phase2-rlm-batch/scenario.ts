@@ -13,6 +13,7 @@
  */
 
 import type { Responder } from "../phase1-rlm-query/harness.js";
+import { runBench, fromScript, summarize } from "../phase1-rlm-query/harness.js";
 
 const CHUNK_AUTH_COUNTS: readonly number[] = [2, 1, 3, 2, 1, 2, 3, 2];
 export const SCENARIO_TOTAL_AUTH = CHUNK_AUTH_COUNTS.reduce((a, b) => a + b, 0); // 16
@@ -76,3 +77,47 @@ export const CHILD_RESPONDER: Responder = async (prompt, turn) => {
   const matchOccurrences = (tail.match(/"match":/g) ?? []).length;
   return `<<<FINAL>>>${matchOccurrences}<<<END>>>`;
 };
+
+function parseCountArray(result: string): number[] | null {
+  try {
+    const parsed = JSON.parse(result);
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((s) => typeof s === "string" && /^\d+$/.test(s))
+    ) {
+      return parsed.map(Number);
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+export async function generateBaseline() {
+  const start = Date.now();
+  const { result, metrics } = await runBench({
+    query: SCENARIO_QUERY,
+    documentContent: SCENARIO_DOC,
+    parentResponder: fromScript(SEQUENTIAL_PARENT_SCRIPT),
+    childResponder: CHILD_RESPONDER,
+    subRLMMaxDepth: 1,
+    maxTurns: 6,
+  });
+  const elapsedMs = Date.now() - start;
+
+  const counts = parseCountArray(result);
+  const sum = counts ? counts.reduce((a, b) => a + b, 0) : null;
+
+  return {
+    mode: "baseline",
+    scenario: "concurrent-map-vs-batch",
+    simulatedLatencyMs: SIMULATED_CHILD_LATENCY_MS,
+    docChars: SCENARIO_DOC.length,
+    ...summarize(metrics),
+    elapsedMs,
+    result,
+    expectedTotalAuth: SCENARIO_TOTAL_AUTH,
+    observedSum: sum,
+    correct: sum === SCENARIO_TOTAL_AUTH,
+  };
+}

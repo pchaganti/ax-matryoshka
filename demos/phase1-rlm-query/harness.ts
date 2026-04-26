@@ -168,8 +168,19 @@ export async function runBench(
   return { result: typeof result === "string" ? result : String(result), metrics };
 }
 
+export interface SummaryMetrics {
+  parentChars: number;
+  childChars: number;
+  totalChars: number;
+  parentCalls: number;
+  childCalls: number;
+  totalCalls: number;
+  avgParentChars: number;
+  avgChildChars: number;
+}
+
 /** Pretty-print a metrics object for snapshot files. */
-export function summarize(metrics: BenchMetrics): Record<string, unknown> {
+export function summarize(metrics: BenchMetrics): SummaryMetrics {
   return {
     parentChars: metrics.parentChars,
     childChars: metrics.childChars,

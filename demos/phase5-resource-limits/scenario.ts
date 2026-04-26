@@ -14,6 +14,9 @@
  */
 
 import type { Responder } from "../phase1-rlm-query/harness.js";
+import { makeScriptedLLM } from "../phase1-rlm-query/harness.js";
+import { runRLMFromContent } from "../../src/rlm.js";
+import { createNucleusAdapter } from "../../src/adapters/nucleus.js";
 
 export const SCENARIO_DOC = ["TOKEN-A", "TOKEN-B", "TOKEN-C"].join("\n");
 export const SCENARIO_QUERY = "List the tokens.";
@@ -46,3 +49,28 @@ export const CHILD_RESPONDER: Responder = async () => {
 };
 
 export const MAX_TIMEOUT_MS = 500;
+
+export async function generateBaseline() {
+  const { llm } = makeScriptedLLM(
+    PARENT_RESPONDER,
+    CHILD_RESPONDER,
+    SCENARIO_QUERY
+  );
+  const start = Date.now();
+  const result = (await runRLMFromContent(SCENARIO_QUERY, SCENARIO_DOC, {
+    llmClient: llm,
+    adapter: createNucleusAdapter(),
+    maxTurns: 4,
+    ragEnabled: false,
+    subRLMMaxDepth: 1,
+  })) as string;
+  const elapsedMs = Date.now() - start;
+
+  return {
+    mode: "baseline",
+    scenario: "runaway-query",
+    maxTurns: 4,
+    result,
+    elapsedMs,
+  };
+}
