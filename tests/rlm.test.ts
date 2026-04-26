@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { runRLM } from "../src/rlm.js";
+import { readFileSync } from "fs";
 
 // Mock the LLM for controlled testing
 const mockLLM = vi.fn();
@@ -174,4 +175,83 @@ describe("RLM Executor", () => {
       expect(mockLLM).not.toHaveBeenCalled();
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit24.test.ts Audit24 #5: rlm history pruning
+  describe("Audit24 #5: rlm history pruning", () => {
+    it("should export runRLM", async () => {
+      const mod = await import("../src/rlm.js");
+      expect(mod.runRLM).toBeDefined();
+    });
+  });
+
+  // from tests/audit25.test.ts Audit25 #5: binding key sort safety
+  describe("Audit25 #5: binding key sort safety", () => {
+    it("should handle malformed binding keys without breaking sort", async () => {
+      // This is internal to rlm.ts — just verify module loads
+      const mod = await import("../src/rlm.js");
+      expect(mod.runRLM).toBeDefined();
+    });
+  });
+
+  // from tests/audit26.test.ts Audit26 #7: rlm small document sample
+  describe("Audit26 #7: rlm small document sample", () => {
+    it("should handle small documents in text_stats without negative indexing", async () => {
+      // We can't directly test createTools (not exported),
+      // but we can verify the fix indirectly through runRLM exports
+      const mod = await import("../src/rlm.js");
+      expect(mod.runRLM).toBeDefined();
+      // The fix is defensive — just verify the module loads cleanly
+    });
+  });
+
+  // from tests/audit27.test.ts Audit27 #4: rlm constraint verification paths
+  describe("Audit27 #4: rlm constraint verification paths", () => {
+    it("should export verifyAndReturnResult for testing", async () => {
+      const mod = await import("../src/rlm.js");
+      // Just verify the module loads; the fix is in control flow
+      expect(mod.runRLM).toBeDefined();
+    });
+  });
+
+  // from tests/audit81.test.ts #1 — generateClassifierGuidance should escape/truncate query
+  describe("#1 — generateClassifierGuidance should escape/truncate query", () => {
+      it("should truncate or escape query before interpolation", () => {
+        const source = readFileSync("src/rlm.ts", "utf-8");
+        const fnStart = source.indexOf("function generateClassifierGuidance");
+        expect(fnStart).toBeGreaterThan(-1);
+        // Search for query usage near the template literal
+        const queryInTemplate = source.indexOf('Look at the query', fnStart);
+        expect(queryInTemplate).toBeGreaterThan(-1);
+        const block = source.slice(queryInTemplate - 200, queryInTemplate + 100);
+        expect(block).toMatch(/safeQuery|query\.slice\(0,|query\.replace/);
+      });
+    });
+
+  // from tests/audit81.test.ts #4 — constraint invariants should be truncated
+  describe("#4 — constraint invariants should be truncated", () => {
+      it("should truncate invariant strings before interpolation", () => {
+        const source = readFileSync("src/rlm.ts", "utf-8");
+        const invLoop = source.indexOf("constraint.invariants");
+        expect(invLoop).toBeGreaterThan(-1);
+        const block = source.slice(invLoop, invLoop + 200);
+        expect(block).toMatch(/\.slice\(0,|safeInv|inv\.slice|truncat/);
+      });
+    });
+
+  // from tests/audit84.test.ts #7 — sessionId should be validated
+  describe("#7 — sessionId should be validated", () => {
+      it("should validate sessionId length and characters", () => {
+        const source = readFileSync("src/rlm.ts", "utf-8");
+        const sessionLine = source.indexOf("safeSessionId");
+        expect(sessionLine).toBeGreaterThan(-1);
+        const block = source.slice(sessionLine, sessionLine + 300);
+        expect(block).toMatch(/\.length|\/\^[^/]*\$\/.*test|sessionId/);
+      });
+    });
+
 });

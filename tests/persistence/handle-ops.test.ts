@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { HandleOps } from "../../src/persistence/handle-ops.js";
 import { HandleRegistry } from "../../src/persistence/handle-registry.js";
 import { SessionDB } from "../../src/persistence/session-db.js";
+import { readFileSync } from "fs";
 
 describe("HandleOps", () => {
   let db: SessionDB;
@@ -368,4 +369,113 @@ describe("HandleOps", () => {
       expect(getSpy).not.toHaveBeenCalled();
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit22.test.ts Audit22 #3: handle-ops preview negative n
+  describe("Audit22 #3: handle-ops preview negative n", () => {
+    it("should return empty array for negative n", async () => {
+      const { HandleOps } = await import("../../src/persistence/handle-ops.js");
+      // Create a minimal registry and db mock
+      const registry: any = {
+        get: () => [1, 2, 3, 4, 5],
+        store: (d: unknown[]) => "h:1",
+      };
+      const db: any = {
+        getHandleMetadata: () => ({ count: 5 }),
+        getHandleDataSlice: () => [1, 2, 3, 4, 5],
+      };
+      const ops = new HandleOps(db, registry);
+      const result = ops.preview("h:0", -2);
+      // Should return empty, not elements from end
+      expect(result).toEqual([]);
+    });
+  });
+
+  // from tests/audit22.test.ts Audit22 #4: handle-ops sample negative n
+  describe("Audit22 #4: handle-ops sample negative n", () => {
+    it("should return empty array for negative n", async () => {
+      const { HandleOps } = await import("../../src/persistence/handle-ops.js");
+      const registry: any = {
+        get: () => [1, 2, 3, 4, 5],
+        store: (d: unknown[]) => "h:1",
+      };
+      const ops = new HandleOps({} as any, registry);
+      const result = ops.sample("h:0", -3);
+      expect(result).toEqual([]);
+    });
+
+    it("should return empty array for n=0", async () => {
+      const { HandleOps } = await import("../../src/persistence/handle-ops.js");
+      const registry: any = {
+        get: () => [1, 2, 3, 4, 5],
+        store: (d: unknown[]) => "h:1",
+      };
+      const ops = new HandleOps({} as any, registry);
+      const result = ops.sample("h:0", 0);
+      expect(result).toEqual([]);
+    });
+  });
+
+  // from tests/audit23.test.ts Audit23 #2: handle-ops sample performance
+  describe("Audit23 #2: handle-ops sample performance", () => {
+    it("should sample n-1 items from n without hanging", async () => {
+      const { HandleOps } = await import("../../src/persistence/handle-ops.js");
+      const data = Array.from({ length: 100 }, (_, i) => i);
+      const registry: any = {
+        get: () => data,
+        store: (d: unknown[]) => "h:1",
+      };
+      const ops = new HandleOps({} as any, registry);
+      const start = Date.now();
+      const result = ops.sample("h:0", 99);
+      const elapsed = Date.now() - start;
+      expect(elapsed).toBeLessThan(500);
+      expect(result.length).toBe(99);
+      // All results should be unique
+      expect(new Set(result).size).toBe(99);
+    });
+  });
+
+  // from tests/audit48.test.ts #7 — handle-ops sort should validate field name
+  describe("#7 — handle-ops sort should validate field name", () => {
+      it("should check field name is a safe identifier", () => {
+        const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
+        const sortFn = source.match(/sort\(handle[\s\S]*?\.sort\(/);
+        expect(sortFn).not.toBeNull();
+        expect(sortFn![0]).toMatch(/field\.length|test\(field\)|Invalid field/i);
+      });
+    });
+
+  // from tests/audit49.test.ts #10 — handle-ops preview and sample should validate n as integer
+  describe("#10 — handle-ops preview and sample should validate n as integer", () => {
+      it("should validate n is a finite integer in preview", () => {
+        const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
+        const previewFn = source.match(/preview\(handle[\s\S]*?n <= 0/);
+        expect(previewFn).not.toBeNull();
+        expect(previewFn![0]).toMatch(/Number\.isInteger|Number\.isFinite|Math\.floor/);
+      });
+      it("should validate n is a finite integer in sample", () => {
+        const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
+        const sampleFn = source.match(/sample\(handle[\s\S]*?n <= 0/);
+        expect(sampleFn).not.toBeNull();
+        expect(sampleFn![0]).toMatch(/Number\.isInteger|Number\.isFinite|Math\.floor/);
+      });
+    });
+
+  // from tests/audit91.test.ts #9 — sum() should validate field name like sort() does
+  describe("#9 — sum() should validate field name like sort() does", () => {
+      it("should validate field name format and length", () => {
+        const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
+        const sumStart = source.indexOf("sum(handle: string, field: string)");
+        expect(sumStart).toBeGreaterThan(-1);
+        const block = source.slice(sumStart, sumStart + 300);
+        // Should validate field name like sort() does (regex + length)
+        expect(block).toMatch(/field\.length|test\(field\)|\/\^/);
+      });
+    });
+
 });

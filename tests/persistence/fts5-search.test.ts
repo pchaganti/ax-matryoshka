@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { FTS5Search } from "../../src/persistence/fts5-search.js";
 import { SessionDB } from "../../src/persistence/session-db.js";
+import { readFileSync } from "fs";
 
 describe("FTS5Search", () => {
   let db: SessionDB;
@@ -268,4 +269,111 @@ error error on this line`;
       repeatDb.close();
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit16.test.ts Audit16 #12: fts5 search highlights regex
+  describe("Audit16 #12: fts5 search highlights regex", () => {
+    it("escapeRegex should prevent ReDoS in highlight terms", async () => {
+      // This is a defensive test — the escapeRegex function should make patterns safe
+      const mod = await import("../../src/persistence/fts5-search.js");
+      // The class needs a DB, so we just verify the module loads
+      expect(mod).toBeDefined();
+    });
+  });
+
+  // from tests/audit17.test.ts Audit17 #6: searchByRelevance caching
+  describe("Audit17 #6: searchByRelevance caching", () => {
+    it("should compute relevance scores efficiently", async () => {
+      // This test verifies the sort produces correct results
+      // The fix caches toLowerCase().split() calls instead of recalculating per comparison
+      const mod = await import("../../src/persistence/fts5-search.js");
+      expect(mod).toBeDefined();
+      // Can't easily test perf, but verify module loads
+    });
+  });
+
+  // from tests/audit18.test.ts Audit18 #5: highlight tag sanitization
+  describe("Audit18 #5: highlight tag sanitization", () => {
+    it("fts5-search module should load", async () => {
+      const mod = await import("../../src/persistence/fts5-search.js");
+      expect(mod).toBeDefined();
+    });
+  });
+
+  // from tests/audit20.test.ts Audit20 #8: grepToFTS FTS5 term escaping
+  describe("Audit20 #8: grepToFTS FTS5 term escaping", () => {
+    it("should wrap alternation terms in quotes for FTS5 safety", async () => {
+      // The fix wraps terms in double quotes to prevent FTS5 special char issues
+      // We test that the function doesn't throw with special chars
+      const mod = await import("../../src/persistence/fts5-search.js");
+      expect(mod.FTS5Search).toBeDefined();
+      // Note: actual FTS5 query execution requires a database instance
+      // The fix ensures terms are quoted before joining with OR
+    });
+  });
+
+  // from tests/audit38.test.ts #6 — fts5 regexFallback should cap results
+  describe("#6 — fts5 regexFallback should cap results", () => {
+      it("should limit number of results returned", () => {
+        const source = readFileSync("src/persistence/fts5-search.ts", "utf-8");
+        const fallback = source.match(/regexFallback[\s\S]*?return results;/);
+        expect(fallback).not.toBeNull();
+        // Should have a MAX_RESULTS or length check
+        expect(fallback![0]).toMatch(/MAX_FALLBACK|results\.length\s*>=|results\.length\s*>/);
+      });
+    });
+
+  // from tests/audit39.test.ts #4 — fts5 ALLOWED_TAGS correctly rejects event handlers (verified)
+  describe("#4 — fts5 ALLOWED_TAGS correctly rejects event handlers (verified)", () => {
+      it("should not allow onclick or other event attributes", () => {
+        const source = readFileSync("src/persistence/fts5-search.ts", "utf-8");
+        const allowedTags = source.match(/ALLOWED_TAGS\s*=\s*\/.*\//);
+        expect(allowedTags).not.toBeNull();
+        // Existing regex is strict enough to reject event handlers
+        expect(allowedTags![0]).toMatch(/class/);
+      });
+    });
+
+  // from tests/audit71.test.ts #6 — grepToFTS should cap alternation terms
+  describe("#6 — grepToFTS should cap alternation terms", () => {
+      it("should limit terms from alternation pattern split", () => {
+        const source = readFileSync("src/persistence/fts5-search.ts", "utf-8");
+        const altSplit = source.indexOf('pattern.split("|")');
+        expect(altSplit).toBeGreaterThan(-1);
+        const block = source.slice(altSplit, altSplit + 100);
+        expect(block).toMatch(/\.slice\(0|MAX_ALT/i);
+      });
+    });
+
+  // from tests/audit71.test.ts #9 — searchByRelevance sort should use safe comparator
+  describe("#9 — searchByRelevance sort should use safe comparator", () => {
+      it("should not use raw subtraction for score sorting", () => {
+        const source = readFileSync("src/persistence/fts5-search.ts", "utf-8");
+        const sortLine = source.indexOf("scores.get(b)");
+        if (sortLine === -1) {
+          // Code was refactored to use FTS5 BM25 — no manual scoring, inherently safe
+          expect(true).toBe(true);
+          return;
+        }
+        const block = source.slice(sortLine - 30, sortLine + 80);
+        const hasRawSubtraction = /scores\.get\(b\).*-.*scores\.get\(a\)/.test(block);
+        expect(hasRawSubtraction).toBe(false);
+      });
+    });
+
+  // from tests/audit87.test.ts #10 — searchBatch should validate per-query length
+  describe("#10 — searchBatch should validate per-query length", () => {
+      it("should check individual query length", () => {
+        const source = readFileSync("src/persistence/fts5-search.ts", "utf-8");
+        const searchBatch = source.indexOf("searchBatch");
+        expect(searchBatch).toBeGreaterThan(-1);
+        const block = source.slice(searchBatch, searchBatch + 400);
+        expect(block).toMatch(/query\.length|MAX_QUERY_LENGTH/i);
+      });
+    });
+
 });

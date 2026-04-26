@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { SessionDB, commandToSlug } from "../../src/persistence/session-db.js";
+import { readFileSync } from "fs";
+import { FTS5Search } from "../../src/persistence/fts5-search.js";
 
 describe("SessionDB", () => {
   let db: SessionDB;
@@ -460,4 +462,573 @@ describe("commandToSlug", () => {
   it("should handle bare words without parens", () => {
     expect(commandToSlug("justAWord")).toBe("res");
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit18.test.ts Audit18 #11: session-db handle counter
+  describe("Audit18 #11: session-db handle counter", () => {
+    it("session-db module should load", async () => {
+      const mod = await import("../../src/persistence/session-db.js");
+      expect(mod).toBeDefined();
+    });
+  });
+
+  // from tests/audit18.test.ts Audit18 #14: checkpoint turn validation
+  describe("Audit18 #14: checkpoint turn validation", () => {
+    it("session-db module exports SessionDB", async () => {
+      const mod = await import("../../src/persistence/session-db.js");
+      expect(mod.SessionDB).toBeDefined();
+    });
+  });
+
+  // from tests/audit21.test.ts Audit21 #4: getHandleDataSlice negative limit
+  describe("Audit21 #4: getHandleDataSlice negative limit", () => {
+    it("should clamp negative limit to 0", async () => {
+      const { SessionDB } = await import("../../src/persistence/session-db.js");
+      const db = new SessionDB();
+      // Store some handle data via createHandle
+      const handle = db.createHandle([1, 2, 3, 4, 5]);
+      // Negative limit should return empty array, not all rows
+      const result = db.getHandleDataSlice(handle, -1);
+      expect(result.length).toBe(0);
+      db.close();
+    });
+  });
+
+  // from tests/audit23.test.ts Audit23 #4: session-db createHandle stringify safety
+  describe("Audit23 #4: session-db createHandle stringify safety", () => {
+    it("should not crash on items with circular refs", async () => {
+      const { SessionDB } = await import("../../src/persistence/session-db.js");
+      const db = new SessionDB();
+      const circular: any = { a: 1 };
+      circular.self = circular;
+      // Should not throw — should skip or handle the bad item
+      expect(() => {
+        db.createHandle([1, 2, circular, 4]);
+      }).not.toThrow();
+      db.close();
+    });
+
+    it("should store serializable items even when some fail", async () => {
+      const { SessionDB } = await import("../../src/persistence/session-db.js");
+      const db = new SessionDB();
+      const circular: any = { a: 1 };
+      circular.self = circular;
+      const handle = db.createHandle([1, 2, circular, 4]);
+      // Should have stored the serializable items
+      const data = db.getHandleData(handle);
+      // At minimum, the handle should exist
+      expect(handle).toBeTruthy();
+      db.close();
+    });
+  });
+
+  // from tests/audit24.test.ts Audit24 #9: session-db createHandle atomicity
+  describe("Audit24 #9: session-db createHandle atomicity", () => {
+    it("metadata and data should be consistent", async () => {
+      const { SessionDB } = await import("../../src/persistence/session-db.js");
+      const db = new SessionDB();
+      const handle = db.createHandle([1, 2, 3, 4, 5]);
+      const meta = db.getHandleMetadata(handle);
+      const data = db.getHandleData(handle);
+      expect(meta).not.toBeNull();
+      expect(meta!.count).toBe(5);
+      expect(data.length).toBe(5);
+      db.close();
+    });
+  });
+
+  // from tests/audit25.test.ts Audit25 #4: checkpoint metadata timestamp
+  describe("Audit25 #4: checkpoint metadata timestamp", () => {
+    it("should return a consistent timestamp from stored checkpoint", async () => {
+      const { SessionDB } = await import("../../src/persistence/session-db.js");
+      const { CheckpointManager } = await import(
+        "../../src/persistence/checkpoint.js"
+      );
+      const db = new SessionDB();
+      // Create a minimal HandleRegistry mock
+      const registry: any = {
+        listHandles: () => [],
+        getResults: () => null,
+        setResults: () => {},
+      };
+      const mgr = new CheckpointManager(db, registry);
+      mgr.save(1);
+      // Wait a tiny bit so Date.now() changes
+      await new Promise((r) => setTimeout(r, 10));
+      const meta1 = mgr.getMetadata(1);
+      await new Promise((r) => setTimeout(r, 10));
+      const meta2 = mgr.getMetadata(1);
+      expect(meta1).not.toBeNull();
+      expect(meta2).not.toBeNull();
+      // Timestamps should be the same (stored), not different (Date.now())
+      expect(meta1!.timestamp).toBe(meta2!.timestamp);
+      db.close();
+    });
+  });
+
+  // from tests/audit26.test.ts Audit26 #4: session-db handle serialization tracking
+  describe("Audit26 #4: session-db handle serialization tracking", () => {
+    it("should track actual serialized count in metadata", async () => {
+      const { SessionDB } = await import("../../src/persistence/session-db.js");
+      const db = new SessionDB();
+      const data = [1, 2, "hello"];
+      const handle = db.createHandle(data);
+      const meta = db.getHandleMetadata(handle);
+      expect(meta).not.toBeNull();
+      expect(meta!.count).toBe(3);
+      db.close();
+    });
+  });
+
+  // from tests/audit26.test.ts Audit26 #12: session-db getLines end validation
+  describe("Audit26 #12: session-db getLines end validation", () => {
+    it("should handle negative end parameter gracefully", async () => {
+      const { SessionDB } = await import("../../src/persistence/session-db.js");
+      const db = new SessionDB();
+      db.loadDocument("line1\nline2\nline3");
+      const result = db.getLines(1, -5);
+      expect(result).toEqual([]);
+      db.close();
+    });
+
+    it("should validate end < 1 same as start", async () => {
+      const { SessionDB } = await import("../../src/persistence/session-db.js");
+      const db = new SessionDB();
+      db.loadDocument("line1\nline2\nline3");
+      const result = db.getLines(1, 0);
+      expect(result).toEqual([]);
+      db.close();
+    });
+  });
+
+  // from tests/audit27.test.ts Audit27 #12: session-db handle data slice count
+  describe("Audit27 #12: session-db handle data slice count", () => {
+    it("should return expected number of items", async () => {
+      const { SessionDB } = await import("../../src/persistence/session-db.js");
+      const db = new SessionDB();
+      const data = [1, 2, 3, 4, 5];
+      const handle = db.createHandle(data);
+      const slice = db.getHandleDataSlice(handle, 3);
+      expect(slice.length).toBe(3);
+      expect(slice).toEqual([1, 2, 3]);
+      db.close();
+    });
+  });
+
+  // from tests/audit28.test.ts #5 — clearAll handle counter collision
+  describe("#5 — clearAll handle counter collision", () => {
+      it("should not reset handleCounter to 0 after clearAll", async () => {
+        const { SessionDB } = await import("../../src/persistence/session-db.js");
+        const db = new SessionDB();
+
+        // Create handles to increment counter
+        db.createHandle([{ lineNum: 1, content: "test" }]);
+        db.createHandle([{ lineNum: 2, content: "test2" }]);
+        // handleCounter should now be 2
+
+        // Now clearAll
+        db.clearAll();
+
+        // Create a new handle — should NOT be $res1 (collision with old handles)
+        const handle = db.createHandle([{ lineNum: 3, content: "new" }]);
+        expect(handle).not.toBe("$res1");
+        expect(handle).not.toBe("$res2");
+
+        db.close();
+      });
+    });
+
+  // from tests/audit30.test.ts #6 — loadDocument Windows line endings
+  describe("#6 — loadDocument Windows line endings", () => {
+      it("should strip carriage returns from Windows line endings", () => {
+        const db = new SessionDB();
+        const windowsContent = "line1\r\nline2\r\nline3\r\n";
+        db.loadDocument(windowsContent);
+
+        const lines = db.getLines(1, 3);
+        // Lines should NOT have trailing \r
+        for (const line of lines) {
+          expect(line.content).not.toMatch(/\r/);
+        }
+        expect(lines[0].content).toBe("line1");
+        expect(lines[1].content).toBe("line2");
+
+        db.close();
+      });
+    });
+
+  // from tests/audit34.test.ts #25 — FTS5 search should sanitize query
+  describe("#25 — FTS5 search should sanitize query", () => {
+        it("should sanitize or escape FTS5 special characters", () => {
+          const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+          const searchFn = source.match(/search\(query: string\)[\s\S]*?searchRaw\(sanitized\)/);
+          expect(searchFn).not.toBeNull();
+          // Should sanitize FTS5 special characters
+          expect(searchFn![0]).toMatch(/sanitize|escape|replace/i);
+        });
+      });
+
+  // from tests/audit35.test.ts #6 — FTS5 search should preserve hyphens as word chars
+  describe("#6 — FTS5 search should preserve hyphens as word chars", () => {
+        it("should not strip hyphens from search queries", () => {
+          const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+          const sanitize = source.match(/sanitized\s*=\s*query\.replace\([^)]+\)/);
+          expect(sanitize).not.toBeNull();
+          // The character class should NOT include \- (hyphen)
+          expect(sanitize![0]).not.toMatch(/\\-/);
+        });
+      });
+
+  // from tests/audit37.test.ts #4 — session-db loadDocument should wrap DELETE in transaction
+  describe("#4 — session-db loadDocument should wrap DELETE in transaction", () => {
+      it("DELETE and INSERT should be in the same transaction", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const loadDoc = source.match(/loadDocument[\s\S]*?return lines\.length/);
+        expect(loadDoc).not.toBeNull();
+        const body = loadDoc![0];
+        // DELETE should be INSIDE the transaction, not before it
+        // The transaction callback should contain the DELETE
+        expect(body).toMatch(/transaction\([\s\S]*?DELETE/);
+      });
+    });
+
+  // from tests/audit50.test.ts #6 — session-db FTS5 sanitization should escape hyphens and pipes
+  describe("#6 — session-db FTS5 sanitization should escape hyphens and pipes", () => {
+      it("should include hyphen and pipe in sanitization regex", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const sanitize = source.match(/sanitized = query\.replace\(\/\[[^\]]*\]/);
+        expect(sanitize).not.toBeNull();
+        // Should include hyphen and pipe in the character class
+        expect(sanitize![0]).toMatch(/-/);
+        expect(sanitize![0]).toMatch(/\|/);
+
+      });
+    });
+
+  // from tests/audit51.test.ts #7 — session-db getLines should validate integers
+  describe("#7 — session-db getLines should validate integers", () => {
+      it("should floor start and end to integers", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const getLinesFn = source.match(/getLines\(start.*?end.*?\)[\s\S]*?stmt\.all/);
+        expect(getLinesFn).not.toBeNull();
+        expect(getLinesFn![0]).toMatch(/Math\.floor|Number\.isInteger|Math\.trunc/);
+      });
+    });
+
+  // from tests/audit55.test.ts #8 — session-db createHandle should limit array size
+  describe("#8 — session-db createHandle should limit array size", () => {
+      it("should enforce a maximum number of items", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fn = source.match(/createHandle\(data[\s\S]*?insertAll\(data\)/);
+        expect(fn).not.toBeNull();
+        expect(fn![0]).toMatch(/MAX_HANDLE|data\.length|limit/i);
+      });
+    });
+
+  // from tests/audit57.test.ts #4 — session-db searchRaw should not leak query in error
+  describe("#4 — session-db searchRaw should not leak query in error", () => {
+      it("should not include ftsQuery in error output", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const searchRawStart = source.indexOf("searchRaw(");
+        expect(searchRawStart).toBeGreaterThan(-1);
+        const block = source.slice(searchRawStart, searchRawStart + 400);
+        // Should NOT include the raw query in the error/log output
+        expect(block).not.toMatch(/ftsQuery/);
+      });
+    });
+
+  // from tests/audit58.test.ts #2 — session-db search should limit query length
+  describe("#2 — session-db search should limit query length", () => {
+      it("should check query length before processing", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const searchStart = source.indexOf("search(query: string)");
+        expect(searchStart).toBeGreaterThan(-1);
+        const block = source.slice(searchStart, searchStart + 300);
+        expect(block).toMatch(/query\.length|MAX_QUERY/i);
+      });
+    });
+
+  // from tests/audit58.test.ts #3 — getHandleDataSlice should cap limit
+  describe("#3 — getHandleDataSlice should cap limit", () => {
+      it("should enforce a maximum limit value", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("getHandleDataSlice(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/MAX_SLICE|Math\.min.*limit/i);
+      });
+    });
+
+  // from tests/audit61.test.ts #7 — storeSymbol should validate symbol.name length
+  describe("#7 — storeSymbol should validate symbol.name length", () => {
+      it("should enforce max name length", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("storeSymbol(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 600);
+        expect(block).toMatch(/name\.length|MAX_NAME|MAX_SYMBOL/i);
+      });
+    });
+
+  // from tests/audit61.test.ts #8 — storeSymbol should validate signature length
+  describe("#8 — storeSymbol should validate signature length", () => {
+      it("should enforce max signature length", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("storeSymbol(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 600);
+        expect(block).toMatch(/signature\.length|MAX_SIG/i);
+      });
+    });
+
+  // from tests/audit65.test.ts #4 — storeSymbol should validate symbol.kind
+  describe("#4 — storeSymbol should validate symbol.kind", () => {
+      it("should check kind is a valid string", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("storeSymbol(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 600);
+        expect(block).toMatch(/symbol\.kind.*typeof|typeof.*symbol\.kind|VALID_KINDS|kind.*includes/i);
+      });
+    });
+
+  // from tests/audit65.test.ts #5 — storeSymbol should check line numbers >= 1
+  describe("#5 — storeSymbol should check line numbers >= 1", () => {
+      it("should reject zero or negative line numbers", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("storeSymbol(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 1100);
+        expect(block).toMatch(/startLine\s*<\s*1|startLine\s*>=?\s*1|startLine\s*<=?\s*0/);
+      });
+    });
+
+  // from tests/audit67.test.ts #2 — loadDocument should cap content size before split
+  describe("#2 — loadDocument should cap content size before split", () => {
+      it("should check content.length before split", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("loadDocument(content");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 600);
+        expect(block).toMatch(/MAX_CONTENT|content\.length\s*>/i);
+      });
+    });
+
+  // from tests/audit67.test.ts #8 — createHandle should use slug-based collision tracking
+  describe("#8 — createHandle should use slug-based collision tracking", () => {
+      it("should use slugCounts map for handle name generation", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("createHandle(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/slugCounts|commandToSlug/i);
+      });
+    });
+
+  // from tests/audit74.test.ts #8 — session-db getHandleData should validate data size
+  describe("#8 — session-db getHandleData should validate data size", () => {
+      it("should check data string length before JSON.parse", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("getHandleData(handle: string)");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/MAX_JSON|r\.data\.length|data\.length\s*>/);
+      });
+    });
+
+  // from tests/audit78.test.ts #4 — getHandleDataSlice should check size before JSON.parse
+  describe("#4 — getHandleDataSlice should check size before JSON.parse", () => {
+      it("should validate data size before parsing", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("getHandleDataSlice(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 700);
+        expect(block).toMatch(/MAX_JSON|\.length\s*>/);
+      });
+    });
+
+  // from tests/audit78.test.ts #5 — saveCheckpoint should cap serialized size
+  describe("#5 — saveCheckpoint should cap serialized size", () => {
+      it("should check JSON size before storing", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("saveCheckpoint(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 500);
+        expect(block).toMatch(/MAX_CHECKPOINT|\.length\s*>/);
+      });
+    });
+
+  // from tests/audit84.test.ts #5 — getAllSymbols should have LIMIT clause
+  describe("#5 — getAllSymbols should have LIMIT clause", () => {
+      it("should include LIMIT in symbol query", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const getAllSymbols = source.indexOf("getAllSymbols");
+        expect(getAllSymbols).toBeGreaterThan(-1);
+        const block = source.slice(getAllSymbols, getAllSymbols + 300);
+        expect(block).toMatch(/LIMIT\s+\d|MAX_SYMBOLS|\.slice\(0,/i);
+      });
+    });
+
+  // from tests/audit85.test.ts #1 — getSymbolsByKind should have LIMIT
+  describe("#1 — getSymbolsByKind should have LIMIT", () => {
+      it("should include LIMIT in query", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("getSymbolsByKind");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 300);
+        expect(block).toMatch(/LIMIT\s+\?|MAX_SYMBOLS/i);
+      });
+    });
+
+  // from tests/audit85.test.ts #2 — getSymbolsAtLine should have LIMIT
+  describe("#2 — getSymbolsAtLine should have LIMIT", () => {
+      it("should include LIMIT in query", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("getSymbolsAtLine");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/LIMIT\s+\?|MAX_SYMBOLS/i);
+      });
+    });
+
+  // from tests/audit85.test.ts #3 — getHandleData should have LIMIT
+  describe("#3 — getHandleData should have LIMIT", () => {
+      it("should include LIMIT in query", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        // Find the standalone getHandleData (not getHandleDataSlice)
+        const sliceEnd = source.indexOf("getHandleDataSlice");
+        const fnStart = source.indexOf("getHandleData(handle:", sliceEnd + 20);
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/LIMIT\s+\?|MAX_HANDLE_ITEMS|MAX_ITEMS/i);
+      });
+    });
+
+  // from tests/audit85.test.ts #4 — searchRaw should have LIMIT
+  describe("#4 — searchRaw should have LIMIT", () => {
+      it("should include LIMIT in FTS5 query", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("searchRaw");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/LIMIT\s+\?|MAX_FTS|MAX_SEARCH/i);
+      });
+    });
+
+  // from tests/audit85.test.ts #9 — listHandles should have LIMIT
+  describe("#9 — listHandles should have LIMIT", () => {
+      it("should include LIMIT in query", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("listHandles");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 200);
+        expect(block).toMatch(/LIMIT\s+\?|MAX_HANDLES/i);
+      });
+    });
+
+  // from tests/audit86.test.ts #1 — getCheckpointTurns should have LIMIT
+  describe("#1 — getCheckpointTurns should have LIMIT", () => {
+      it("should include LIMIT in query", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("getCheckpointTurns");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 300);
+        expect(block).toMatch(/LIMIT\s+\?|MAX_CHECKPOINTS/i);
+      });
+    });
+
+  // from tests/audit90.test.ts #5 — storeSymbol should validate startLine <= endLine
+  describe("#5 — storeSymbol should validate startLine <= endLine", () => {
+      it("should reject startLine > endLine", () => {
+        const source = readFileSync("src/persistence/session-db.ts", "utf-8");
+        const fnStart = source.indexOf("storeSymbol(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 1200);
+        expect(block).toMatch(/startLine\s*>\s*.*endLine|endLine\s*<\s*.*startLine|startLine\s*<=\s*.*endLine/);
+      });
+    });
+
+  // from tests/audit93.test.ts #5 — session getOrCreate should validate filePath length
+  describe("#5 — session getOrCreate should validate filePath length", () => {
+      it("should check filePath length", () => {
+        const source = readFileSync("node_modules/repl-sandbox/dist/session.js", "utf-8");
+        const getOrCreateStart = source.indexOf("async getOrCreate");
+        expect(getOrCreateStart).toBeGreaterThan(-1);
+        const block = source.slice(getOrCreateStart, getOrCreateStart + 400);
+        // Should validate key (filePath) length
+        expect(block).toMatch(/key\.length|maxKeyLength|MAX_PATH/);
+      });
+    });
+
+  // from tests/audit96.test.ts #10 — FTS5 searchWithHighlights escapes content HTML
+  describe("#10 — FTS5 searchWithHighlights escapes content HTML", () => {
+      function setupSearch() {
+        const db = new SessionDB();
+        // Store a document with embedded HTML — simulates user content
+        // the document analyzer might pick up.
+        db.loadDocument(
+          [
+            "harmless line with no html",
+            '<script>alert("xss")</script> here is an alert word',
+            "another &amp; pre-escaped line",
+          ].join("\n"),
+        );
+        const search = new FTS5Search(db);
+        return { db, search };
+      }
+
+      it("highlighted output escapes < > & from original content", async () => {
+        const { db, search } = setupSearch();
+        const results = search.searchWithHighlights("alert");
+        expect(results.length).toBeGreaterThan(0);
+
+        const scriptLine = results.find((r) => r.content.includes("script"));
+        expect(scriptLine).toBeDefined();
+        const highlighted = scriptLine!.highlighted;
+
+        // No unescaped <script> in output — it must become &lt;script&gt;
+        expect(highlighted).not.toMatch(/<script/i);
+        expect(highlighted).toMatch(/&lt;script&gt;/i);
+
+        // The highlight wrapper itself IS real HTML
+        expect(highlighted).toMatch(/<mark>alert<\/mark>/i);
+
+        db.close();
+      });
+
+      it("snippet output escapes < > & from original content", async () => {
+        const { db, search } = setupSearch();
+        const results = search.searchWithSnippets("alert");
+        expect(results.length).toBeGreaterThan(0);
+
+        const scriptLine = results.find((r) => r.content.includes("script"));
+        expect(scriptLine).toBeDefined();
+        const snippet = scriptLine!.snippet;
+
+        expect(snippet).not.toMatch(/<script/i);
+        expect(snippet).toMatch(/&lt;script&gt;/i);
+        expect(snippet).toMatch(/<mark>alert<\/mark>/i);
+
+        db.close();
+      });
+
+      it("pre-existing &amp; in content is re-encoded to &amp;amp;", async () => {
+        // Escape must be idempotent-hostile: if we see `&amp;` in the input,
+        // we must NOT leave it alone (that would double-decode on render).
+        // Instead, every `&` becomes `&amp;` so the literal source text
+        // round-trips through an HTML renderer unchanged.
+        const { db, search } = setupSearch();
+        const results = search.searchWithHighlights("pre");
+        const ampLine = results.find((r) => r.content.includes("&amp;"));
+        expect(ampLine).toBeDefined();
+        expect(ampLine!.highlighted).toMatch(/&amp;amp;/);
+
+        db.close();
+      });
+    });
+
 });

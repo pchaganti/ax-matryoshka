@@ -3,6 +3,7 @@ import { loadConfig } from "../src/config.js";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { readFileSync } from "fs";
 
 describe("Config", () => {
   let tempDir: string;
@@ -168,4 +169,96 @@ describe("Config", () => {
       }
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit24.test.ts Audit24 #11: config coerceConfigTypes scientific notation
+  describe("Audit24 #11: config coerceConfigTypes scientific notation", () => {
+    it("should coerce scientific notation strings to numbers", async () => {
+      // We test indirectly - loadConfig uses coerceConfigTypes
+      const mod = await import("../src/config.js");
+      expect(mod.loadConfig).toBeDefined();
+    });
+  });
+
+  // from tests/audit25.test.ts Audit25 #9: config coercion
+  describe("Audit25 #9: config coercion", () => {
+    it("should be importable", async () => {
+      const mod = await import("../src/config.js");
+      expect(mod.loadConfig).toBeDefined();
+    });
+  });
+
+  // from tests/audit27.test.ts Audit27 #6: config coerceConfigTypes precision
+  describe("Audit27 #6: config coerceConfigTypes precision", () => {
+    it("should coerce '1.0' to number 1", async () => {
+      const mod = await import("../src/config.js");
+      // Indirectly test — loadConfig uses coerceConfigTypes internally
+      expect(mod.loadConfig).toBeDefined();
+      // The fix is to use Number() comparison instead of string equality
+    });
+  });
+
+  // from tests/audit33.test.ts #7 — resolveEnvVar should not treat empty string as unset
+  describe("#7 — resolveEnvVar should not treat empty string as unset", () => {
+      it("should use === undefined instead of !resolved", () => {
+        const source = readFileSync("src/llm/index.ts", "utf-8");
+        const resolveEnvFn = source.match(/function resolveEnvVar[\s\S]*?^\}/m);
+        expect(resolveEnvFn).not.toBeNull();
+        const body = resolveEnvFn![0];
+        // Should NOT have `if (!resolved)` — this treats "" as falsy
+        expect(body).not.toMatch(/if\s*\(\s*!resolved\s*\)/);
+        // Should use === undefined or similar
+        expect(body).toMatch(/===\s*undefined|resolved\s*==\s*null/);
+      });
+    });
+
+  // from tests/audit34.test.ts #3 — resolveEnvVar should validate variable names
+  describe("#3 — resolveEnvVar should validate variable names", () => {
+        it("should validate env var names against dangerous patterns", () => {
+          const source = readFileSync("src/llm/index.ts", "utf-8");
+          const fn = source.match(/function resolveEnvVar[\s\S]*?^\}/m);
+          expect(fn).not.toBeNull();
+          // Should validate variable name format
+          expect(fn![0]).toMatch(/[A-Za-z_]\[A-Za-z0-9_\]|DANGEROUS|__proto__|constructor/);
+        });
+      });
+
+  // from tests/audit34.test.ts #11 — loadConfig should validate config path
+  describe("#11 — loadConfig should validate config path", () => {
+        it("should not allow absolute paths outside CWD", () => {
+          const source = readFileSync("src/config.ts", "utf-8");
+          const loadConfig = source.match(/export async function loadConfig[\s\S]*?^\}/m);
+          expect(loadConfig).not.toBeNull();
+          // Should validate the path
+          expect(loadConfig![0]).toMatch(/validatePath|traversal|startsWith|resolve|\.\.|\babsolute\b/i);
+        });
+      });
+
+  // from tests/audit67.test.ts #3 — loadConfig should check file size before reading
+  describe("#3 — loadConfig should check file size before reading", () => {
+      it("should check file size or content length before JSON.parse", () => {
+        const source = readFileSync("src/config.ts", "utf-8");
+        const fnStart = source.indexOf("async function loadConfig(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 500);
+        expect(block).toMatch(/MAX_CONFIG|content\.length\s*>|statSync|stats\.size/i);
+      });
+    });
+
+  // from tests/audit78.test.ts #2 — resolveEnvVars should filter dangerous keys in object iteration
+  describe("#2 — resolveEnvVars should filter dangerous keys in object iteration", () => {
+      it("should skip __proto__ constructor prototype keys during object key iteration", () => {
+        const source = readFileSync("src/config.ts", "utf-8");
+        // Find the object iteration block specifically (for...of Object.entries)
+        const objBlock = source.indexOf("for (const [key, value] of Object.entries(obj))");
+        expect(objBlock).toBeGreaterThan(-1);
+        const block = source.slice(objBlock, objBlock + 300);
+        expect(block).toMatch(/DANGEROUS|__proto__|Object\.create\(null\)|key\s*===|\.has\(key\)/);
+      });
+    });
+
 });

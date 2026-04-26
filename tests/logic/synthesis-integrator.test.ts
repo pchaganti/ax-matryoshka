@@ -12,6 +12,7 @@ import {
   SynthesisContext,
   SynthesisOutcome,
 } from "../../src/logic/synthesis-integrator.js";
+import { readFileSync } from "fs";
 
 describe("SynthesisIntegrator", () => {
   let integrator: SynthesisIntegrator;
@@ -583,4 +584,308 @@ describe("SynthesisIntegrator - number parser NaN consistency", () => {
       expect(output).not.toBeNaN();
     }
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit13.test.ts Issue #12: percentage parser should return raw value (not /100)
+  describe("Issue #12: percentage parser should return raw value (not /100)", () => {
+    it("synthesized percentage extractor should match examples exactly", async () => {
+      const integrator = new SynthesisIntegrator();
+      // When examples say 25.5% -> 25.5, the parser should return 25.5 (not 0.255)
+      const result = integrator.synthesizeOnFailure({
+        operation: "parseNumber",
+        input: "Growth: 25.5%",
+        examples: [
+          { input: "Growth: 25.5%", output: 25.5 },
+          { input: "Growth: 10%", output: 10 },
+        ],
+      });
+      expect(result.success).toBe(true);
+      expect(result.fn).toBeDefined();
+      // The result should be 25.5, not 0.255
+      expect(result.fn!("Growth: 25.5%")).toBeCloseTo(25.5, 1);
+    });
+  });
+
+  // from tests/audit14.test.ts Issue #7: EU currency parser should replace all commas
+  describe("Issue #7: EU currency parser should replace all commas", () => {
+    it("should parse EU format with multiple dot separators", async () => {
+      const { SynthesisIntegrator } = await import("../../src/logic/synthesis-integrator.js");
+      const integrator = new SynthesisIntegrator();
+
+      const result = integrator.synthesizeOnFailure({
+        operation: "parseCurrency",
+        input: "1.234.567,89€",
+        examples: [
+          { input: "1.234,56€", output: 1234.56 },
+          { input: "2.345,67€", output: 2345.67 },
+        ],
+      });
+
+      // The fn should work for inputs with multiple dot separators
+      if (result.success && result.fn) {
+        expect(result.fn("1.234.567,89€")).toBeCloseTo(1234567.89, 1);
+      }
+    });
+  });
+
+  // from tests/audit15.test.ts Audit15 #2: classifier validateRegex
+  describe("Audit15 #2: classifier validateRegex", () => {
+    it("classifier should not throw on ReDoS pattern", async () => {
+      const { SynthesisIntegrator } = await import("../../src/logic/synthesis-integrator.js");
+      const integrator = new SynthesisIntegrator();
+      // The synthesizeClassifier method uses patterns internally
+      // We test indirectly via synthesizeOnFailure with classify operation
+      const result = integrator.synthesizeOnFailure({
+        operation: "classify",
+        input: "test",
+        examples: [
+          { input: "aaaa error", output: true },
+          { input: "bbbb ok", output: false },
+          { input: "cccc error", output: true },
+          { input: "dddd ok", output: false },
+        ],
+      });
+      // Should not throw; result.fn should be safe
+      expect(result).toBeDefined();
+      if (result.success && result.fn) {
+        // Should not throw on normal input
+        expect(() => result.fn("test input")).not.toThrow();
+      }
+    });
+  });
+
+  // from tests/audit17.test.ts Audit17 #8: synthesis-integrator cache LRU
+  describe("Audit17 #8: synthesis-integrator cache LRU", () => {
+    it("should evict least recently used, not first inserted", async () => {
+      // This is a structural/code-level fix — test by verifying module loads
+      const mod = await import("../../src/logic/synthesis-integrator.js");
+      expect(mod.SynthesisIntegrator).toBeDefined();
+    });
+  });
+
+  // from tests/audit17.test.ts Audit17 #9: date validation per-month limits
+  describe("Audit17 #9: date validation per-month limits", () => {
+    it("should reject Feb 31 in DD/MM/YYYY format", async () => {
+      const { SynthesisIntegrator } = await import("../../src/logic/synthesis-integrator.js");
+      const integrator = new SynthesisIntegrator();
+      const result = integrator.synthesizeOnFailure({
+        operation: "parseDate",
+        input: "15/01/2024",
+        examples: [
+          { input: "15/01/2024", output: "2024-01-15" },
+          { input: "28/02/2024", output: "2024-02-28" },
+        ],
+      });
+      if (result.success && result.fn) {
+        // Feb 31 should return null — not a valid date
+        const invalid = result.fn("31/02/2024");
+        expect(invalid).toBe(null);
+      }
+    });
+
+    it("should reject Apr 31 in DD/MM/YYYY format", async () => {
+      const { SynthesisIntegrator } = await import("../../src/logic/synthesis-integrator.js");
+      const integrator = new SynthesisIntegrator();
+      const result = integrator.synthesizeOnFailure({
+        operation: "parseDate",
+        input: "15/04/2024",
+        examples: [
+          { input: "15/04/2024", output: "2024-04-15" },
+          { input: "30/04/2024", output: "2024-04-30" },
+        ],
+      });
+      if (result.success && result.fn) {
+        // Apr has 30 days, 31 should be rejected
+        const invalid = result.fn("31/04/2024");
+        expect(invalid).toBe(null);
+      }
+    });
+  });
+
+  // from tests/audit22.test.ts Audit22 #7: synthesis-integrator NaN currency verification
+  describe("Audit22 #7: synthesis-integrator NaN currency verification", () => {
+    it("should handle NaN results in currency verification", async () => {
+      const mod = await import("../../src/logic/synthesis-integrator.js");
+      const integrator = new mod.SynthesisIntegrator();
+      // Synthesize with examples where output is NaN-producing
+      // The function should not silently treat NaN comparison as valid
+      // We test by ensuring the integrator exists and handles edge cases
+      expect(integrator).toBeDefined();
+      // The actual fix is defensive — adding isNaN checks before Math.abs
+    });
+  });
+
+  // from tests/audit25.test.ts Audit25 #11: synthesis-integrator hash
+  describe("Audit25 #11: synthesis-integrator hash", () => {
+    it("should be importable", async () => {
+      const mod = await import("../../src/logic/synthesis-integrator.js");
+      expect(mod).toBeDefined();
+    });
+  });
+
+  // from tests/audit26.test.ts Audit26 #5: synthesis-integrator empty string filter
+  describe("Audit26 #5: synthesis-integrator empty string filter", () => {
+    it("should be importable and have synthesize method", async () => {
+      const mod = await import("../../src/logic/synthesis-integrator.js");
+      expect(mod.SynthesisIntegrator).toBeDefined();
+    });
+  });
+
+  // from tests/audit28.test.ts #4 — daysInMonth out of range
+  describe("#4 — daysInMonth out of range", () => {
+      it("should not accept month values > 12", () => {
+        // Test the inline JS logic used in synthesis-integrator
+        const DAYS_IN_MONTH = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        // Month 13 should be undefined
+        expect(DAYS_IN_MONTH[13]).toBeUndefined();
+        // The function uses ?? 31 which silently accepts it — this is the bug
+      });
+    });
+
+  // from tests/audit32.test.ts #4 — synthesis-integrator new Function should validate code
+  describe("#4 — synthesis-integrator new Function should validate code", () => {
+        it("should not use bare new Function in synthesizeViaRelational", () => {
+          const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+          const method = source.match(/synthesizeViaRelational[\s\S]*?return \{\s*success: false/);
+          expect(method).not.toBeNull();
+          // Should validate synthesized code before execution
+          const hasBareNewFunction = /new Function\("input",\s*`return/.test(method![0]);
+          expect(hasBareNewFunction).toBe(false);
+        });
+      });
+
+  // from tests/audit32.test.ts #13 — synthesis-integrator conflict check should use deep comparison
+  describe("#13 — synthesis-integrator conflict check should use deep comparison", () => {
+        it("should use JSON.stringify or deep equality for conflict detection", () => {
+          const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+          const conflictCheck = source.match(/conflicting examples[\s\S]*?inputMap\.set/);
+          expect(conflictCheck).not.toBeNull();
+          // Should use JSON.stringify or some deep equality, not !==
+          expect(conflictCheck![0]).toMatch(/JSON\.stringify|deepEqual/);
+        });
+      });
+
+  // from tests/audit32.test.ts #14 — date parser should try both DD/MM and MM/DD formats
+  describe("#14 — date parser should try both DD/MM and MM/DD formats", () => {
+        it("should attempt both date format interpretations", () => {
+          const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+          // Find the slash-date parsing section with full year
+          const dateSection = source.match(/Full year format[\s\S]*?fn = \(s: string\)/);
+          expect(dateSection).not.toBeNull();
+          // Should mention MM/DD or try both interpretations
+          expect(dateSection![0]).toMatch(/MM\/DD|month.*day|day.*month|tryBoth|bothFormats/i);
+        });
+      });
+
+  // from tests/audit34.test.ts #8 — getCached should not return wrong function via partial match
+  describe("#8 — getCached should not return wrong function via partial match", () => {
+        it("should not match different suffixes", () => {
+          const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+          const getCached = source.match(/getCached[\s\S]*?return null;\s*\}/);
+          expect(getCached).not.toBeNull();
+          // Should NOT have partial match fallback that returns a function by prefix
+          expect(getCached![0]).not.toMatch(/cachePrefix.*===.*keyPrefix/);
+        });
+      });
+
+  // from tests/audit42.test.ts #8 — synthesis-integrator should block Proxy, Reflect, with, arguments
+  describe("#8 — synthesis-integrator should block Proxy, Reflect, with, arguments", () => {
+      it("should include Reflect in dangerous patterns", () => {
+        const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+        const blockList = source.match(/dangerousPatterns[\s\S]*?\];/);
+        expect(blockList).not.toBeNull();
+        expect(blockList![0]).toMatch(/\\bReflect\\b/);
+      });
+
+      it("should include Proxy in dangerous patterns", () => {
+        const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+        const blockList = source.match(/dangerousPatterns[\s\S]*?\];/);
+        expect(blockList).not.toBeNull();
+        expect(blockList![0]).toMatch(/\\bProxy\\b/);
+      });
+    });
+
+  // from tests/audit70.test.ts #8 — findCommonPattern should cap first string search length
+  describe("#8 — findCommonPattern should cap first string search length", () => {
+      it("should limit first.length before inner loop", () => {
+        const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+        const fnStart = source.indexOf("private findCommonPattern(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 500);
+        expect(block).toMatch(/MAX_SEARCH|Math\.min.*first\.length|capped|first\.slice/i);
+      });
+    });
+
+  // from tests/audit78.test.ts #7 — findCommonPrefix should check string bounds
+  describe("#7 — findCommonPrefix should check string bounds", () => {
+      it("should check i < s.length before accessing s[i]", () => {
+        const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+        // Find the function definition, not the call site
+        const fnStart = source.indexOf("private findCommonPrefix");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/i\s*<\s*s\.length|\.charAt/);
+      });
+    });
+
+  // from tests/audit80.test.ts #4 — synthesizeOnFailure should wrap JSON.stringify in try-catch
+  describe("#4 — synthesizeOnFailure should wrap JSON.stringify in try-catch", () => {
+      it("should have error handling around JSON.stringify(ex.output)", () => {
+        const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+        const stringify = source.indexOf("JSON.stringify(ex.output)");
+        expect(stringify).toBeGreaterThan(-1);
+        const block = source.slice(Math.max(0, stringify - 200), stringify + 50);
+        expect(block).toMatch(/try\s*\{|safeStringify/);
+      });
+    });
+
+  // from tests/audit83.test.ts #9 — orPattern should be length-checked before RegExp
+  describe("#9 — orPattern should be length-checked before RegExp", () => {
+      it("should validate orPattern length before creating regex", () => {
+        const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+        const orPattern = source.indexOf("orPattern");
+        expect(orPattern).toBeGreaterThan(-1);
+        const block = source.slice(orPattern, orPattern + 300);
+        expect(block).toMatch(/orPattern\.length\s*>|MAX_PATTERN|orPattern\.length\s*</);
+      });
+    });
+
+  // from tests/audit84.test.ts #10 — synthesizeViaRelational dangerousPatterns should block delete
+  describe("#10 — synthesizeViaRelational dangerousPatterns should block delete", () => {
+      it("should include delete in dangerous patterns", () => {
+        const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+        const patterns = source.indexOf("dangerousPatterns", source.indexOf("synthesizeViaRelational"));
+        expect(patterns).toBeGreaterThan(-1);
+        const block = source.slice(patterns, patterns + 500);
+        expect(block).toMatch(/\\bdelete\\b/);
+      });
+    });
+
+  // from tests/audit87.test.ts #3 — dangerousPatterns should block Object
+  describe("#3 — dangerousPatterns should block Object", () => {
+      it("should include Object in dangerous patterns", () => {
+        const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+        const patterns = source.indexOf("dangerousPatterns", source.indexOf("synthesizeViaRelational"));
+        expect(patterns).toBeGreaterThan(-1);
+        const block = source.slice(patterns, patterns + 600);
+        expect(block).toMatch(/\\bObject\\b/);
+      });
+    });
+
+  // from tests/audit94.test.ts #5 — synthesizeClassifier safeRules should be capped
+  describe("#5 — synthesizeClassifier safeRules should be capped", () => {
+      it("should limit number of rules", () => {
+        const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
+        const safeRulesLine = source.indexOf("const safeRules = rules.filter");
+        expect(safeRulesLine).toBeGreaterThan(-1);
+        const block = source.slice(safeRulesLine, safeRulesLine + 600);
+        // Should cap safeRules length after filtering
+        expect(block).toMatch(/\.slice\(0,\s*MAX|safeRules\.length\s*>/);
+      });
+    });
+
 });

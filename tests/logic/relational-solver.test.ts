@@ -22,6 +22,7 @@ import {
   type Primitive,
   type Composition,
 } from "../../src/logic/relational-solver.js";
+import { readFileSync } from "fs";
 
 describe("Relational Solver", () => {
 
@@ -351,3 +352,217 @@ describe("Relational Solver", () => {
   });
 });
 
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit23.test.ts Audit23 #1: relational-solver parseDate month-aware day limit
+  describe("Audit23 #1: relational-solver parseDate month-aware day limit", () => {
+    it("should reject Feb 31 in US format", async () => {
+      const { evaluateComposition } = await import(
+        "../../src/logic/relational-solver.js"
+      );
+      const comp: any = {
+        steps: [{ primitive: "parseDate", args: { format: "US" } }],
+      };
+      const result = evaluateComposition(comp, "02/31/2024");
+      expect(result).toBeNull();
+    });
+
+    it("should reject Feb 30 in natural format", async () => {
+      const { evaluateComposition } = await import(
+        "../../src/logic/relational-solver.js"
+      );
+      const comp: any = {
+        steps: [{ primitive: "parseDate", args: {} }],
+      };
+      const result = evaluateComposition(comp, "February 30, 2024");
+      expect(result).toBeNull();
+    });
+
+    it("should reject April 31 in EU format", async () => {
+      const { evaluateComposition } = await import(
+        "../../src/logic/relational-solver.js"
+      );
+      const comp: any = {
+        steps: [{ primitive: "parseDate", args: { format: "EU" } }],
+      };
+      const result = evaluateComposition(comp, "31/04/2024", );
+      expect(result).toBeNull();
+    });
+
+    it("should accept valid dates", async () => {
+      const { evaluateComposition } = await import(
+        "../../src/logic/relational-solver.js"
+      );
+      const usComp: any = {
+        steps: [{ primitive: "parseDate", args: { format: "US" } }],
+      };
+      expect(evaluateComposition(usComp, "01/15/2024")).toBe("2024-01-15");
+
+      const natComp: any = {
+        steps: [{ primitive: "parseDate", args: {} }],
+      };
+      expect(evaluateComposition(natComp, "February 28, 2024")).toBe("2024-02-28");
+      expect(evaluateComposition(natComp, "February 29, 2024")).toBe("2024-02-29"); // 2024 is leap year
+    });
+  });
+
+  // from tests/audit25.test.ts Audit25 #1: parseDate US auto-detection without format hint
+  describe("Audit25 #1: parseDate US auto-detection without format hint", () => {
+    it("should auto-detect US date format when no hint is provided", async () => {
+      const { evaluateComposition } = await import(
+        "../../src/logic/relational-solver.js"
+      );
+      const comp: any = {
+        steps: [{ primitive: "parseDate", args: {} }],
+      };
+      // No format hint — should still parse MM/DD/YYYY
+      const result = evaluateComposition(comp, "01/15/2024");
+      expect(result).toBe("2024-01-15");
+    });
+
+    it("should auto-detect US date when hint is explicitly US", async () => {
+      const { evaluateComposition } = await import(
+        "../../src/logic/relational-solver.js"
+      );
+      const comp: any = {
+        steps: [{ primitive: "parseDate", args: { format: "US" } }],
+      };
+      const result = evaluateComposition(comp, "01/15/2024");
+      expect(result).toBe("2024-01-15");
+    });
+  });
+
+  // from tests/audit32.test.ts #15 — relational-solver filter/map should not use spread in reduce
+  describe("#15 — relational-solver filter/map should not use spread in reduce", () => {
+        it("should use push instead of spread for filter", () => {
+          const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+          const filterDerived = source.match(/case "filter":[\s\S]*?case "map"/);
+          expect(filterDerived).not.toBeNull();
+          // Should NOT use [...acc, item] pattern
+          expect(filterDerived![0]).not.toMatch(/\[\.\.\.acc,?\s*item\]/);
+        });
+
+        it("should use push instead of spread for map", () => {
+          const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+          const mapDerived = source.match(/case "map":[\s\S]*?case "sum"/);
+          expect(mapDerived).not.toBeNull();
+          // Should NOT use [...acc, transform(item)] pattern
+          expect(mapDerived![0]).not.toMatch(/\[\.\.\.acc/);
+        });
+      });
+
+  // from tests/audit40.test.ts #3 — relational-solver replace should escape $ backreferences
+  describe("#3 — relational-solver replace should escape $ backreferences", () => {
+      it("should escape $ in replacement string", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const replaceBlock = source.match(/replace:\s*\(input[\s\S]*?input\.replace\(regex,[\s\S]*?\)/);
+        expect(replaceBlock).not.toBeNull();
+        // Should escape $ in the replacement string before passing to .replace()
+        expect(replaceBlock![0]).toMatch(/\$.*\$\$|\\\$/);
+      });
+    });
+
+  // from tests/audit43.test.ts #10 — parseCurrencyImpl should not allow double-negation
+  describe("#10 — parseCurrencyImpl should not allow double-negation", () => {
+      it("should not recursively match leading minus after minus", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const negMatch = source.match(/negMinusMatch = trimmed\.match\(.*\)/);
+        expect(negMatch).not.toBeNull();
+        // Should prevent matching another leading minus (e.g., ^-([^-].*)$)
+        expect(negMatch![0]).toMatch(/\[\^-\]|\(\?!-\)/);
+      });
+    });
+
+  // from tests/audit44.test.ts #4 — relational-solver synthesis should use epsilon for float comparison
+  describe("#4 — relational-solver synthesis should use epsilon for float comparison", () => {
+      it("should not use strict inequality for float comparison in candidate evaluation", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const evalBlock = source.match(/const result = evaluateComposition[\s\S]*?allMatch = false/);
+        expect(evalBlock).not.toBeNull();
+        // Should NOT use simple !== for comparing results; should use epsilon or tolerance
+        expect(evalBlock![0]).not.toMatch(/result !== output/);
+      });
+    });
+
+  // from tests/audit49.test.ts #4 — relational-solver split should validate index
+  describe("#4 — relational-solver split should validate index", () => {
+      it("should check Number.isSafeInteger or bounds on split index", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const splitFn = source.match(/split:\s*\(input[\s\S]*?parts\[idx\]/);
+        expect(splitFn).not.toBeNull();
+        expect(splitFn![0]).toMatch(/isSafeInteger|isInteger|idx\s*<\s*0|idx\s*>=\s*parts/);
+      });
+    });
+
+  // from tests/audit51.test.ts #6 — relational-solver reduce should guard array length
+  describe("#6 — relational-solver reduce should guard array length", () => {
+      it("should have a max iteration guard", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const reduceFn = source.match(/function reduce[\s\S]*?return acc;\s*\}/);
+        expect(reduceFn).not.toBeNull();
+        expect(reduceFn![0]).toMatch(/MAX_REDUCE|length\s*>|\.slice\(|limit/i);
+      });
+    });
+
+  // from tests/audit53.test.ts #3 — relational-solver split should validate delimiter
+  describe("#3 — relational-solver split should validate delimiter", () => {
+      it("should check delimiter is not empty", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const splitPrim = source.match(/split:\s*\(input,\s*args\)[\s\S]*?input\.split\(delim\)/);
+        expect(splitPrim).not.toBeNull();
+        expect(splitPrim![0]).toMatch(/delim\.length|!delim|delim\s*===\s*""/);
+      });
+    });
+
+  // from tests/audit54.test.ts #1 — relational-solver index should validate index
+  describe("#1 — relational-solver index should validate index", () => {
+      it("should check integer and non-negative on index primitive", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const indexCase = source.match(/index:\s*\(input,\s*args\)\s*=>\s*\{[\s\S]*?input\[idx\]/);
+        expect(indexCase).not.toBeNull();
+        expect(indexCase![0]).toMatch(/Number\.isInteger|isInteger|idx\s*<\s*0/);
+      });
+    });
+
+  // from tests/audit54.test.ts #2 — relational-solver match should reject negative group
+  describe("#2 — relational-solver match should reject negative group", () => {
+      it("should guard against negative group index", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const matchCase = source.match(/match:\s*\(input,\s*args\)\s*=>\s*\{[\s\S]*?result\[group\]/);
+        expect(matchCase).not.toBeNull();
+        expect(matchCase![0]).toMatch(/group\s*<\s*0/);
+      });
+    });
+
+  // from tests/audit63.test.ts #1 — relational-solver split should cap parts length
+  describe("#1 — relational-solver split should cap parts length", () => {
+      it("should limit split result size", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const splitStart = source.indexOf("split: (input, args)");
+        expect(splitStart).toBeGreaterThan(-1);
+        const block = source.slice(splitStart, splitStart + 400);
+        // Should have an explicit cap like MAX_SPLIT_PARTS or parts.length > N
+        expect(block).toMatch(/MAX_SPLIT_PARTS|parts\.length\s*>/i);
+      });
+    });
+
+  // from tests/audit80.test.ts #7 — relational-solver parseInt should use radix 10
+  describe("#7 — relational-solver parseInt should use radix 10", () => {
+      it("should pass radix 10 to parseInt(shortYear)", () => {
+        const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
+        const parseIntCall = source.indexOf("parseInt(shortYear)");
+        if (parseIntCall === -1) {
+          // Already fixed — uses parseInt(shortYear, 10)
+          const fixedCall = source.indexOf("parseInt(shortYear, 10)");
+          expect(fixedCall).toBeGreaterThan(-1);
+        } else {
+          // Still unfixed
+          expect(parseIntCall).toBe(-1); // Force failure
+        }
+      });
+    });
+
+});

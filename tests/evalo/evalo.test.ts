@@ -13,6 +13,7 @@ import {
   synthesizeExtractor,
 } from "../../src/synthesis/evalo/evalo.js";
 import type { Extractor } from "../../src/synthesis/evalo/types.js";
+import { readFileSync } from "fs";
 
 describe("evalExtractor (forward mode)", () => {
   describe("base cases", () => {
@@ -382,4 +383,212 @@ describe("synthesizeExtractor (backwards mode)", () => {
       expect(extractors.length).toBe(0);
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit14.test.ts Issue #1: evalExtractor should validate regex patterns
+  describe("Issue #1: evalExtractor should validate regex patterns", () => {
+    it("should return null for ReDoS pattern in match", async () => {
+      const e: Extractor = {
+        tag: "match",
+        str: { tag: "input" },
+        pattern: "(a+)+$",
+        group: 0,
+      };
+      // Should be caught by validateRegex, not allowed to execute
+      // A safe implementation returns null without executing the dangerous regex
+      const result = evalExtractor(e, "aaaaaaaaaaaaaaaaaaaaaaaa!");
+      expect(result).toBeNull();
+    });
+
+    it("should return null for ReDoS pattern in replace", async () => {
+      const e: Extractor = {
+        tag: "replace",
+        str: { tag: "input" },
+        from: "(a+)+$",
+        to: "b",
+      };
+      // Should not execute dangerous regex
+      const result = evalExtractor(e, "aaaaaaaaaaaaaaaaaaaaaaaa!");
+      // Should return the original string or null, not hang
+      expect(result === null || result === "aaaaaaaaaaaaaaaaaaaaaaaa!").toBe(true);
+    });
+  });
+
+  // from tests/audit16.test.ts Audit16 #11: evalo float comparison
+  describe("Audit16 #11: evalo float comparison", () => {
+    it("synthesis should handle floating-point precision", async () => {
+      const { synthesizeExtractor } = await import("../../src/synthesis/evalo/evalo.js");
+      // 0.1 + 0.2 = 0.30000000000000004 in JS
+      // This test verifies the synthesis handles it
+      const result = synthesizeExtractor(
+        [
+          { input: "price: 100", output: 100 },
+          { input: "price: 200", output: 200 },
+        ],
+        1
+      );
+      // Should find at least one extractor
+      expect(result.length).toBeGreaterThanOrEqual(0);
+      // The test mainly verifies no crash from float comparison
+    });
+  });
+
+  // from tests/audit20.test.ts Audit20 #2: evalo NaN-safe comparison
+  describe("Audit20 #2: evalo NaN-safe comparison", () => {
+    it("evalo should match NaN output with NaN result", async () => {
+      const { evalo } = await import("../../src/synthesis/evalo/evalo.js");
+      // A literal extractor that returns NaN
+      const extractor: any = { tag: "lit", value: NaN };
+      const result = evalo(extractor, "anything", NaN);
+      // Should return [NaN] since NaN matches NaN
+      expect(result.length).toBe(1);
+    });
+
+    it("synthesizeExtractor should detect identity with NaN values", async () => {
+      const { synthesizeExtractor } = await import("../../src/synthesis/evalo/evalo.js");
+      // All outputs equal inputs — identity check should work even with NaN-like values
+      const result = synthesizeExtractor(
+        [
+          { input: "hello", output: "hello" },
+          { input: "world", output: "world" },
+        ],
+        1
+      );
+      expect(result.length).toBeGreaterThan(0);
+    });
+  });
+
+  // from tests/audit33.test.ts #6 — evalo should distinguish null output from 'no constraint'
+  describe("#6 — evalo should distinguish null output from 'no constraint'", () => {
+      it("should correctly check when expected output is null", async () => {
+        const { evalo } = await import("../../src/synthesis/evalo/evalo.js");
+        // If an extractor returns null and expectedOutput is null,
+        // it should be treated as a MATCH (not as "no constraint")
+        const extractor = {
+          tag: "match" as const,
+          str: { tag: "input" as const },
+          pattern: "(\\d+)",
+          group: 1,
+        };
+        // Input has no digits, so match returns null
+        // expectedOutput is null — should match (null === null)
+        const result = evalo(extractor, "no digits", null);
+        expect(result).toEqual([null]);
+      });
+
+      it("should reject when expected output is null but result is not", async () => {
+        const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+        // The fix should use something other than !== null to distinguish
+        // "no constraint" from "expected null"
+        const evaloBody = source.match(/export function evalo[\s\S]*?^\}/m);
+        expect(evaloBody).not.toBeNull();
+        // Should NOT use `expectedOutput !== null` as the sole check
+        // Should use undefined, arguments.length, or a sentinel value
+        expect(evaloBody![0]).not.toMatch(/expectedOutput !== null\b/);
+      });
+    });
+
+  // from tests/audit34.test.ts #22 — synthesizeExtractor constant check should handle objects
+  describe("#22 — synthesizeExtractor constant check should handle objects", () => {
+        it("should use deep equality for constant output detection", () => {
+          const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+          const allSame = source.match(/const allSame[\s\S]*?;/);
+          expect(allSame).not.toBeNull();
+          // Should use JSON.stringify, deepEqual, or Object.is for comparison
+          expect(allSame![0]).toMatch(/JSON\.stringify|deepEqual|Object\.is/);
+        });
+      });
+
+  // from tests/audit43.test.ts #5 — evalo synthesizeExtractor should use Object.is for constant check
+  describe("#5 — evalo synthesizeExtractor should use Object.is for constant check", () => {
+      it("should use Object.is instead of JSON.stringify for constant output detection", () => {
+        const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+        // The allSame check should NOT use JSON.stringify for comparison
+        expect(source).not.toMatch(/allSame\s*=\s*outputs\.every\([^)]*JSON\.stringify/);
+      });
+    });
+
+  // from tests/audit52.test.ts #6 — evalo evalExtractor slice should reject negative indices
+  describe("#6 — evalo evalExtractor slice should reject negative indices", () => {
+      it("should validate start and end are non-negative", () => {
+        const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+        const sliceCase = source.match(/case "slice"[\s\S]*?str\.slice\(/);
+        expect(sliceCase).not.toBeNull();
+        expect(sliceCase![0]).toMatch(/start\s*[<>]=?\s*0|start\s*<\s*0|isInteger/);
+      });
+    });
+
+  // from tests/audit66.test.ts #4 — evalo split should reject empty delimiter
+  describe("#4 — evalo split should reject empty delimiter", () => {
+      it("should check delimiter is non-empty before split", () => {
+        const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+        const splitCase = source.indexOf('case "split"');
+        expect(splitCase).toBeGreaterThan(-1);
+        const block = source.slice(splitCase, splitCase + 300);
+        expect(block).toMatch(/!extractor\.delim|delim\.length\s*===?\s*0|delim\s*===?\s*""/i);
+      });
+    });
+
+  // from tests/audit74.test.ts #2 — evalo split should validate delimiter length
+  describe("#2 — evalo split should validate delimiter length", () => {
+      it("should reject overly long delimiters", () => {
+        const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+        const splitCase = source.indexOf('case "split"');
+        expect(splitCase).toBeGreaterThan(-1);
+        const block = source.slice(splitCase, splitCase + 300);
+        // Should check delimiter max length, not just empty
+        expect(block).toMatch(/delim\.length\s*>\s*\d{2,}|MAX_DELIM/);
+      });
+    });
+
+  // from tests/audit75.test.ts #7 — evalo parseFloat should validate input length
+  describe("#7 — evalo parseFloat should validate input length", () => {
+      it("should check string length before parsing", () => {
+        const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+        const parseFloatCase = source.indexOf('case "parseFloat"');
+        expect(parseFloatCase).toBeGreaterThan(-1);
+        const block = source.slice(parseFloatCase, parseFloatCase + 300);
+        expect(block).toMatch(/\.length\s*>|MAX_STR/);
+      });
+    });
+
+  // from tests/audit87.test.ts #2 — evalo.ts slice should reject negative end
+  describe("#2 — evalo.ts slice should reject negative end", () => {
+      it("should validate end >= 0", () => {
+        const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+        const sliceCase = source.indexOf('case "slice"');
+        expect(sliceCase).toBeGreaterThan(-1);
+        const block = source.slice(sliceCase, sliceCase + 300);
+        expect(block).toMatch(/end\s*<\s*0|end\s*<\s*extractor\.start|end\s*>=?\s*0/);
+      });
+    });
+
+  // from tests/audit90.test.ts #1 — parseInt should check string length before parsing
+  describe("#1 — parseInt should check string length before parsing", () => {
+      it("should validate string length in parseInt case", () => {
+        const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+        const intCase = source.indexOf('case "parseInt"');
+        expect(intCase).toBeGreaterThan(-1);
+        const block = source.slice(intCase, intCase + 300);
+        // Should have length check like parseFloat does
+        expect(block).toMatch(/\.length\s*>/);
+      });
+    });
+
+  // from tests/audit95.test.ts #4 — evalo split should use limit parameter
+  describe("#4 — evalo split should use limit parameter", () => {
+      it("should pass limit to split to avoid unbounded array", () => {
+        const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
+        const splitLine = source.indexOf("str.split(extractor.delim");
+        expect(splitLine).toBeGreaterThan(-1);
+        const block = source.slice(splitLine, splitLine + 80);
+        // Should use split with limit: split(delim, MAX + 1)
+        expect(block).toMatch(/\.split\(extractor\.delim,/);
+      });
+    });
+
 });

@@ -10,6 +10,7 @@ import {
   ExtractorTemplate,
   EXTRACTOR_TEMPLATES,
 } from "../../../src/synthesis/extractor/synthesis.js";
+import { readFileSync } from "fs";
 
 describe("Extractor Synthesis", () => {
   describe("synthesizeExtractor", () => {
@@ -402,4 +403,167 @@ describe("Extractor Synthesis", () => {
       expect(extractor!.test("[debug]")).toBe("debug");
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit23.test.ts Audit23 #3: extractor synthesis slice length validation
+  describe("Audit23 #3: extractor synthesis slice length validation", () => {
+    it("generated bracket_extract code should guard short inputs", async () => {
+      const mod = await import("../../../src/synthesis/extractor/synthesis.js");
+      const extractors = (mod as any).BASIC_EXTRACTORS;
+      if (extractors) {
+        const bracketExtract = extractors.find(
+          (e: any) => e.name === "bracket_extract"
+        );
+        if (bracketExtract) {
+          // The code string should guard against short input
+          expect(bracketExtract.code).toContain("length");
+        }
+      }
+    });
+  });
+
+  // from tests/audit25.test.ts Audit25 #6: extractor delimiter field beyond index 9
+  describe("Audit25 #6: extractor delimiter field beyond index 9", () => {
+    it("should find fields beyond index 9", async () => {
+      const { synthesizeExtractor } = await import(
+        "../../../src/synthesis/extractor/synthesis.js"
+      );
+      // Create a CSV with 12 fields, target is field 11 (0-indexed)
+      const input1 = "a,b,c,d,e,f,g,h,i,j,k,TARGET1";
+      const input2 = "a,b,c,d,e,f,g,h,i,j,k,TARGET2";
+      const examples = [
+        { input: input1, output: "TARGET1" },
+        { input: input2, output: "TARGET2" },
+      ];
+      const extractor = synthesizeExtractor({ examples });
+      // Should find field at index 11
+      expect(extractor).not.toBeNull();
+      if (extractor) {
+        expect(extractor.test(input1)).toBe("TARGET1");
+      }
+    });
+  });
+
+  // from tests/audit27.test.ts Audit27 #2: extractor findCommonSuffix
+  describe("Audit27 #2: extractor findCommonSuffix", () => {
+    it("should extract correct suffix from examples", async () => {
+      const { synthesizeExtractor } = await import(
+        "../../../src/synthesis/extractor/synthesis.js"
+      );
+      // Examples where the output is between a prefix and a suffix
+      const examples = [
+        { input: "Price: 100 USD", output: "100" },
+        { input: "Price: 200 USD", output: "200" },
+      ];
+      const extractor = synthesizeExtractor({ examples });
+      // Should find prefix "Price: " and suffix " USD"
+      expect(extractor).not.toBeNull();
+      if (extractor) {
+        expect(extractor.test("Price: 300 USD")).toBe("300");
+      }
+    });
+  });
+
+  // from tests/audit29.test.ts #8 — extractor String(null) false positive
+  describe("#8 — extractor String(null) false positive", () => {
+      it("should filter null/undefined outputs before pattern matching", () => {
+        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
+        // Find the tryPrefixSuffixExtraction function
+        const fnMatch = source.match(/function tryPrefixSuffixExtraction[\s\S]*?^}/m);
+        expect(fnMatch).not.toBeNull();
+        // Should filter out null/undefined examples before processing
+        expect(fnMatch![0]).toMatch(/\.filter\(/);
+        expect(fnMatch![0]).toMatch(/!= null|!== null|!== undefined/);
+      });
+    });
+
+  // from tests/audit37.test.ts #7 — delimiter extraction should guard against empty examples
+  describe("#7 — delimiter extraction should guard against empty examples", () => {
+      it("should handle empty array in Math.max spread", () => {
+        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
+        // Find the specific Math.max line in the delimiter extraction function
+        const maxLine = source.match(/const maxFields = [^;]+/);
+        expect(maxLine).not.toBeNull();
+        // Should guard against empty spread: Math.max(0, ...) or use reduce with 0 default
+        expect(maxLine![0]).toMatch(/Math\.max\(0|\.reduce\(/);
+      });
+    });
+
+  // from tests/audit82.test.ts #8 — prefix/suffix should be escaped in description
+  describe("#8 — prefix/suffix should be escaped in description", () => {
+      it("should escape or sanitize prefix/suffix before interpolation", () => {
+        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
+        const descLine = source.indexOf('Remove prefix');
+        expect(descLine).toBeGreaterThan(-1);
+        const block = source.slice(descLine - 100, descLine + 100);
+        expect(block).toMatch(/safePrefix|JSON\.stringify|prefix.*slice|inputPrefix.*replace/);
+      });
+    });
+
+  // from tests/audit82.test.ts #10 — delimiter testFn should return null for out-of-bounds
+  describe("#10 — delimiter testFn should return null for out-of-bounds", () => {
+      it("should guard array access with bounds check or nullish coalescing", () => {
+        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
+        const fnStart = source.indexOf("function tryDelimiterFieldExtraction");
+        expect(fnStart).toBeGreaterThan(-1);
+        const testFnBlock = source.indexOf("const testFn", fnStart);
+        expect(testFnBlock).toBeGreaterThan(-1);
+        const block = source.slice(testFnBlock, testFnBlock + 200);
+        expect(block).toMatch(/\?\?\s*null|fieldIdx\].*\?\?|\.length\s*>\s*fieldIdx/);
+      });
+    });
+
+  // from tests/audit86.test.ts #9 — tryDelimiterFieldExtraction should avoid spread on large array
+  describe("#9 — tryDelimiterFieldExtraction should avoid spread on large array", () => {
+      it("should not use spread operator on unbounded examples.map", () => {
+        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
+        const maxFieldsLine = source.indexOf("maxFields");
+        expect(maxFieldsLine).toBeGreaterThan(-1);
+        const block = source.slice(maxFieldsLine, maxFieldsLine + 300);
+        // Should NOT use Math.max(...examples.map(...)) spread pattern
+        // Instead should use a loop or reduce
+        expect(block).not.toMatch(/Math\.max\(0,\s*\.\.\.examples\.map/);
+      });
+    });
+
+  // from tests/audit90.test.ts #3 — delimiter reduce should use split limit
+  describe("#3 — delimiter reduce should use split limit", () => {
+      it("should pass limit to split in reduce", () => {
+        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
+        const reduceLine = source.indexOf("examples.reduce((max, e) => Math.max(max, e.input.split");
+        expect(reduceLine).toBeGreaterThan(-1);
+        const block = source.slice(reduceLine, reduceLine + 200);
+        // split should have a limit parameter
+        expect(block).toMatch(/split\(delim,\s*\d|split\(delim,\s*MAX/);
+      });
+    });
+
+  // from tests/audit90.test.ts #4 — delimiter testFn should use split limit
+  describe("#4 — delimiter testFn should use split limit", () => {
+      it("should pass limit to split in testFn", () => {
+        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
+        const testFnLine = source.indexOf("const testFn = (s: string) =>");
+        expect(testFnLine).toBeGreaterThan(-1);
+        const block = source.slice(testFnLine, testFnLine + 200);
+        // split should have a limit parameter
+        expect(block).toMatch(/split\(delim,\s*\d|split\(delim,\s*MAX/);
+      });
+    });
+
+  // from tests/audit90.test.ts #10 — split_comma testFn should use split limit
+  describe("#10 — split_comma testFn should use split limit", () => {
+      it("should pass limit to split in comma testFn", () => {
+        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
+        const commaFn = source.indexOf('name: "split_comma"');
+        expect(commaFn).toBeGreaterThan(-1);
+        const block = source.slice(commaFn, commaFn + 300);
+        // testFn should have a split limit
+        expect(block).toMatch(/split\(['"],['"]\s*,\s*\d|split\(","\s*,\s*\d|MAX_SPLIT/);
+      });
+    });
+
 });

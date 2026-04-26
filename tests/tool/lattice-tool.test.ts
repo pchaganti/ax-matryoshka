@@ -4,6 +4,7 @@ import {
   parseCommand,
   formatResponse,
 } from "../../src/tool/lattice-tool.js";
+import { readFileSync } from "fs";
 
 describe("LatticeTool", () => {
   describe("loadContent", () => {
@@ -253,4 +254,113 @@ describe("formatResponse", () => {
       expect(result.error).toMatch(/path|traversal|invalid/i);
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit20.test.ts Audit20 #4: lattice-tool optional chaining safety
+  describe("Audit20 #4: lattice-tool optional chaining safety", () => {
+    it("should not throw when stats is null", async () => {
+      // We test by importing the module — the fix is structural
+      const mod = await import("../../src/tool/lattice-tool.js");
+      expect(mod).toBeDefined();
+      // The actual crash occurs at runtime when stats is null
+      // This is a code-review fix verified by inspection
+    });
+  });
+
+  // from tests/audit30.test.ts #7 — lattice-tool path validation
+  describe("#7 — lattice-tool path validation", () => {
+      it("should not reject relative paths without traversal", () => {
+        const source = readFileSync("src/tool/lattice-tool.ts", "utf-8");
+        // The old logic: resolved !== path.normalize(filePath) && !path.isAbsolute(filePath)
+        // This rejects ALL relative paths. After fix, should only reject traversal.
+        // Check that the condition doesn't use path.resolve !== path.normalize pattern
+        expect(source).not.toMatch(
+          /resolved !== path\.normalize\(filePath\) && !path\.isAbsolute\(filePath\)/
+        );
+      });
+    });
+
+  // from tests/audit32.test.ts #1 — directory traversal: absolute path rejection
+  describe("#1 — directory traversal: absolute path rejection", () => {
+        it("should reject absolute paths outside cwd", async () => {
+          const { LatticeTool } = await import("../../src/tool/lattice-tool.js");
+          const tool = new LatticeTool();
+          const result = await tool.executeAsync({ type: "load", filePath: "/etc/passwd" });
+          expect(result.success).toBe(false);
+          expect(result.error).toMatch(/path|traversal|outside|not allowed/i);
+        });
+
+        it("should still allow relative paths without ..", async () => {
+          const { LatticeTool } = await import("../../src/tool/lattice-tool.js");
+          const tool = new LatticeTool();
+          // This file exists - should succeed or fail for content reasons, not path rejection
+          const result = await tool.executeAsync({ type: "load", filePath: "package.json" });
+          // Should not be rejected as a path traversal
+          if (!result.success) {
+            expect(result.error).not.toMatch(/traversal|not allowed/i);
+          }
+        });
+      });
+
+  // from tests/audit36.test.ts #12 — lattice-tool path validation should resolve before checking
+  describe("#12 — lattice-tool path validation should resolve before checking", () => {
+        it("should resolve the path first then verify it's within CWD", () => {
+          const source = readFileSync("src/tool/lattice-tool.ts", "utf-8");
+          const loadAsync = source.match(/async loadAsync[\s\S]*?loadFile/);
+          expect(loadAsync).not.toBeNull();
+          // Should resolve first, THEN check if within CWD
+          // The resolved path check should come before the traversal string check
+          expect(loadAsync![0]).toMatch(/resolve[\s\S]*startsWith/);
+        });
+      });
+
+  // from tests/audit39.test.ts #3 — lattice-tool should use realResolved path for loadFile
+  describe("#3 — lattice-tool should use realResolved path for loadFile", () => {
+      it("should pass realResolved to loadFile, not original filePath", () => {
+        const source = readFileSync("src/tool/lattice-tool.ts", "utf-8");
+        // Check the actual loadFile call includes realResolved argument
+        expect(source).toMatch(/loadFile\(realResolved\)/);
+        // Should NOT use the original filePath for loadFile
+        expect(source).not.toMatch(/loadFile\(filePath\)/);
+      });
+    });
+
+  // from tests/audit47.test.ts #6 — lattice-tool should reject null bytes in file paths
+  describe("#6 — lattice-tool should reject null bytes in file paths", () => {
+      it("should check for null bytes before path resolution", () => {
+        const source = readFileSync("src/tool/lattice-tool.ts", "utf-8");
+        const loadFn = source.match(/loadAsync[\s\S]*?path\.resolve/);
+        expect(loadFn).not.toBeNull();
+        expect(loadFn![0]).toMatch(/\\0|\\x00|null.*byte|includes.*\\\\0/i);
+      });
+    });
+
+  // from tests/audit51.test.ts #8 — lattice-tool error should not leak full file path
+  describe("#8 — lattice-tool error should not leak full file path", () => {
+      it("should sanitize file path in error message", () => {
+        const source = readFileSync("src/tool/lattice-tool.ts", "utf-8");
+        const errorLine = source.match(/Failed to load.*?\$\{.*?\}/);
+        expect(errorLine).not.toBeNull();
+        // Should use basename or a safe path representation, not raw filePath
+        expect(errorLine![0]).toMatch(/basename|path\.basename|documentName|sanitize/i);
+      });
+    });
+
+  // from tests/audit53.test.ts #5 — lattice-tool getStats should not leak documentPath
+  describe("#5 — lattice-tool getStats should not leak documentPath", () => {
+      it("should not include raw documentPath in stats response", () => {
+        const source = readFileSync("src/tool/lattice-tool.ts", "utf-8");
+        // Find the private getStats method definition and its return block
+        const statsIdx = source.indexOf("private getStats()");
+        expect(statsIdx).toBeGreaterThan(-1);
+        const statsBlock = source.slice(statsIdx, statsIdx + 300);
+        // Should NOT include documentPath in the returned data
+        expect(statsBlock).not.toMatch(/documentPath/);
+      });
+    });
+
 });

@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { spawn, ChildProcess } from "node:child_process";
 import { resolve } from "node:path";
+import { readFileSync } from "fs";
+import { hasTraversalSegment } from "../src/utils/path-safety.js";
 
 // For these tests, we'll use a simpler approach that doesn't require the MCP SDK
 // We'll test the server module directly
@@ -315,4 +317,91 @@ describe("MCP Server", () => {
       });
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit32.test.ts #8 — engine cache should validate filePath matches
+  describe("#8 — engine cache should validate filePath matches", () => {
+        it("should include filePath in cache validation logic", () => {
+          const source = readFileSync("src/mcp-server.ts", "utf-8");
+          const getEngine = source.match(/getEngine[\s\S]*?return engine;\s*\}\s*\n/);
+          expect(getEngine).not.toBeNull();
+          // When sessionId is used as key, must also check that filePath matches
+          // Either by storing filePath alongside or by including it in the key
+          expect(getEngine![0]).toMatch(/filePath/g);
+          // Should have more than just the parameter reference — needs comparison
+          const filePathRefs = getEngine![0].match(/filePath/g);
+          expect(filePathRefs!.length).toBeGreaterThan(3);
+        });
+      });
+
+  // from tests/audit34.test.ts #5 — mcp-server should validate file paths
+  describe("#5 — mcp-server should validate file paths", () => {
+        it("should have path validation in getEngine or its callers", () => {
+          const source = readFileSync("src/mcp-server.ts", "utf-8");
+          // Path validation may be in a separate helper called before getEngine
+          expect(source).toMatch(/validateFilePath|traversal|startsWith|\.\./i);
+        });
+
+        it("should validate filePath in nucleus_execute handler", () => {
+          const source = readFileSync("src/mcp-server.ts", "utf-8");
+          const handler = source.match(/nucleus_execute[\s\S]*?catch.*\{/);
+          expect(handler).not.toBeNull();
+          expect(handler![0]).toMatch(/validatePath|traversal|startsWith|resolve/i);
+        });
+      });
+
+  // from tests/audit34.test.ts #6 — lattice-mcp-server should validate file paths
+  describe("#6 — lattice-mcp-server should validate file paths", () => {
+        it("should validate filePath in lattice_load", () => {
+          const source = readFileSync("src/lattice-mcp-server.ts", "utf-8");
+          const handler = source.match(/lattice_load[\s\S]*?new HandleSession/);
+          expect(handler).not.toBeNull();
+          expect(handler![0]).toMatch(/validatePath|traversal|startsWith|resolve|\.\.|\babsolute\b/i);
+        });
+      });
+
+  // from tests/audit34.test.ts #10 — engine should be disposed on mtime reload
+  describe("#10 — engine should be disposed on mtime reload", () => {
+        it("should dispose old engine when file mtime changes", () => {
+          const source = readFileSync("src/mcp-server.ts", "utf-8");
+          const mtimeBlock = source.match(/mtimeMs > cachedMtime[\s\S]*?return engine;/);
+          expect(mtimeBlock).not.toBeNull();
+          // Should call dispose on old engine
+          expect(mtimeBlock![0]).toMatch(/\.dispose\(\)/);
+        });
+      });
+
+  // from tests/audit96.test.ts #15 — path-traversal check is segment-aware
+  describe("#15 — path-traversal check is segment-aware", () => {
+      it("rejects true parent-directory traversal", async () => {
+        expect(hasTraversalSegment("../etc/passwd")).toBe(true);
+        expect(hasTraversalSegment("..")).toBe(true);
+        expect(hasTraversalSegment("foo/../bar")).toBe(true);
+        expect(hasTraversalSegment("foo/bar/..")).toBe(true);
+        expect(hasTraversalSegment("..\\windows\\path")).toBe(true);
+        expect(hasTraversalSegment("a/b/../c/d")).toBe(true);
+      });
+
+      it("accepts legitimate filenames containing the `..` substring", async () => {
+        // Before the fix these would have been rejected as path traversal.
+        expect(hasTraversalSegment("readme..txt")).toBe(false);
+        expect(hasTraversalSegment("foo..bar.md")).toBe(false);
+        expect(hasTraversalSegment("sub/dir/file..backup")).toBe(false);
+        expect(hasTraversalSegment("weird...name")).toBe(false); // 3 dots, no `..` segment
+        expect(hasTraversalSegment("my.file..v2")).toBe(false);
+      });
+
+      it("accepts normal relative paths and edge cases", async () => {
+        expect(hasTraversalSegment("")).toBe(false);
+        expect(hasTraversalSegment(".")).toBe(false);
+        expect(hasTraversalSegment("./file.txt")).toBe(false);
+        expect(hasTraversalSegment("a/b/c.ts")).toBe(false);
+        expect(hasTraversalSegment("/absolute/path/x.md")).toBe(false);
+      });
+    });
+
 });

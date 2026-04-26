@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { ParserRegistry } from "../../src/treesitter/parser-registry.js";
 import { SymbolExtractor } from "../../src/treesitter/symbol-extractor.js";
 import type { Symbol } from "../../src/treesitter/types.js";
+import { readFileSync } from "fs";
 
 describe("SymbolExtractor", () => {
   let registry: ParserRegistry;
@@ -476,4 +477,143 @@ function incomplete(
       await expect(extractor.extractSymbols("code", ".rs")).rejects.toThrow();
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit55.test.ts #6 — extractGoTypeDeclaration should limit child iteration
+  describe("#6 — extractGoTypeDeclaration should limit child iteration", () => {
+      it("should use MAX_CHILDREN or similar limit", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        // Find the extractGoTypeDeclaration method's own for loop
+        const methodStart = source.indexOf("private extractGoTypeDeclaration");
+        expect(methodStart).toBeGreaterThan(-1);
+        const methodBlock = source.slice(methodStart, methodStart + 500);
+        const forLoop = methodBlock.match(/for \(let i = 0; i < ([^;]+);/);
+        expect(forLoop).not.toBeNull();
+        // Should NOT use raw node.childCount — should clamp with Math.min, MAX_CHILDREN, or a clamped variable
+        expect(forLoop![1]).toMatch(/MAX_CHILDREN|Math\.min|childLimit|Limit/);
+      });
+    });
+
+  // from tests/audit55.test.ts #7 — getNodeName should limit child iteration
+  describe("#7 — getNodeName should limit child iteration", () => {
+      it("should use MAX_CHILDREN or similar limit", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        const fn = source.match(/getNodeName[\s\S]*?for \(let i = 0; i < /);
+        expect(fn).not.toBeNull();
+        expect(fn![0]).toMatch(/MAX_CHILDREN|Math\.min/);
+      });
+    });
+
+  // from tests/audit56.test.ts #2 — getSignature should guard node.text
+  describe("#2 — getSignature should guard node.text", () => {
+      it("should check node.text before using it", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        // Should NOT have the unsafe `as string` cast
+        expect(source).not.toMatch(/node\.text\s+as\s+string/);
+        // Should have a guard before using node.text
+        const sigStart = source.indexOf("private getSignature");
+        const sigBlock = source.slice(sigStart, sigStart + 400);
+        expect(sigBlock).toMatch(/!node\.text|typeof node\.text/);
+      });
+    });
+
+  // from tests/audit56.test.ts #3 — getNodeName should guard .text access
+  describe("#3 — getNodeName should guard .text access", () => {
+      it("should validate text property before returning", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        const getNodeNameStart = source.indexOf("private getNodeName");
+        expect(getNodeNameStart).toBeGreaterThan(-1);
+        const block = source.slice(getNodeNameStart, getNodeNameStart + 500);
+        // Should not have bare `return nameNode.text;` or `return child.text;`
+        // Should have guards like `nameNode.text ?? null` or `if (nameNode.text)`
+        expect(block).not.toMatch(/return nameNode\.text;/);
+        expect(block).not.toMatch(/return child\.text;/);
+      });
+    });
+
+  // from tests/audit56.test.ts #9 — symbol-extractor should guard startPosition access
+  describe("#9 — symbol-extractor should guard startPosition access", () => {
+      it("should check startPosition exists before accessing row", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        // Find the first startPosition usage in symbol creation
+        const posBlock = source.match(/startLine:\s*(?:node\.startPosition|typeof\s+\w+Row)/);
+        expect(posBlock).not.toBeNull();
+        // Should have a guard — optional chaining, typeof check, or isFinite
+        expect(posBlock![0]).toMatch(/\?\.|startPosition\s*&&|startPosition\s*!=|typeof|isFinite/);
+      });
+    });
+
+  // from tests/audit57.test.ts #8 — getNodeName should guard against null node
+  describe("#8 — getNodeName should guard against null node", () => {
+      it("should check node before accessing properties", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        const fnStart = source.indexOf("private getNodeName");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 200);
+        expect(block).toMatch(/!node|node\s*==\s*null|node\?\./);
+      });
+    });
+
+  // from tests/audit58.test.ts #7 — getSignature should limit node.text length
+  describe("#7 — getSignature should limit node.text length", () => {
+      it("should check node.text length before splitting", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        const sigStart = source.indexOf("private getSignature");
+        expect(sigStart).toBeGreaterThan(-1);
+        const block = source.slice(sigStart, sigStart + 500);
+        expect(block).toMatch(/text\.length\s*>|MAX_SIG/i);
+      });
+    });
+
+  // from tests/audit63.test.ts #9 — symbolIdCounter should have overflow check
+  describe("#9 — symbolIdCounter should have overflow check", () => {
+      it("should validate counter before increment", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        const counterInc = source.indexOf("this.symbolIdCounter++");
+        expect(counterInc).toBeGreaterThan(-1);
+        // Check the region around the first increment for a guard
+        const block = source.slice(counterInc - 200, counterInc + 50);
+        expect(block).toMatch(/MAX_SAFE_INTEGER|MAX_SYMBOL_ID|symbolIdCounter\s*>/i);
+      });
+    });
+
+  // from tests/audit66.test.ts #5 — extractSymbolFromNode should clamp negative positions
+  describe("#5 — extractSymbolFromNode should clamp negative positions", () => {
+      it("should use Math.max to prevent line 0 or negative columns", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        const fnStart = source.indexOf("extractSymbolFromNode");
+        expect(fnStart).toBeGreaterThan(-1);
+        const posStart = source.indexOf("startLine:", fnStart);
+        expect(posStart).toBeGreaterThan(-1);
+        const block = source.slice(posStart, posStart + 300);
+        expect(block).toMatch(/Math\.max/);
+      });
+    });
+
+  // from tests/audit69.test.ts #6 — extractSymbolFromNode should validate startLine <= endLine
+  describe("#6 — extractSymbolFromNode should validate startLine <= endLine", () => {
+      it("should ensure endLine >= startLine", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        const fnStart = source.indexOf("private extractSymbolFromNode(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 900);
+        expect(block).toMatch(/endLine.*startLine|startLine.*endLine|Math\.max.*endLine/i);
+      });
+    });
+
+  // from tests/audit75.test.ts #9 — symbol-extractor Go type decl should check symbolIdCounter overflow
+  describe("#9 — symbol-extractor Go type decl should check symbolIdCounter overflow", () => {
+      it("should check MAX_SAFE_INTEGER before incrementing", () => {
+        const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
+        const goType = source.indexOf("private extractGoTypeDeclaration(");
+        expect(goType).toBeGreaterThan(-1);
+        const block = source.slice(goType, goType + 1200);
+        expect(block).toMatch(/MAX_SAFE_INTEGER|symbolIdCounter\s*>=\s*Number/);
+      });
+    });
+
 });

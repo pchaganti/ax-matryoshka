@@ -9,6 +9,7 @@ import {
   getRAGManager,
 } from "../../src/rag/manager.js";
 import { EXPERT_EXAMPLES, FAILURE_EXAMPLES } from "../../src/rag/knowledge-base.js";
+import { readFileSync } from "fs";
 
 describe("RAGManager", () => {
   let manager: RAGManager;
@@ -339,4 +340,140 @@ describe("generateSelfCorrectionFeedback edge cases", () => {
     const feedback = manager.generateSelfCorrectionFeedback("session-Y");
     expect(feedback).toBeNull();
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit17.test.ts Audit17 #7: RAG failure memory cleanup
+  describe("Audit17 #7: RAG failure memory cleanup", () => {
+    it("should auto-prune stale failures on record", async () => {
+      const { RAGManager } = await import("../../src/rag/manager.js");
+      const mgr = new RAGManager();
+
+      // Record a failure with old timestamp
+      const oldFailure: any = {
+        sessionId: "old-session",
+        iteration: 1,
+        error: "test error",
+        code: "test code",
+        timestamp: Date.now() - 10 * 60 * 1000, // 10 minutes ago
+      };
+      mgr.recordFailure(oldFailure);
+
+      // Record a fresh failure
+      const newFailure: any = {
+        sessionId: "new-session",
+        iteration: 1,
+        error: "new error",
+        code: "new code",
+        timestamp: Date.now(),
+      };
+      mgr.recordFailure(newFailure);
+
+      // Old session failures should be prunable
+      const recentAll = mgr.getRecentFailures(undefined, 5 * 60 * 1000);
+      // Only the new one should be within the 5-minute window
+      expect(recentAll.length).toBe(1);
+      expect(recentAll[0].sessionId).toBe("new-session");
+    });
+  });
+
+  // from tests/audit18.test.ts Audit18 #12: failure matching precedence
+  describe("Audit18 #12: failure matching precedence", () => {
+    it("rag manager should load", async () => {
+      const { RAGManager } = await import("../../src/rag/manager.js");
+      const mgr = new RAGManager();
+      expect(mgr).toBeDefined();
+    });
+  });
+
+  // from tests/audit26.test.ts Audit26 #10: RAG manager topK count
+  describe("Audit26 #10: RAG manager topK count", () => {
+    it("should be importable", async () => {
+      const mod = await import("../../src/rag/manager.js");
+      expect(mod.RAGManager).toBeDefined();
+    });
+  });
+
+  // from tests/audit63.test.ts #6 — generateSelfCorrectionFeedback should guard failure.code
+  describe("#6 — generateSelfCorrectionFeedback should guard failure.code", () => {
+      it("should null-check failure.code before slicing", () => {
+        const source = readFileSync("src/rag/manager.ts", "utf-8");
+        const fnStart = source.indexOf("generateSelfCorrectionFeedback(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 600);
+        expect(block).toMatch(/failure\.code\s*\|\||failure\.code\s*\?\./)
+      });
+    });
+
+  // from tests/audit69.test.ts #3 — getHints sort should use safe comparator
+  describe("#3 — getHints sort should use safe comparator", () => {
+      it("should not use raw subtraction for score sorting", () => {
+        const source = readFileSync("src/rag/manager.ts", "utf-8");
+        const sortStart = source.indexOf("Sort by score");
+        expect(sortStart).toBeGreaterThan(-1);
+        const block = source.slice(sortStart, sortStart + 200);
+        // Should NOT use raw subtraction
+        const hasRawSubtraction = /\.sort\(\(a,\s*b\)\s*=>\s*b\.score\s*-\s*a\.score\)/.test(block);
+        expect(hasRawSubtraction).toBe(false);
+      });
+    });
+
+  // from tests/audit69.test.ts #4 — getHints should validate topK parameter
+  describe("#4 — getHints should validate topK parameter", () => {
+      it("should clamp or validate topK to positive integer", () => {
+        const source = readFileSync("src/rag/manager.ts", "utf-8");
+        const fnStart = source.indexOf("getHints(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 300);
+        expect(block).toMatch(/Math\.max|Math\.min|Math\.floor|topK\s*[<>=]/i);
+      });
+    });
+
+  // from tests/audit74.test.ts #10 — manager recordFailure should validate query length
+  describe("#10 — manager recordFailure should validate query length", () => {
+      it("should cap record.query length", () => {
+        const source = readFileSync("src/rag/manager.ts", "utf-8");
+        const fnStart = source.indexOf("recordFailure(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 500);
+        expect(block).toMatch(/record\.query\.length|MAX_QUERY|query\.slice/);
+      });
+    });
+
+  // from tests/audit75.test.ts #8 — rag manager getHints should validate query length
+  describe("#8 — rag manager getHints should validate query length", () => {
+      it("should check query.length", () => {
+        const source = readFileSync("src/rag/manager.ts", "utf-8");
+        const fnStart = source.indexOf("getHints(query:");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 300);
+        expect(block).toMatch(/query\.length|MAX_QUERY/);
+      });
+    });
+
+  // from tests/audit80.test.ts #2 — formatExampleAsHint should escape code backticks
+  describe("#2 — formatExampleAsHint should escape code backticks", () => {
+      it("should escape backticks in example.code", () => {
+        const source = readFileSync("src/rag/manager.ts", "utf-8");
+        const fnStart = source.indexOf("private formatExampleAsHint");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/\.replace\(.*`|escape.*code|safeCode/);
+      });
+    });
+
+  // from tests/audit80.test.ts #9 — formatExampleAsHint should truncate rationale
+  describe("#9 — formatExampleAsHint should truncate rationale", () => {
+      it("should truncate or cap example.rationale", () => {
+        const source = readFileSync("src/rag/manager.ts", "utf-8");
+        const fnStart = source.indexOf("private formatExampleAsHint");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/rationale.*\.slice\(0,|safeRationale|rationale.*truncat/);
+      });
+    });
+
 });

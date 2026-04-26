@@ -11,6 +11,7 @@ import {
   SynthesisResult,
   safeEvalSynthesized,
 } from "../../src/synthesis/coordinator.js";
+import { readFileSync } from "fs";
 
 describe("SynthesisCoordinator", () => {
   let coordinator: SynthesisCoordinator;
@@ -412,4 +413,160 @@ describe("CollectedExample interface", () => {
     expect(lineExample.source).toBe("line");
     expect(matchExample.source).toBe("match");
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit14.test.ts Issue #4: coordinator should validate knowledge base regex
+  describe("Issue #4: coordinator should validate knowledge base regex", () => {
+    it("should validate regex from knowledge base before testing", async () => {
+      const fs = await import("node:fs/promises");
+      const source = await fs.readFile("src/synthesis/coordinator.ts", "utf-8");
+
+      // Find the knowledge base lookup section
+      const kbSection = source.match(/for \(const component of similar[\s\S]*?catch \{[\s\S]*?\}/);
+      expect(kbSection).not.toBeNull();
+      const kbBody = kbSection![0];
+
+      // Should contain validateRegex before new RegExp
+      expect(kbBody).toMatch(/validateRegex/);
+    });
+  });
+
+  // from tests/audit18.test.ts Audit18 #1: validateRegex curly brace quantifiers
+  describe("Audit18 #1: validateRegex curly brace quantifiers", () => {
+    it("should reject nested quantifiers using {n,} syntax", async () => {
+      const { SynthesisCoordinator } = await import("../../src/synthesis/coordinator.js");
+      const coord = new SynthesisCoordinator();
+      // (a{1,})+ is equivalent to (a+)+ — catastrophic backtracking
+      expect(coord.validateRegex("(a{1,})+")).toBe(false);
+    });
+
+    it("should reject nested quantifiers using {n,m} syntax", async () => {
+      const { SynthesisCoordinator } = await import("../../src/synthesis/coordinator.js");
+      const coord = new SynthesisCoordinator();
+      expect(coord.validateRegex("(a{2,5})+")).toBe(false);
+    });
+
+    it("should still accept safe patterns with curly braces", async () => {
+      const { SynthesisCoordinator } = await import("../../src/synthesis/coordinator.js");
+      const coord = new SynthesisCoordinator();
+      // Non-nested quantifiers are fine
+      expect(coord.validateRegex("a{1,3}")).toBe(true);
+      expect(coord.validateRegex("\\d{2,4}")).toBe(true);
+    });
+  });
+
+  // from tests/audit18.test.ts Audit18 #3: testRegex calls validateRegex
+  describe("Audit18 #3: testRegex calls validateRegex", () => {
+    it("should reject ReDoS pattern in testRegex", async () => {
+      const { SynthesisCoordinator } = await import("../../src/synthesis/coordinator.js");
+      const coord = new SynthesisCoordinator();
+      // (a+)+ is a ReDoS pattern — testRegex should reject it
+      const result = coord.testRegex("(a+)+", "aaaaaa");
+      expect(result).toBe(false);
+    });
+
+    it("should allow safe patterns in testRegex", async () => {
+      const { SynthesisCoordinator } = await import("../../src/synthesis/coordinator.js");
+      const coord = new SynthesisCoordinator();
+      expect(coord.testRegex("\\d+", "123")).toBe(true);
+    });
+  });
+
+  // from tests/audit24.test.ts Audit24 #2: coordinator synthesizeFromCollected context safety
+  describe("Audit24 #2: coordinator synthesizeFromCollected context safety", () => {
+    it("should not crash when all examples have undefined context", async () => {
+      const { SynthesisCoordinator } = await import(
+        "../../src/synthesis/coordinator.js"
+      );
+      const coord = new SynthesisCoordinator();
+      // Collect examples WITHOUT context
+      coord.collectExample("nocontext", { source: "grep", raw: "hello world" });
+      coord.collectExample("nocontext", { source: "grep", raw: "foo bar" });
+      // synthesizeFromCollected with "extractor" should not crash
+      const result = coord.synthesizeFromCollected("nocontext", "extractor");
+      // Should return failure (no expectedOutputs), not throw
+      expect(result.success).toBe(false);
+    });
+  });
+
+  // from tests/audit32.test.ts #3 — coordinator new Function should validate code
+  describe("#3 — coordinator new Function should validate code", () => {
+        it("should not use bare new Function for synthesized code", () => {
+          const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
+          // Find the synthesizeExtractorResult method
+          const method = source.match(/synthesizeExtractorResult[\s\S]*?tryRelationalSynthesis/);
+          expect(method).not.toBeNull();
+          // Should not have bare new Function("return " + code)
+          // Should either use a safe evaluator or validate the code
+          const hasBareNewFunction = /new Function\("return "\s*\+\s*code\)/.test(method![0]);
+          expect(hasBareNewFunction).toBe(false);
+        });
+
+        it("should not use bare new Function in tryRelationalSynthesis", () => {
+          const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
+          const method = source.match(/tryRelationalSynthesis[\s\S]*?return null/);
+          expect(method).not.toBeNull();
+          const hasBareNewFunction = /new Function\("return "\s*\+\s*code\)/.test(method![0]);
+          expect(hasBareNewFunction).toBe(false);
+        });
+      });
+
+  // from tests/audit42.test.ts #4 — coordinator safeEvalSynthesized should block Reflect and Proxy
+  describe("#4 — coordinator safeEvalSynthesized should block Reflect and Proxy", () => {
+      it("should include Reflect in dangerous patterns", () => {
+        const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
+        const evalBlock = source.match(/function safeEvalSynthesized[\s\S]*?new Function/);
+        expect(evalBlock).not.toBeNull();
+        expect(evalBlock![0]).toMatch(/\\bReflect\\b/);
+      });
+
+      it("should include Proxy in dangerous patterns", () => {
+        const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
+        const evalBlock = source.match(/function safeEvalSynthesized[\s\S]*?new Function/);
+        expect(evalBlock).not.toBeNull();
+        expect(evalBlock![0]).toMatch(/\\bProxy\\b/);
+      });
+    });
+
+  // from tests/audit48.test.ts #10 — coordinator safeEvalSynthesized should block more patterns
+  describe("#10 — coordinator safeEvalSynthesized should block more patterns", () => {
+      it("should block bracket notation, template literals, and unicode escapes", () => {
+        const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
+        const safeEvalFn = source.match(/function safeEvalSynthesized[\s\S]*?new Function/);
+        expect(safeEvalFn).not.toBeNull();
+        // Should block bracket notation with strings
+        expect(safeEvalFn![0]).toMatch(/\\\[.*['"]|bracket/i);
+        // Should block template literals
+        expect(safeEvalFn![0]).toMatch(/`|template/i);
+        // Should block unicode escapes
+        expect(safeEvalFn![0]).toMatch(/\\\\u|unicode/i);
+      });
+    });
+
+  // from tests/audit80.test.ts #5 — safeEvalSynthesized should block string concatenation
+  describe("#5 — safeEvalSynthesized should block string concatenation", () => {
+      it("should reject string concatenation patterns", () => {
+        const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
+        const fnStart = source.indexOf("function safeEvalSynthesized");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 2500);
+        expect(block).toMatch(/["']\s*\+\s*["']|string\s*concat|concat.*pattern/);
+      });
+    });
+
+  // from tests/audit83.test.ts #10 — parseFloat ctx should be length-bounded
+  describe("#10 — parseFloat ctx should be length-bounded", () => {
+      it("should check ctx length before parseFloat", () => {
+        const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
+        const parseFloatLine = source.indexOf("parseFloat(ctx)");
+        expect(parseFloatLine).toBeGreaterThan(-1);
+        const block = source.slice(parseFloatLine - 200, parseFloatLine + 50);
+        expect(block).toMatch(/ctx\.length|ctx\.slice|MAX_CTX|safeCtx/);
+      });
+    });
+
 });

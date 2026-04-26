@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
+import { readFileSync } from "fs";
 
 describe("CLI", () => {
   const cli = (args: string, options: { timeout?: number } = {}) => {
@@ -84,4 +85,38 @@ describe("CLI", () => {
       expect(output).toContain(absPath);
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit33.test.ts #5 — CLI parseArgs should handle missing arg values
+  describe("#5 — CLI parseArgs should handle missing arg values", () => {
+      it("should not crash when --max-turns is last arg", () => {
+        const source = readFileSync("src/index.ts", "utf-8");
+        // Find the parseArgs function and check for bounds validation
+        const parseArgsFn = source.match(/function parseArgs[\s\S]*?return options;\s*\}/);
+        expect(parseArgsFn).not.toBeNull();
+        // Should have bounds checking — either checking i < args.length
+        // or handling undefined from args[++i]
+        const body = parseArgsFn![0];
+        // After fix, should validate that ++i doesn't exceed bounds
+        // or handle NaN from parseInt of undefined
+        expect(body).toMatch(/i\s*<\s*args\.length|i\s*\+\s*1\s*<\s*args\.length|args\[i\s*\+\s*1\]|isNaN/);
+      });
+    });
+
+  // from tests/audit34.test.ts #14 — CLI should error on missing option values
+  describe("#14 — CLI should error on missing option values", () => {
+        it("should check bounds before reading next arg for string options", () => {
+          const source = readFileSync("src/index.ts", "utf-8");
+          // Should check i + 1 < args.length or similar
+          const modelBlock = source.match(/--model[\s\S]*?options\.model/);
+          expect(modelBlock).not.toBeNull();
+          // After fix, should have bounds check
+          expect(modelBlock![0]).toMatch(/i\s*\+\s*1\s*>=?\s*args\.length|args\[i\s*\+\s*1\]|throw|Error/);
+        });
+      });
+
 });

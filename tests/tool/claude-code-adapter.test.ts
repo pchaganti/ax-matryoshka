@@ -128,3 +128,30 @@ describe("generateMCPConfig", () => {
     expect(parsed.tools[0].input_schema).toBeDefined();
   });
 });
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit24.test.ts Audit24 #10: claude-code adapter type safety
+  describe("Audit24 #10: claude-code adapter type safety", () => {
+    it("should be importable and constructable", async () => {
+      const { ClaudeCodeAdapter } = await import(
+        "../../src/tool/adapters/claude-code.js"
+      );
+      const adapter = new ClaudeCodeAdapter();
+      expect(adapter.callTool).toBeDefined();
+    });
+  });
+
+  // from tests/audit27.test.ts Audit27 #9: claude-code adapter type validation
+  describe("Audit27 #9: claude-code adapter type validation", () => {
+    it("should be importable", async () => {
+      const { ClaudeCodeAdapter } = await import(
+        "../../src/tool/adapters/claude-code.js"
+      );
+      expect(ClaudeCodeAdapter).toBeDefined();
+    });
+  });
+
+});
