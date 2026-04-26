@@ -174,6 +174,44 @@ describe("RLM Executor", () => {
       expect(result).toMatch(/error|not found|ENOENT/i);
       expect(mockLLM).not.toHaveBeenCalled();
     });
+
+    // Paper-conformance fix (T1.1): Algorithm 1 starts hist with
+    // Metadata(state) — a constant-size description of the prompt
+    // (length, type, chunk lengths). Without this the model has to
+    // burn a turn calling (text_stats) to learn it has a 99KB doc.
+    it("should include context metadata in the initial user message", async () => {
+      mockLLM.mockResolvedValueOnce("<<<FINAL>>>x<<<END>>>");
+      // small.txt is ~96 tokens / a few hundred chars
+      await runRLM("query", "./test-fixtures/small.txt", {
+        llmClient: mockLLM,
+        maxTurns: 1,
+      });
+
+      const firstPrompt = mockLLM.mock.calls[0][0] as string;
+      // Metadata must be reachable to the model on turn 1 — not after a
+      // round-trip. Match the paper's surface: chunk count, total chars,
+      // chunk lengths array.
+      expect(firstPrompt).toMatch(/total chars/i);
+      expect(firstPrompt).toMatch(/1 chunk/i);
+      // The original Query: line stays — the metadata is appended to
+      // the same user message, not replacing it.
+      expect(firstPrompt).toMatch(/Query: query/);
+    });
+
+    it("should report multi-context metadata when documentContent is an array", async () => {
+      mockLLM.mockResolvedValueOnce("<<<FINAL>>>x<<<END>>>");
+      const { runRLMFromContent } = await import("../src/rlm.js");
+      await runRLMFromContent(
+        "query",
+        ["chunk one\n".repeat(50), "chunk two\n".repeat(80), "chunk three\n".repeat(20)],
+        { llmClient: mockLLM, maxTurns: 1 }
+      );
+
+      const firstPrompt = mockLLM.mock.calls[0][0] as string;
+      // Three chunks with their lengths must be visible to the root model
+      expect(firstPrompt).toMatch(/3 chunks/i);
+      expect(firstPrompt).toMatch(/total chars/i);
+    });
   });
 });
 
