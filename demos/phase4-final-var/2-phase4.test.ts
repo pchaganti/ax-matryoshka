@@ -11,9 +11,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureBaseline } from "../ensure-baseline.js";
 import { runRLMFromContent } from "../../src/rlm.js";
 import { createNucleusAdapter } from "../../src/adapters/nucleus.js";
 import {
@@ -22,6 +23,7 @@ import {
   PARENT_SCRIPT,
   PHASE4_CHILD_RESPONDER,
   EXPECTED_TAG_COUNT,
+  generateBaseline,
 } from "./scenario.js";
 import {
   fromScript,
@@ -32,12 +34,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASELINE_PATH = join(__dirname, "baseline.json");
 const AFTER_PATH = join(__dirname, "after.json");
 
+type Baseline = Awaited<ReturnType<typeof generateBaseline>>;
+
 describe("Phase 4 — child uses FINAL_VAR(_1) for output savings", () => {
   it("matches baseline payload at <20% of the child's output cost", async () => {
-    const baselineRaw = await readFile(BASELINE_PATH, "utf-8");
-    const baseline = JSON.parse(baselineRaw) as {
-      childOutputChars: number;
-    };
+    const baseline = await ensureBaseline<Baseline>(
+      BASELINE_PATH,
+      () => generateBaseline()
+    );
 
     let childOutputChars = 0;
     const wrappedChild = (prompt: string, turn: number) => {

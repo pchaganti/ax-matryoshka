@@ -3,13 +3,15 @@
  *
  * Manages file extension to language mappings, combining:
  * 1. Built-in grammars shipped with matryoshka
- * 2. Custom grammars from ~/.matryoshka/config.json
+ * 2. Custom grammars from ~/.config/matryoshka/config.json
  */
 
 import { createRequire } from "node:module";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import type { SupportedLanguage, LanguageConfig, SymbolKind } from "./types.js";
 import { BUILTIN_GRAMMARS, type BuiltinGrammar } from "./builtin-grammars.js";
-import { getCustomGrammars, type GrammarConfig } from "../config/grammar-config.js";
+import type { GrammarConfig } from "../config/grammar-config.js";
+import { CONFIG_FILE } from "../config/paths.js";
 
 // Use createRequire for checking if packages are installed
 const require = createRequire(import.meta.url);
@@ -42,6 +44,26 @@ function customToConfig(language: string, custom: GrammarConfig): LanguageConfig
   };
 }
 
+const MAX_CONFIG_FILE_SIZE = 10_000_000;
+
+/**
+ * Read custom grammars directly from the config file (sync).
+ * This avoids the async loadConfig chain while still reading
+ * from the unified config location.
+ */
+function readCustomGrammars(): Record<string, GrammarConfig> {
+  if (!existsSync(CONFIG_FILE)) return {};
+  try {
+    const stats = statSync(CONFIG_FILE);
+    if (stats.size > MAX_CONFIG_FILE_SIZE) return {};
+    const content = readFileSync(CONFIG_FILE, "utf-8");
+    const parsed = JSON.parse(content) as { grammars?: Record<string, GrammarConfig> };
+    return parsed.grammars ?? {};
+  } catch {
+    return {};
+  }
+}
+
 /**
  * Get all language configurations (built-in + custom)
  * Custom configs override built-in ones with the same name
@@ -59,7 +81,7 @@ export function getAllLanguageConfigs(): Record<string, LanguageConfig> {
 
   // Merge custom grammars (overrides built-in)
   try {
-    const custom = getCustomGrammars();
+    const custom = readCustomGrammars();
     for (const [lang, grammar] of Object.entries(custom)) {
       if (DANGEROUS_LANG_KEYS.has(lang)) continue;
       configs[lang] = customToConfig(lang, grammar);
@@ -182,6 +204,5 @@ export function getAvailableLanguages(): string[] {
 export const LANGUAGE_CONFIGS = getAllLanguageConfigs();
 
 export function getWasmFile(language: SupportedLanguage): string {
-  // No longer used - kept for compatibility
   return `tree-sitter-${language}.wasm`;
 }

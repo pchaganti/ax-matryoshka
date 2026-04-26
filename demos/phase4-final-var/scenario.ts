@@ -20,6 +20,9 @@
  */
 
 import type { Responder } from "../phase1-rlm-query/harness.js";
+import { fromScript, makeScriptedLLM } from "../phase1-rlm-query/harness.js";
+import { runRLMFromContent } from "../../src/rlm.js";
+import { createNucleusAdapter } from "../../src/adapters/nucleus.js";
 
 const TAG_COUNT = 100;
 export const SCENARIO_DOC: string = Array.from(
@@ -66,3 +69,39 @@ export const PHASE4_CHILD_RESPONDER: Responder = (_prompt, turn) => {
 };
 
 export const EXPECTED_TAG_COUNT = TAG_COUNT;
+
+export async function generateBaseline() {
+  let childOutputChars = 0;
+  const wrappedChild = (prompt: string, turn: number) => {
+    const out = BASELINE_CHILD_RESPONDER(prompt, turn);
+    const s = typeof out === "string" ? out : "";
+    childOutputChars += s.length;
+    return s;
+  };
+
+  const { llm, metrics } = makeScriptedLLM(
+    fromScript(PARENT_SCRIPT),
+    wrappedChild,
+    SCENARIO_QUERY
+  );
+  await runRLMFromContent(SCENARIO_QUERY, SCENARIO_DOC, {
+    llmClient: llm,
+    adapter: createNucleusAdapter(),
+    maxTurns: 6,
+    ragEnabled: false,
+    subRLMMaxDepth: 1,
+  });
+
+  return {
+    mode: "baseline",
+    scenario: "child-final-output-size",
+    docChars: SCENARIO_DOC.length,
+    tagCount: EXPECTED_TAG_COUNT,
+    childCalls: metrics.childCalls,
+    childOutputChars,
+    avgChildOutputChars:
+      metrics.childCalls > 0
+        ? Math.round(childOutputChars / metrics.childCalls)
+        : 0,
+  };
+}

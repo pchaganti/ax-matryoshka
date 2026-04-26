@@ -2,7 +2,7 @@
  * Built-in grammar configurations
  *
  * These are shipped with matryoshka and don't require user configuration.
- * Users can override these or add new languages via ~/.matryoshka/config.json
+ * Users can override these or add new languages via ~/.config/matryoshka/config.json
  */
 
 import type { SymbolKind } from "./types.js";

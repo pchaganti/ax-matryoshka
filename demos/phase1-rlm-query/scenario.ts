@@ -27,6 +27,7 @@
  */
 
 import type { Responder } from "./harness.js";
+import { runBench, fromScript, summarize } from "./harness.js";
 
 /**
  * Per-chunk AUTH counts that the child should report when it can grep
@@ -109,3 +110,44 @@ export const SCENARIO_A_CHILD_RESPONDER: Responder = (prompt, turn) => {
   const matchOccurrences = (tail.match(/"match":/g) ?? []).length;
   return `<<<FINAL>>>${matchOccurrences}<<<END>>>`;
 };
+
+function parseCountArray(result: string): number[] | null {
+  try {
+    const parsed = JSON.parse(result);
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((s) => typeof s === "string" && /^\d+$/.test(s))
+    ) {
+      return parsed.map(Number);
+    }
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
+export async function generateBaseline(baselinePath: string) {
+  const { result, metrics } = await runBench({
+    query: SCENARIO_A_QUERY,
+    documentContent: SCENARIO_A_DOC,
+    parentResponder: fromScript(SCENARIO_A_BASELINE_PARENT_SCRIPT),
+    childResponder: SCENARIO_A_CHILD_RESPONDER,
+    subRLMMaxDepth: 1,
+    maxTurns: 6,
+  });
+
+  const counts = parseCountArray(result);
+  const sum = counts ? counts.reduce((a, b) => a + b, 0) : null;
+
+  return {
+    mode: "baseline",
+    scenario: "scaled-handle-as-document",
+    docChars: SCENARIO_A_DOC.length,
+    docLines: SCENARIO_A_DOC.split("\n").length,
+    ...summarize(metrics),
+    result,
+    expectedTotalAuth: SCENARIO_A_TOTAL_AUTH,
+    observedSum: sum,
+    correct: sum === SCENARIO_A_TOTAL_AUTH,
+  };
+}

@@ -4,7 +4,7 @@
   },
   "providers": {
     "ollama": {
-      "baseUrl": "http://localhost:11434",
+      "url": "http://localhost:11434/api/generate",
       "model": "qwen3-coder:30b",
       "options": {
         "temperature": 0.2,
@@ -12,9 +12,17 @@
       }
     },
     "deepseek": {
-      "baseUrl": "https://api.deepseek.com",
+      "url": "https://api.deepseek.com/chat/completions",
       "apiKey": "${DEEPSEEK_API_KEY}",
       "model": "deepseek-chat",
+      "options": {
+        "temperature": 0.2
+      }
+    },
+    "glm": {
+      "url": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      "apiKey": "${ZHIPU_API_KEY}",
+      "model": "glm-4-plus",
       "options": {
         "temperature": 0.2
       }

@@ -22,7 +22,7 @@ export function createOllamaProvider(config: ProviderConfig): LLMProvider {
       }
 
       const response = await fetchWithRetry(
-        `${config.baseUrl}/api/generate`,
+        config.url,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

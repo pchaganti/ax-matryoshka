@@ -4,7 +4,7 @@
  * Provides code-aware operations like symbol extraction,
  * structural queries, and reference finding.
  *
- * Supports built-in grammars and custom grammars via ~/.matryoshka/config.json
+ * Supports built-in grammars and custom grammars via ~/.config/matryoshka/config.json
  */
 
 export * from "./types.js";

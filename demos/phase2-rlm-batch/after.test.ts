@@ -17,9 +17,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureBaseline } from "../ensure-baseline.js";
 import { runBench, fromScript, summarize } from "../phase1-rlm-query/harness.js";
 import {
   SCENARIO_DOC,
@@ -28,6 +29,7 @@ import {
   CHILD_RESPONDER,
   SCENARIO_TOTAL_AUTH,
   SIMULATED_CHILD_LATENCY_MS,
+  generateBaseline,
 } from "./scenario.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -49,13 +51,14 @@ function parseCountArray(result: string): number[] | null {
   return null;
 }
 
+type Baseline = Awaited<ReturnType<typeof generateBaseline>>;
+
 describe("Phase 2 — concurrent (rlm_batch …)", () => {
   it("[FAILING UNTIL IMPL] produces correct counts AND >=2x faster than sequential map", async () => {
-    const baselineRaw = await readFile(BASELINE_PATH, "utf-8");
-    const baseline = JSON.parse(baselineRaw) as {
-      elapsedMs: number;
-      observedSum: number | null;
-    };
+    const baseline = await ensureBaseline<Baseline>(
+      BASELINE_PATH,
+      () => generateBaseline()
+    );
 
     const start = Date.now();
     const { result, metrics } = await runBench({

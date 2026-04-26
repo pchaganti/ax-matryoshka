@@ -21,13 +21,13 @@ describe("Config", () => {
       fs.writeFileSync(configPath, JSON.stringify({
         llm: { provider: "test" },
         providers: {
-          test: { baseUrl: "${NONEXISTENT_VAR_FOR_TEST_12345}" }
+          test: { url: "${NONEXISTENT_VAR_FOR_TEST_12345}" }
         }
       }));
 
       // Should NOT throw — unset env vars should resolve to empty string
       const config = await loadConfig(configPath);
-      expect(config.providers.test.baseUrl).toBe("");
+      expect(config.providers.test.url).toBe("");
     });
 
     it("should load config with mixed set and unset env vars", async () => {
@@ -38,14 +38,14 @@ describe("Config", () => {
       fs.writeFileSync(configPath, JSON.stringify({
         llm: { provider: "ollama" },
         providers: {
-          ollama: { baseUrl: `\${${envKey}}` },
-          deepseek: { baseUrl: "https://api.deepseek.com", apiKey: "${UNSET_API_KEY_12345}" }
+          ollama: { url: `\${${envKey}}` },
+          deepseek: { url: "https://api.deepseek.com/chat/completions", apiKey: "${UNSET_API_KEY_12345}" }
         }
       }));
 
       // Should not throw even though UNSET_API_KEY_12345 doesn't exist
       const config = await loadConfig(configPath);
-      expect(config.providers.ollama.baseUrl).toBe("http://localhost:11434");
+      expect(config.providers.ollama.url).toBe("http://localhost:11434");
       expect(config.providers.deepseek.apiKey).toBe("");
 
       delete process.env[envKey];
@@ -59,12 +59,12 @@ describe("Config", () => {
       fs.writeFileSync(configPath, JSON.stringify({
         llm: { provider: "test" },
         providers: {
-          test: { baseUrl: `\${${envKey}}` }
+          test: { url: `\${${envKey}}` }
         }
       }));
 
       const config = await loadConfig(configPath);
-      expect(config.providers.test.baseUrl).toBe("http://resolved-url");
+      expect(config.providers.test.url).toBe("http://resolved-url");
 
       delete process.env[envKey];
     });
@@ -74,12 +74,12 @@ describe("Config", () => {
       fs.writeFileSync(configPath, JSON.stringify({
         llm: { provider: "ollama" },
         providers: {
-          ollama: { baseUrl: "http://localhost:11434" }
+          ollama: { url: "http://localhost:11434" }
         }
       }));
 
       const config = await loadConfig(configPath);
-      expect(config.providers.ollama.baseUrl).toBe("http://localhost:11434");
+      expect(config.providers.ollama.url).toBe("http://localhost:11434");
     });
   });
 
@@ -104,7 +104,7 @@ describe("Config", () => {
       fs.writeFileSync(configPath, JSON.stringify({
         llm: { provider: "test" },
         providers: {
-          test: { baseUrl: "${__proto__}" }
+          test: { url: "${__proto__}" }
         }
       }));
 
@@ -116,7 +116,7 @@ describe("Config", () => {
       fs.writeFileSync(configPath, JSON.stringify({
         llm: { provider: "test" },
         providers: {
-          test: { baseUrl: "${constructor}" }
+          test: { url: "${constructor}" }
         }
       }));
 
@@ -128,7 +128,7 @@ describe("Config", () => {
       fs.writeFileSync(configPath, JSON.stringify({
         llm: { provider: "test" },
         providers: {
-          test: { baseUrl: "${foo bar}" }
+          test: { url: "${foo bar}" }
         }
       }));
 
@@ -149,7 +149,7 @@ describe("Config", () => {
             llm: { provider: "ollama" },
             providers: {
               ollama: {
-                baseUrl: "http://localhost:11434",
+                url: "http://localhost:11434",
                 options: { num_ctx: "${TEST_NUM_CTX}" },
               },
             },

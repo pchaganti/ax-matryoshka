@@ -1,6 +1,8 @@
-import { readFile } from "fs/promises";
-import { resolve } from "path";
+import { readFile, writeFile, mkdir } from "fs/promises";
+import { existsSync, statSync } from "fs";
 import { hasTraversalSegment } from "./utils/path-safety.js";
+import { CONFIG_DIR, CONFIG_FILE } from "./config/paths.js";
+import type { SymbolKind } from "./treesitter/types.js";
 
 /**
  * Configuration file types
@@ -27,7 +29,7 @@ export interface LLMConfig {
 }
 
 export interface ProviderConfig {
-  baseUrl: string;
+  url: string;
   apiKey?: string;
   model?: string;
   /** Adapter name for model-specific prompting (e.g., "qwen", "deepseek"). Auto-detected from model name if not specified. */
@@ -39,10 +41,23 @@ export interface RLMConfig {
   maxTurns: number;
 }
 
+export interface GrammarConfig {
+  /** npm package name (e.g., "tree-sitter-rust") */
+  package: string;
+  /** File extensions (e.g., [".rs"]) */
+  extensions: string[];
+  /** Map of AST node types to symbol kinds */
+  symbols: Record<string, SymbolKind>;
+  /** Optional: how to extract the grammar from the module */
+  moduleExport?: string;
+}
+
 export interface Config {
   llm: LLMConfig;
   providers: Record<string, ProviderConfig>;
   rlm: RLMConfig;
+  /** Custom grammar configurations */
+  grammars?: Record<string, GrammarConfig>;
 }
 
 /**
@@ -60,7 +75,7 @@ function resolveEnvVars(obj: unknown, depth: number = 0): unknown {
       }
       const resolved = process.env[varName];
       if (resolved === undefined) {
-        return ""; // Unset env vars resolve to empty string (non-fatal)
+        return "";
       }
       return resolved;
     });
@@ -88,7 +103,7 @@ const DEFAULT_CONFIG: Config = {
   },
   providers: {
     ollama: {
-      baseUrl: "http://localhost:11434",
+      url: "http://localhost:11434/api/generate",
       model: "qwen3-coder:30b",
       options: {
         temperature: 0.2,
@@ -101,7 +116,7 @@ const DEFAULT_CONFIG: Config = {
   },
 };
 
-const MAX_NUMERIC_COERCE_LENGTH = 15; // Don't coerce strings longer than this (API keys, tokens)
+const MAX_NUMERIC_COERCE_LENGTH = 15;
 const MAX_CONFIG_DEPTH = 20;
 function coerceConfigTypes(obj: unknown, depth: number = 0): unknown {
   if (depth > MAX_CONFIG_DEPTH) return obj;
@@ -126,35 +141,63 @@ function coerceConfigTypes(obj: unknown, depth: number = 0): unknown {
   return obj;
 }
 
-export async function loadConfig(configPath?: string): Promise<Config> {
-  const path = configPath || resolve(process.cwd(), "config.json");
+/**
+ * Resolve the config file path using the standard lookup order:
+ * 1. Explicit path if provided
+ * 2. ./config.json in CWD (backward compat)
+ * 3. ~/.config/matryoshka/config.json (XDG)
+ */
+export function resolveConfigPath(configPath?: string): string {
+  if (configPath) return configPath;
+  return existsSync("./config.json") ? "./config.json" : CONFIG_FILE;
+}
 
-  // Validate custom config path — block path traversal sequences (segment-aware
-  // so legitimate filenames like `local..config.json` are allowed)
+const MAX_CONFIG_FILE_SIZE = 10_000_000;
+
+export async function loadConfig(configPath?: string): Promise<Config> {
+  const path = resolveConfigPath(configPath);
+
   if (configPath && hasTraversalSegment(configPath)) {
     throw new Error("Config path traversal (..) is not allowed");
   }
+
+  try {
+    const stats = statSync(path);
+    if (stats.size > MAX_CONFIG_FILE_SIZE) {
+      console.warn(`Warning: Config file too large (${stats.size} bytes, max ${MAX_CONFIG_FILE_SIZE})`);
+      return DEFAULT_CONFIG;
+    }
+  } catch { /* stat failed, proceed */ }
 
   try {
     const content = await readFile(path, "utf-8");
     const rawConfig = JSON.parse(content) as Partial<Config>;
     const userConfig = coerceConfigTypes(resolveEnvVars(rawConfig)) as Partial<Config>;
 
-    // Deep merge with defaults
     return {
       llm: { ...DEFAULT_CONFIG.llm, ...userConfig.llm },
       providers: { ...DEFAULT_CONFIG.providers, ...userConfig.providers },
       rlm: { ...DEFAULT_CONFIG.rlm, ...userConfig.rlm },
+      grammars: userConfig.grammars,
     };
   } catch (error) {
     if (error instanceof SyntaxError) {
       throw new Error(`Invalid JSON in config file ${path}: ${error.message}`);
     }
     if (error instanceof Error && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT") {
-      // Config file not found, use defaults
       return DEFAULT_CONFIG;
     }
     throw error;
   }
 }
 
+export async function ensureConfigDir(): Promise<void> {
+  if (!existsSync(CONFIG_DIR)) {
+    await mkdir(CONFIG_DIR, { recursive: true });
+  }
+}
+
+export async function saveConfig(config: Config): Promise<void> {
+  await ensureConfigDir();
+  await writeFile(CONFIG_FILE, JSON.stringify(config, null, 2));
+}

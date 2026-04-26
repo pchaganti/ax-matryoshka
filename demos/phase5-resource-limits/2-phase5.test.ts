@@ -7,9 +7,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureBaseline } from "../ensure-baseline.js";
 import { runRLMFromContent } from "../../src/rlm.js";
 import { createNucleusAdapter } from "../../src/adapters/nucleus.js";
 import {
@@ -18,6 +19,7 @@ import {
   PARENT_RESPONDER,
   CHILD_RESPONDER,
   MAX_TIMEOUT_MS,
+  generateBaseline,
 } from "./scenario.js";
 import { makeScriptedLLM } from "../phase1-rlm-query/harness.js";
 
@@ -25,10 +27,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const BASELINE_PATH = join(__dirname, "baseline.json");
 const AFTER_PATH = join(__dirname, "after.json");
 
+type Baseline = Awaited<ReturnType<typeof generateBaseline>>;
+
 describe("Phase 5 — maxTimeoutMs bounds the runaway query", () => {
   it("[FAILING UNTIL IMPL] aborts within 1.2x the cap with a non-empty partial", async () => {
-    const baselineRaw = await readFile(BASELINE_PATH, "utf-8");
-    const baseline = JSON.parse(baselineRaw) as { elapsedMs: number };
+    const baseline = await ensureBaseline<Baseline>(
+      BASELINE_PATH,
+      () => generateBaseline()
+    );
 
     const { llm } = makeScriptedLLM(
       PARENT_RESPONDER,

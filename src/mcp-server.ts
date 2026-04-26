@@ -154,7 +154,7 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
       return llmClient;
     }
 
-    const config = await loadConfig("./config.json");
+    const config = await loadConfig();
     const providerName = config.llm.provider;
     const providerConfig = config.providers[providerName];
 

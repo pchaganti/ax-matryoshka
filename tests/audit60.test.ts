@@ -119,7 +119,7 @@ describe("Audit #60", () => {
   describe("#9 — getAllLanguageConfigs should validate custom grammar keys", () => {
     it("should reject dangerous keys from custom grammars", () => {
       const source = readFileSync("src/treesitter/language-map.ts", "utf-8");
-      const mergeBlock = source.match(/custom.*=.*getCustomGrammars[\s\S]*?configs\[lang\]/);
+      const mergeBlock = source.match(/custom.*=.*readCustomGrammars[\s\S]*?configs\[lang\]/);
       expect(mergeBlock).not.toBeNull();
       expect(mergeBlock![0]).toMatch(/__proto__|DANGEROUS|prototype/);
     });

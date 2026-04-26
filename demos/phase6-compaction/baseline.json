@@ -1,7 +1,0 @@
-{
-  "mode": "baseline",
-  "scenario": "context-overflow",
-  "simContextLimit": 6000,
-  "docChars": 6551,
-  "result": "Max turns (10) reached without final answer."
-}

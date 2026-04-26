@@ -33,12 +33,12 @@ describe("Audit #67", () => {
   });
 
   // =========================================================================
-  // #3 HIGH — grammar-config.ts loadConfig no file size check before readFileSync
+  // #3 HIGH — config.ts loadConfig no file size check before readFile
   // =========================================================================
   describe("#3 — loadConfig should check file size before reading", () => {
     it("should check file size or content length before JSON.parse", () => {
-      const source = readFileSync("src/config/grammar-config.ts", "utf-8");
-      const fnStart = source.indexOf("function loadConfig(");
+      const source = readFileSync("src/config.ts", "utf-8");
+      const fnStart = source.indexOf("async function loadConfig(");
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 500);
       expect(block).toMatch(/MAX_CONFIG|content\.length\s*>|statSync|stats\.size/i);

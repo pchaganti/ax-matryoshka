@@ -31,7 +31,7 @@ describe("Ollama provider", () => {
       .mockResolvedValue(successResponse);
 
     const provider = createOllamaProvider({
-      baseUrl: "http://localhost:11434",
+      url: "http://localhost:11434/api/generate",
     });
 
     const result = await provider.query("test prompt", {
@@ -48,7 +48,7 @@ describe("Ollama provider", () => {
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
 
     const provider = createOllamaProvider({
-      baseUrl: "http://localhost:11434",
+      url: "http://localhost:11434/api/generate",
     });
 
     await expect(

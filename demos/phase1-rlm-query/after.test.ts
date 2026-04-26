@@ -17,9 +17,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { readFile, writeFile } from "node:fs/promises";
+import { writeFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensureBaseline } from "../ensure-baseline.js";
 import { runBench, summarize, fromScript } from "./harness.js";
 import {
   SCENARIO_A_DOC,
@@ -27,6 +28,7 @@ import {
   SCENARIO_A_PHASE1_PARENT_SCRIPT,
   SCENARIO_A_CHILD_RESPONDER,
   SCENARIO_A_TOTAL_AUTH,
+  generateBaseline,
 } from "./scenario.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -48,15 +50,14 @@ function parseCountArray(result: string): number[] | null {
   return null;
 }
 
+type Baseline = Awaited<ReturnType<typeof generateBaseline>>;
+
 describe("Phase 1 — (rlm_query …) handle-as-context path", () => {
   it("[FAILING UNTIL IMPL] produces correct per-chunk AUTH counts", async () => {
-    const baselineRaw = await readFile(BASELINE_PATH, "utf-8");
-    const baseline = JSON.parse(baselineRaw) as {
-      avgChildChars: number;
-      childCalls: number;
-      totalChars: number;
-      observedSum: number | null;
-    };
+    const baseline = await ensureBaseline<Baseline>(
+      BASELINE_PATH,
+      () => generateBaseline(BASELINE_PATH)
+    );
 
     const { result, metrics } = await runBench({
       query: SCENARIO_A_QUERY,

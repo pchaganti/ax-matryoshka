@@ -248,7 +248,7 @@ npm run build
 
 ## Configuration
 
-Copy `config.example.json` to `config.json` and configure your LLM provider:
+Copy `config.example.json` to `~/.config/matryoshka/config.json`:
 
 ```json
 {
@@ -257,22 +257,43 @@ Copy `config.example.json` to `config.json` and configure your LLM provider:
   },
   "providers": {
     "ollama": {
-      "baseUrl": "http://localhost:11434",
+      "url": "http://localhost:11434/api/generate",
       "model": "qwen3-coder:30b",
       "options": { "temperature": 0.2, "num_ctx": 8192 }
     },
     "deepseek": {
-      "baseUrl": "https://api.deepseek.com",
+      "url": "https://api.deepseek.com/chat/completions",
       "apiKey": "${DEEPSEEK_API_KEY}",
       "model": "deepseek-chat",
+      "options": { "temperature": 0.2 }
+    },
+    "glm": {
+      "url": "https://open.bigmodel.cn/api/paas/v4/chat/completions",
+      "apiKey": "${ZHIPU_API_KEY}",
+      "model": "glm-4-plus",
       "options": { "temperature": 0.2 }
     }
   },
   "rlm": {
     "maxTurns": 10
+  },
+  "grammars": {
+    "ocaml": {
+      "package": "tree-sitter-ocaml",
+      "extensions": [".ml", ".mli"],
+      "moduleExport": "ocaml",
+      "symbols": {
+        "value_definition": "function",
+        "type_definition": "type",
+        "module_definition": "module"
+      }
+    }
   }
 }
 ```
+
+- **`llm` / `providers` / `rlm`** — LLM provider selection and RLM tuning (shown above with example providers). Each provider takes a full `url` (the complete API endpoint), an optional `apiKey` (supports `${ENV_VAR}` interpolation), a `model` name, and `options`.
+- **`grammars`** — custom tree-sitter language mappings for symbol extraction (see [Adding Language Support](#adding-language-support) for the full list of built-in languages). Use the [tree-sitter playground](https://tree-sitter.github.io/tree-sitter/playground) to explore node types for your language.
 
 ## Usage
 
@@ -442,7 +463,7 @@ import { runRLM } from "matryoshka-rlm/rlm";
 import { createLLMClient } from "matryoshka-rlm";
 
 const llmClient = createLLMClient("ollama", {
-  baseUrl: "http://localhost:11434",
+  url: "http://localhost:11434/api/generate",
   model: "qwen3-coder:30b",
   options: { temperature: 0.2 }
 });
@@ -562,26 +583,7 @@ Once a package is installed, the language is automatically available for symbol 
 
 #### Custom Language Configuration
 
-For languages without built-in mappings, create `~/.matryoshka/config.json` mapping tree-sitter node types to symbol kinds (`function`, `method`, `class`, `interface`, `type`, `struct`, `enum`, `trait`, `module`, `variable`, `constant`, `property`):
-
-```json
-{
-  "grammars": {
-    "ocaml": {
-      "package": "tree-sitter-ocaml",
-      "extensions": [".ml", ".mli"],
-      "moduleExport": "ocaml",
-      "symbols": {
-        "value_definition": "function",
-        "type_definition": "type",
-        "module_definition": "module"
-      }
-    }
-  }
-}
-```
-
-Use the [tree-sitter playground](https://tree-sitter.github.io/tree-sitter/playground) to explore node types for your language.
+For languages without built-in mappings, add a `grammars` entry to your config — see the [Configuration](#configuration) section for the full example and details.
 
 ### Control Flow
 
