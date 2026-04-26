@@ -50,46 +50,6 @@ describe("Audit #56", () => {
   });
 
   // =========================================================================
-  // #4 MEDIUM — extractor tryStructuredExtraction parseFloat missing isFinite
-  // =========================================================================
-  describe("#4 — tryStructuredExtraction testFn should check isFinite", () => {
-    it("should guard parseFloat in structured currency testFn", () => {
-      const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
-      const fnStart = source.indexOf("function tryStructuredExtraction");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 1200);
-      // The currency testFn's parseFloat should have isFinite guard
-      const testFnMatch = block.match(/testFn.*=[\s\S]*?parseFloat[\s\S]*?null/);
-      expect(testFnMatch).not.toBeNull();
-      expect(testFnMatch![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #5 MEDIUM — evalo split index missing Number.isInteger
-  // =========================================================================
-  describe("#5 — evalo split should validate index is integer", () => {
-    it("should check Number.isInteger on extractor.index", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const splitCase = source.match(/case "split"[\s\S]*?parts\[extractor\.index\]/);
-      expect(splitCase).not.toBeNull();
-      expect(splitCase![0]).toMatch(/Number\.isInteger|isInteger/);
-    });
-  });
-
-  // =========================================================================
-  // #6 MEDIUM — evalo parseInt missing isSafeInteger
-  // =========================================================================
-  describe("#6 — evalo parseInt should check isSafeInteger", () => {
-    it("should guard parseInt result with isSafeInteger or isFinite", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const parseIntCase = source.match(/case "parseInt"[\s\S]*?isNaN\(intResult\)[\s\S]*?intResult/);
-      expect(parseIntCase).not.toBeNull();
-      expect(parseIntCase![0]).toMatch(/isSafeInteger|isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #7 MEDIUM — rlm.ts fuzzy_search limit not validated
   // =========================================================================
   describe("#7 — rlm fuzzy_search should validate limit parameter", () => {

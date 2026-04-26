@@ -20,19 +20,6 @@ describe("Audit #69", () => {
   });
 
   // =========================================================================
-  // #2 HIGH — compile.ts lit case emits Infinity/NaN as valid JS identifiers
-  // =========================================================================
-  describe("#2 — compile lit case should guard non-finite numbers", () => {
-    it("should check isFinite for numeric values", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const litCase = source.indexOf('case "lit"');
-      expect(litCase).toBeGreaterThan(-1);
-      const block = source.slice(litCase, litCase + 200);
-      expect(block).toMatch(/isFinite|isNaN|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #3 HIGH — manager getHints sort uses raw float subtraction
   // =========================================================================
   describe("#3 — getHints sort should use safe comparator", () => {

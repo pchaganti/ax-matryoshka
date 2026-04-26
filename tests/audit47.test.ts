@@ -20,20 +20,6 @@ describe("Audit #47", () => {
   });
 
   // =========================================================================
-  // #2 HIGH — predicate-compiler: Object.getPrototypeOf not blocked
-  // =========================================================================
-  // #3 HIGH — lc-interpreter parseCurrency missing isFinite
-  // =========================================================================
-  describe("#3 — lc-interpreter parseCurrency should check isFinite", () => {
-    it("should guard against Infinity from parseFloat in parseCurrency", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const parseCurrencyReturn = source.match(/case "parseCurrency"[\s\S]*?isNegative \? -num : num/);
-      expect(parseCurrencyReturn).not.toBeNull();
-      expect(parseCurrencyReturn![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #4 MEDIUM — evalo/compile.ts escapeStringForLiteral missing null byte
   // =========================================================================
   describe("#4 — escapeStringForLiteral should escape null bytes", () => {

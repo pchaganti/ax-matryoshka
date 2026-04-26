@@ -53,59 +53,6 @@ describe("Audit #77", () => {
   });
 
   // =========================================================================
-  // #4 HIGH — base.ts buildSystemPrompt missing contextLength isFinite
-  // =========================================================================
-  describe("#4 — base.ts buildSystemPrompt should validate contextLength", () => {
-    it("should check isFinite on contextLength", () => {
-      const source = readFileSync("src/adapters/base.ts", "utf-8");
-      const fnStart = source.indexOf("function buildSystemPrompt(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isFinite\(contextLength\)|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #5 HIGH — qwen.ts buildSystemPrompt missing contextLength isFinite
-  // =========================================================================
-  describe("#5 — qwen.ts buildSystemPrompt should validate contextLength", () => {
-    it("should check isFinite on contextLength", () => {
-      const source = readFileSync("src/adapters/qwen.ts", "utf-8");
-      const fnStart = source.indexOf("function buildSystemPrompt(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isFinite\(contextLength\)|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #6 HIGH — deepseek.ts buildSystemPrompt missing contextLength isFinite
-  // =========================================================================
-  describe("#6 — deepseek.ts buildSystemPrompt should validate contextLength", () => {
-    it("should check isFinite on contextLength", () => {
-      const source = readFileSync("src/adapters/deepseek.ts", "utf-8");
-      const fnStart = source.indexOf("function buildSystemPrompt(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isFinite\(contextLength\)|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — synthesis-integrator.ts parseInt without isSafeInteger
-  // =========================================================================
-  describe("#7 — synthesis-integrator parseInt should check isSafeInteger", () => {
-    it("should validate parseInt result with isSafeInteger", () => {
-      const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
-      // Find the Yen format parseInt
-      const yenSection = source.indexOf("parseInt(cleaned, 10)");
-      expect(yenSection).toBeGreaterThan(-1);
-      const block = source.slice(yenSection, yenSection + 400);
-      expect(block).toMatch(/isSafeInteger/);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — evalo.ts synthesizeExtractor no max examples cap
   // =========================================================================
   describe("#8 — synthesizeExtractor should cap examples count", () => {

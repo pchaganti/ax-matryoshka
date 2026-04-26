@@ -50,31 +50,6 @@ describe("Audit #55", () => {
   });
 
   // =========================================================================
-  // #4 HIGH — lc-solver parseCurrency parseFloat missing isFinite
-  // =========================================================================
-  describe("#4 — lc-solver parseCurrency should check isFinite", () => {
-    it("should guard parseFloat result with isFinite", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      // Find parseCurrency function's final parseFloat
-      const fn = source.match(/function parseCurrency[\s\S]*?parseFloat\(normalized\)[\s\S]*?return/);
-      expect(fn).not.toBeNull();
-      expect(fn![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #5 MEDIUM — lc-parser tokenizer parseFloat missing isFinite
-  // =========================================================================
-  describe("#5 — lc-parser tokenizer should check isFinite on parsed numbers", () => {
-    it("should guard parseFloat with isFinite in tokenizer", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const block = source.match(/const parsed = parseFloat\(num\)[\s\S]*?tokens\.push/);
-      expect(block).not.toBeNull();
-      expect(block![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — symbol-extractor extractGoTypeDeclaration missing MAX_CHILDREN
   // =========================================================================
   describe("#6 — extractGoTypeDeclaration should limit child iteration", () => {

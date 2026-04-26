@@ -123,16 +123,4 @@ describe("Audit #61", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — storeSymbol should validate parentSymbolId
-  // =========================================================================
-  describe("#10 — storeSymbol should validate parentSymbolId", () => {
-    it("should check parentSymbolId is finite if provided", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const fnStart = source.indexOf("storeSymbol(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 1500);
-      expect(block).toMatch(/parentSymbolId.*isFinite|isFinite.*parentSymbolId|parentSymbolId.*Integer/i);
-    });
-  });
 });

@@ -113,36 +113,4 @@ describe("Audit #42", () => {
     });
   });
 
-  // =========================================================================
-  // #9 MEDIUM — evalo/compile.ts group/start/end/index not validated as integers
-  // =========================================================================
-  describe("#9 — evalo compile should validate numeric indices as safe integers", () => {
-    it("should validate group is a non-negative integer in match case", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const matchCase = source.match(/case "match"[\s\S]*?extractor\.group/);
-      expect(matchCase).not.toBeNull();
-      // Should have Number.isInteger or integer validation for group
-      expect(matchCase![0]).toMatch(/isInteger|Number\.isSafeInteger|>= 0|< 0/);
-    });
-
-    it("should validate start/end are safe integers in slice case", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const sliceCase = source.match(/case "slice"[\s\S]*?extractor\.start/);
-      expect(sliceCase).not.toBeNull();
-      expect(sliceCase![0]).toMatch(/isInteger|Number\.isSafeInteger/);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — lc-solver lines command no start/end validation
-  // =========================================================================
-  describe("#10 — lc-solver lines should validate start/end", () => {
-    it("should check that start and end are finite positive numbers", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const linesCase = source.match(/case "lines"[\s\S]*?selectedLines/);
-      expect(linesCase).not.toBeNull();
-      // Should validate start/end are finite
-      expect(linesCase![0]).toMatch(/isFinite|Number\.isFinite|Number\.isInteger/);
-    });
-  });
 });

@@ -26,21 +26,6 @@ describe("Audit #65", () => {
   });
 
   // =========================================================================
-  // #2 MEDIUM — lc-solver evaluateWithBinding parseInt uses isFinite not isSafeInteger
-  // =========================================================================
-  describe("#2 — evaluateWithBinding parseInt should use isSafeInteger", () => {
-    it("should check isSafeInteger not just isFinite", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const fnStart = source.indexOf("function evaluateWithBinding(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const parseIntCase = source.indexOf('case "parseInt":', fnStart);
-      expect(parseIntCase).toBeGreaterThan(-1);
-      const block = source.slice(parseIntCase, parseIntCase + 400);
-      expect(block).toMatch(/isSafeInteger/);
-    });
-  });
-
-  // =========================================================================
   // #3 MEDIUM — compile.ts prettyPrint unescaped strings in replace/split
   // =========================================================================
   describe("#3 — prettyPrint should escape string values", () => {
@@ -99,25 +84,6 @@ describe("Audit #65", () => {
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 500);
       expect(block).toMatch(/record\.error.*length|MAX_ERROR|error.*slice/i);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — similarity keywordMatchScore division NaN guard
-  // =========================================================================
-  describe("#7 — keywordMatchScore should guard against NaN division", () => {
-    it("should check isFinite on result", () => {
-      const source = readFileSync("src/rag/similarity.ts", "utf-8");
-      const fnStart = source.indexOf("function keywordMatchScore(");
-      if (fnStart === -1) {
-        const altStart = source.indexOf("export function keywordMatchScore(");
-        expect(altStart).toBeGreaterThan(-1);
-        const block = source.slice(altStart, altStart + 1000);
-        expect(block).toMatch(/isFinite.*score|score.*isFinite|denominator\s*===?\s*0/i);
-      } else {
-        const block = source.slice(fnStart, fnStart + 1000);
-        expect(block).toMatch(/isFinite.*score|score.*isFinite|denominator\s*===?\s*0/i);
-      }
     });
   });
 

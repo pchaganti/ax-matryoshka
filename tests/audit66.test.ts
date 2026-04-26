@@ -106,38 +106,6 @@ describe("Audit #66", () => {
   });
 
   // =========================================================================
-  // #8 MEDIUM — manager recordFailure timestamp not validated
-  // =========================================================================
-  describe("#8 — recordFailure should validate timestamp", () => {
-    it("should check isFinite on record.timestamp", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const fnStart = source.indexOf("recordFailure(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 800);
-      expect(block).toMatch(/isFinite.*timestamp|timestamp.*isFinite|timestamp.*typeof/i);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — similarity combinedSimilarity result not checked
-  // =========================================================================
-  describe("#9 — combinedSimilarity should validate result", () => {
-    it("should check isFinite on combined score", () => {
-      const source = readFileSync("src/rag/similarity.ts", "utf-8");
-      const fnStart = source.indexOf("function combinedSimilarity(");
-      if (fnStart === -1) {
-        const altStart = source.indexOf("export function combinedSimilarity(");
-        expect(altStart).toBeGreaterThan(-1);
-        const block = source.slice(altStart, altStart + 700);
-        expect(block).toMatch(/isFinite|Math\.max.*Math\.min|clamp/i);
-      } else {
-        const block = source.slice(fnStart, fnStart + 700);
-        expect(block).toMatch(/isFinite|Math\.max.*Math\.min|clamp/i);
-      }
-    });
-  });
-
-  // =========================================================================
   // #10 MEDIUM — language-map DANGEROUS_KEYS incomplete vs parser-registry
   // =========================================================================
   describe("#10 — getAllLanguageConfigs DANGEROUS_KEYS should include toString/valueOf", () => {

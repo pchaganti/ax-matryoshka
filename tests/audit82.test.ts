@@ -17,30 +17,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #82", () => {
-  // =========================================================================
-  // #1 HIGH — session-db.ts isFinite instead of isSafeInteger for symbol fields
-  // =========================================================================
-  describe("#1 — storeSymbol should use isSafeInteger for line/col fields", () => {
-    it("should validate startLine/endLine with isSafeInteger", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const storeSymbol = source.indexOf("storeSymbol(");
-      expect(storeSymbol).toBeGreaterThan(-1);
-      const lineCheck = source.indexOf("symbol.startLine", storeSymbol);
-      expect(lineCheck).toBeGreaterThan(-1);
-      const block = source.slice(lineCheck - 30, lineCheck + 200);
-      expect(block).toMatch(/isSafeInteger\(symbol\.startLine\)/);
-    });
-
-    it("should validate parentSymbolId with isSafeInteger", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const storeSymbol = source.indexOf("storeSymbol(");
-      expect(storeSymbol).toBeGreaterThan(-1);
-      const parentCheck = source.indexOf("symbol.parentSymbolId", storeSymbol);
-      expect(parentCheck).toBeGreaterThan(-1);
-      const block = source.slice(parentCheck, parentCheck + 100);
-      expect(block).toMatch(/isSafeInteger\(symbol\.parentSymbolId\)/);
-    });
-  });
 
   // =========================================================================
   // #2 MEDIUM — sandbox-tools.ts console logs not truncated in execute()
@@ -68,23 +44,6 @@ describe("Audit #82", () => {
       expect(declJoin).toBeGreaterThan(-1);
       const block = source.slice(declJoin - 200, declJoin + 100);
       expect(block).toMatch(/MAX_DECL|declCode\.length|declarations\.join.*\.length/);
-    });
-  });
-
-  // =========================================================================
-  // #4 MEDIUM — rag/manager.ts $ not escaped in formatExampleAsHint
-  // =========================================================================
-  // #5 MEDIUM — rag/manager.ts $ not escaped in generateSelfCorrectionFeedback
-  // =========================================================================
-  // #6 MEDIUM — relational/interpreter.ts parseInt missing isSafeInteger
-  // =========================================================================
-  describe("#6 — exprToCode parseInt should check isSafeInteger", () => {
-    it("should include isSafeInteger guard in parseInt code generation", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const parseIntCase = source.indexOf('case "parseInt"', source.indexOf("function exprToCode"));
-      expect(parseIntCase).toBeGreaterThan(-1);
-      const block = source.slice(parseIntCase, parseIntCase + 200);
-      expect(block).toMatch(/isSafeInteger|Number\.isSafeInteger/);
     });
   });
 

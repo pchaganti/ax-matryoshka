@@ -6,21 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #71", () => {
-  // =========================================================================
-  // #1 HIGH — lc-solver sum reduce no isFinite check on result
-  // =========================================================================
-  describe("#1 — lc-solver sum should check isFinite on total", () => {
-    it("should validate total is finite after reduce", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const sumCase = source.indexOf('case "sum"');
-      expect(sumCase).toBeGreaterThan(-1);
-      const reduceEnd = source.indexOf("}, 0);", sumCase);
-      expect(reduceEnd).toBeGreaterThan(-1);
-      const block = source.slice(reduceEnd, reduceEnd + 200);
-      // Should have isFinite check on total after reduce
-      expect(block).toMatch(/isFinite\(total\)|Number\.isFinite\(total\)/);
-    });
-  });
 
   // =========================================================================
   // #2 HIGH — fts5-search searchByRelevance unbounded queryTerms

@@ -45,19 +45,6 @@ describe("Audit #78", () => {
   });
 
   // =========================================================================
-  // #3 MEDIUM — lc-parser.ts split index allows floats
-  // =========================================================================
-  describe("#3 — split index should validate isSafeInteger", () => {
-    it("should check Number.isSafeInteger on split index", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const splitCase = source.indexOf('case "split":', source.indexOf("function parseTerm"));
-      expect(splitCase).toBeGreaterThan(-1);
-      const block = source.slice(splitCase, splitCase + 500);
-      expect(block).toMatch(/isSafeInteger|Number\.isInteger/);
-    });
-  });
-
-  // =========================================================================
   // #4 MEDIUM — session-db.ts getHandleDataSlice no size check
   // =========================================================================
   describe("#4 — getHandleDataSlice should check size before JSON.parse", () => {

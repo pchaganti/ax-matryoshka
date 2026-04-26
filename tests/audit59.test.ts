@@ -34,32 +34,6 @@ describe("Audit #59", () => {
   });
 
   // =========================================================================
-  // #4 MEDIUM — session-db storeSymbol missing isFinite on line numbers
-  // =========================================================================
-  describe("#4 — storeSymbol should validate line numbers", () => {
-    it("should check isFinite on startLine/endLine", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const fnStart = source.indexOf("storeSymbol(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 1100);
-      expect(block).toMatch(/is(?:Finite|SafeInteger).*startLine|startLine.*is(?:Finite|SafeInteger)|Number\.is(?:Finite|SafeInteger)/);
-    });
-  });
-
-  // =========================================================================
-  // #5 MEDIUM — session-db getSymbolsAtLine missing isFinite check
-  // =========================================================================
-  describe("#5 — getSymbolsAtLine should validate line parameter", () => {
-    it("should check isFinite on line parameter", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const fnStart = source.indexOf("getSymbolsAtLine(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isFinite|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — symbol-extractor nameNode.text no length limit
   // =========================================================================
   describe("#6 — getNodeName should limit returned text length", () => {

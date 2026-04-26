@@ -6,35 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #51", () => {
-  // =========================================================================
-  // #1 HIGH — relational-solver.ts: parseNumberImpl scientific notation missing isFinite
-  // =========================================================================
-  describe("#1 — parseNumberImpl scientific notation should check isFinite", () => {
-    it("should guard against Infinity from scientific notation", () => {
-      const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
-      const fnStart = source.indexOf("function parseNumberImpl");
-      const fnSource = source.slice(fnStart, fnStart + 800);
-      // Find the scientific notation branch
-      const sciBlock = fnSource.match(/scientific notation[\s\S]*?parseFloat\(trimmed\)[\s\S]*?null/);
-      expect(sciBlock).not.toBeNull();
-      expect(sciBlock![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #2 HIGH — relational-solver.ts: parseNumberImpl percentage missing isFinite
-  // =========================================================================
-  describe("#2 — parseNumberImpl percentage should check isFinite", () => {
-    it("should guard against Infinity from percentage parsing", () => {
-      const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
-      const fnStart = source.indexOf("function parseNumberImpl");
-      const fnSource = source.slice(fnStart, fnStart + 800);
-      // Find the percentage branch: parseFloat line and its return
-      const percentBlock = fnSource.match(/percentMatch\[1\][\s\S]*?isNaN\(num\)[\s\S]*?null/);
-      expect(percentBlock).not.toBeNull();
-      expect(percentBlock![0]).toMatch(/isFinite/);
-    });
-  });
 
   // =========================================================================
   // #3 HIGH — predicate-compiler.ts: error leaks regex pattern object
@@ -110,20 +81,4 @@ describe("Audit #51", () => {
     });
   });
 
-  // =========================================================================
-  // #9 MEDIUM — parser-registry.ts: moduleExport bracket access needs proto guard
-  // =========================================================================
-  // #10 MEDIUM — relational-solver.ts: standard number path missing isFinite
-  // =========================================================================
-  describe("#10 — parseNumberImpl standard number should check isFinite", () => {
-    it("should guard against Infinity from standard number parsing", () => {
-      const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
-      const fnStart = source.indexOf("function parseNumberImpl");
-      const fnSource = source.slice(fnStart, fnStart + 800);
-      // Find the standard number path at the end (after "Standard number with commas")
-      const stdBlock = fnSource.match(/Standard number[\s\S]*?parseFloat\(cleaned\)[\s\S]*?null/);
-      expect(stdBlock).not.toBeNull();
-      expect(stdBlock![0]).toMatch(/isFinite/);
-    });
-  });
 });

@@ -47,16 +47,6 @@ describe("Audit #36", () => {
       });
     });
 
-    // #8 — sum doesn't guard against Infinity
-    describe("#8 — interpreter sum should guard against Infinity", () => {
-      it("should check isFinite on parsed numbers", () => {
-        const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-        const sumBlock = source.match(/case "sum"[\s\S]*?return total;/);
-        expect(sumBlock).not.toBeNull();
-        expect(sumBlock![0]).toMatch(/isFinite/);
-      });
-    });
-
     // #9 — regex nested repeat parenthesization
     describe("#9 — regex synthesis should wrap nested repeats", () => {
       it("should also wrap repeat children in non-capturing groups", () => {

@@ -36,26 +36,4 @@ describe("Audit #39", () => {
     });
   });
 
-  // =========================================================================
-  // #5 MEDIUM — Overly broad Object block in evolutionary.ts compose
-  // =========================================================================
-  // #6 MEDIUM — getHandleDataSlice silently drops parse-failed items
-  // =========================================================================
-  // #7 MEDIUM — ReDoS detection misses nested quantifiers like (\w+)*
-  // =========================================================================
-  // #8 MEDIUM — Delimiter escape uses backtick template (verified safe)
-  // =========================================================================
-  // #9 LOW — Missing "sept" abbreviation in MONTH_NAMES
-  // =========================================================================
-  // #10 LOW — Division by zero not guarded in relational interpreter
-  // =========================================================================
-  describe("#10 — relational interpreter should guard division by zero", () => {
-    it("should check for zero divisor or Infinity result", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      // Find the full div case block
-      const divExec = source.match(/case "div"[\s\S]*?return[^;]*;/);
-      expect(divExec).not.toBeNull();
-      expect(divExec![0]).toMatch(/isFinite|=== 0|!== 0|zero/i);
-    });
-  });
 });

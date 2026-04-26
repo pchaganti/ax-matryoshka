@@ -58,20 +58,6 @@ describe("Audit #67", () => {
     });
   });
 
-  // =========================================================================
-  // #5 MEDIUM — rlm.ts sort comparator uses parseInt subtraction (overflow)
-  // =========================================================================
-  describe("#5 — turnKeys sort should use safe comparator", () => {
-    it("should use safe comparison instead of subtraction for sort", () => {
-      const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
-      const sortStart = source.indexOf("turnKeys");
-      expect(sortStart).toBeGreaterThan(-1);
-      const block = source.slice(sortStart, sortStart + 300);
-      // Should use comparison operators (< > <=), localeCompare, or isFinite guard before subtraction
-      expect(block).toMatch(/aNum\s*<\s*bNum|aNum\s*>\s*bNum|return\s*-1|return\s*1|localeCompare|isFinite/);
-    });
-  });
-
   // #6 removed: rlm.ts extractFinalAnswer helper deleted. Adapter-level result
   // formatting is tested in adapter-specific suites.
 

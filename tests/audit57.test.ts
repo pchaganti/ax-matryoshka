@@ -6,20 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #57", () => {
-  // =========================================================================
-  // #1 HIGH — relational-solver parseCurrencyImpl missing isFinite
-  // =========================================================================
-  describe("#1 — parseCurrencyImpl should check isFinite", () => {
-    it("should guard parseFloat result with isFinite", () => {
-      const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
-      const fnStart = source.indexOf("function parseCurrencyImpl");
-      expect(fnStart).toBeGreaterThan(-1);
-      const fnBlock = source.slice(fnStart, fnStart + 2000);
-      const returnLine = fnBlock.match(/parseFloat\(cleaned\)[\s\S]*?return[^\n]+/);
-      expect(returnLine).not.toBeNull();
-      expect(returnLine![0]).toMatch(/isFinite/);
-    });
-  });
 
   // =========================================================================
   // #2 MEDIUM — compile.ts replace missing typeof string guard

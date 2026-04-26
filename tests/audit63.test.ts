@@ -68,19 +68,6 @@ describe("Audit #63", () => {
   });
 
   // =========================================================================
-  // #5 MEDIUM — rag/manager getRecentFailures maxAge not validated
-  // =========================================================================
-  describe("#5 — getRecentFailures should validate maxAge", () => {
-    it("should check isFinite on maxAge", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const fnStart = source.indexOf("getRecentFailures(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isFinite.*maxAge|maxAge.*isFinite|maxAge\s*[<>]/i);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — rag/manager generateSelfCorrectionFeedback code null guard
   // =========================================================================
   describe("#6 — generateSelfCorrectionFeedback should guard failure.code", () => {

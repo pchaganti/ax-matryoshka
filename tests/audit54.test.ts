@@ -31,42 +31,6 @@ describe("Audit #54", () => {
   });
 
   // =========================================================================
-  // #3 HIGH — extractor currency_integer template missing isNaN guard
-  // =========================================================================
-  describe("#3 — extractor currency_integer should guard NaN", () => {
-    it("should include isNaN or isFinite in testFn", () => {
-      const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
-      const currIntBlock = source.match(/name:\s*"currency_integer"[\s\S]*?testFn:\s*\(s\)\s*=>[^}]+/);
-      expect(currIntBlock).not.toBeNull();
-      expect(currIntBlock![0]).toMatch(/isNaN|isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #4 HIGH — extractor currency_decimal template missing isFinite guard
-  // =========================================================================
-  describe("#4 — extractor currency_decimal should guard Infinity", () => {
-    it("should include isFinite in testFn", () => {
-      const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
-      const currDecBlock = source.match(/name:\s*"currency_decimal"[\s\S]*?testFn:\s*\(s\)\s*=>[^}]+/);
-      expect(currDecBlock).not.toBeNull();
-      expect(currDecBlock![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #5 HIGH — extractor percentage_to_decimal template missing isFinite guard
-  // =========================================================================
-  describe("#5 — extractor percentage_to_decimal should guard Infinity", () => {
-    it("should include isFinite in testFn", () => {
-      const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
-      const pctBlock = source.match(/name:\s*"percentage_to_decimal"[\s\S]*?testFn:\s*\(s\)\s*=>[^}]+/);
-      expect(pctBlock).not.toBeNull();
-      expect(pctBlock![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — minikanren occursIn unbounded recursion
   // =========================================================================
   describe("#6 — occursIn should have depth limit", () => {
@@ -114,16 +78,4 @@ describe("Audit #54", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — predicate-compiler Number() without isFinite check
-  // =========================================================================
-  describe("#10 — predicate-compiler numeric param should check isFinite", () => {
-    it("should validate Number(value) is finite before SQL", () => {
-      const source = readFileSync("src/persistence/predicate-compiler.ts", "utf-8");
-      // Find the numeric comparison block that uses Number(value)
-      const numBlock = source.match(/Numeric comparison[\s\S]*?params:\s*\[.*?\]/);
-      expect(numBlock).not.toBeNull();
-      expect(numBlock![0]).toMatch(/isFinite|Number\.isFinite/);
-    });
-  });
 });

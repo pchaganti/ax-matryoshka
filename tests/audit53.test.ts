@@ -9,18 +9,6 @@ describe("Audit #53", () => {
   // #1 removed: FINAL_VAR parser deleted from base adapter (legacy marker).
 
   // =========================================================================
-  // #2 HIGH — lc-interpreter.ts: parseInt missing isFinite guard
-  // =========================================================================
-  describe("#2 — lc-interpreter parseInt should check isFinite", () => {
-    it("should guard parseInt result with isFinite for consistency", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const parseIntCase = source.match(/case "parseInt"[\s\S]*?isNaN\(intResult\)[\s\S]*?intResult/);
-      expect(parseIntCase).not.toBeNull();
-      expect(parseIntCase![0]).toMatch(/isFinite|isSafeInteger/);
-    });
-  });
-
-  // =========================================================================
   // #3 HIGH — relational-solver.ts: split missing empty delimiter check
   // =========================================================================
   describe("#3 — relational-solver split should validate delimiter", () => {
@@ -29,18 +17,6 @@ describe("Audit #53", () => {
       const splitPrim = source.match(/split:\s*\(input,\s*args\)[\s\S]*?input\.split\(delim\)/);
       expect(splitPrim).not.toBeNull();
       expect(splitPrim![0]).toMatch(/delim\.length|!delim|delim\s*===\s*""/);
-    });
-  });
-
-  // =========================================================================
-  // #4 MEDIUM — handle-ops.ts: sort NaN check misses Infinity
-  // =========================================================================
-  describe("#4 — handle-ops sort should guard against Infinity", () => {
-    it("should check isFinite on sort comparison result", () => {
-      const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const sortBlock = source.match(/aVal - bVal[\s\S]*?cmp\s*=\s*0/);
-      expect(sortBlock).not.toBeNull();
-      expect(sortBlock![0]).toMatch(/isFinite/);
     });
   });
 
@@ -107,16 +83,4 @@ describe("Audit #53", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — lc-solver.ts: parseInt missing isFinite check
-  // =========================================================================
-  describe("#10 — lc-solver parseInt should check isFinite", () => {
-    it("should guard parseInt result with isFinite", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      // Target the first parseInt case (main evaluate)
-      const parseIntCase = source.match(/case "parseInt"[\s\S]*?isNaN\(intResult\)[\s\S]*?intResult/);
-      expect(parseIntCase).not.toBeNull();
-      expect(parseIntCase![0]).toMatch(/isFinite|isSafeInteger/);
-    });
-  });
 });

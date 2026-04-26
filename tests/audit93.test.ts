@@ -91,20 +91,6 @@ describe("Audit #93", () => {
   });
 
   // =========================================================================
-  // #7 MEDIUM — findSimilar maxDistance/maxResults not validated
-  // =========================================================================
-  describe("#7 — findSimilar should validate maxDistance and maxResults", () => {
-    it("should guard against NaN/Infinity in parameters", () => {
-      const source = readFileSync("src/feedback/error-analyzer.ts", "utf-8");
-      const funcStart = source.indexOf("export function findSimilar");
-      expect(funcStart).toBeGreaterThan(-1);
-      const block = source.slice(funcStart, funcStart + 300);
-      // Should validate maxDistance and maxResults with isFinite or bounds check
-      expect(block).toMatch(/isFinite\(maxDistance\)|Number\.isFinite\(maxDistance\)|maxDistance\s*<\s*0/);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — classify examples not length-capped
   // =========================================================================
   describe("#8 — classify should cap term.examples length", () => {

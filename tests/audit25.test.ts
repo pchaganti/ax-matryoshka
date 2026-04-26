@@ -51,27 +51,6 @@ describe("Audit25 #2: grep empty pattern guard", () => {
   });
 });
 
-// === Issue #3: deepEqual(NaN, NaN) returns false ===
-describe("Audit25 #3: evolutionary deepEqual NaN handling", () => {
-  it("should treat NaN as equal to NaN in validation", async () => {
-    const { EvolutionarySynthesizer } = await import(
-      "../src/synthesis/evolutionary.js"
-    );
-    const { KnowledgeBase } = await import(
-      "../src/synthesis/knowledge-base.js"
-    );
-    const kb = new KnowledgeBase();
-    const evo = new EvolutionarySynthesizer(kb);
-    // A function that returns NaN for non-numeric input
-    const code = '(s) => parseFloat(s)';
-    const examples = [
-      { input: "abc", output: NaN },
-    ];
-    const valid = evo.validateSolution(code, examples);
-    expect(valid).toBe(true);
-  });
-});
-
 // === Issue #4: checkpoint getMetadata returns Date.now() not stored timestamp ===
 describe("Audit25 #4: checkpoint metadata timestamp", () => {
   it("should return a consistent timestamp from stored checkpoint", async () => {

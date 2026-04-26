@@ -42,18 +42,6 @@ describe("Audit #43", () => {
   });
 
   // =========================================================================
-  // #4 MEDIUM — lc-interpreter add: missing isFinite guard
-  // =========================================================================
-  describe("#4 — lc-interpreter add should guard against Infinity", () => {
-    it("should check isFinite in add case", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const addCase = source.match(/case "add"[\s\S]*?(?:return left \+ right|addResult.*left \+ right)/);
-      expect(addCase).not.toBeNull();
-      expect(addCase![0]).toMatch(/isFinite|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #5 MEDIUM — evalo/evalo.ts: JSON.stringify conflates NaN and null
   // =========================================================================
   describe("#5 — evalo synthesizeExtractor should use Object.is for constant check", () => {

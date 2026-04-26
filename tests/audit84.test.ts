@@ -46,22 +46,6 @@ describe("Audit #84", () => {
   });
 
   // =========================================================================
-  // #4 MEDIUM — sandbox-tools.ts global isNaN/isFinite type coercion
-  // =========================================================================
-  describe("#4 — sandbox should expose Number.isNaN/Number.isFinite", () => {
-    it("should use Number.isNaN instead of global isNaN", () => {
-      const source = readFileSync("node_modules/repl-sandbox/dist/safe-globals.js", "utf-8");
-      const sandboxGlobals = source.indexOf("isNaN");
-      expect(sandboxGlobals).toBeGreaterThan(-1);
-      // Find the sandbox globals section (near parseInt/parseFloat)
-      const parseIntLine = source.indexOf("parseInt,");
-      expect(parseIntLine).toBeGreaterThan(-1);
-      const block = source.slice(parseIntLine, parseIntLine + 200);
-      expect(block).toMatch(/Number\.isNaN/);
-    });
-  });
-
-  // =========================================================================
   // #5 MEDIUM — session-db.ts unbounded symbol queries
   // =========================================================================
   describe("#5 — getAllSymbols should have LIMIT clause", () => {

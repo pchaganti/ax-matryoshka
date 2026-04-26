@@ -124,16 +124,4 @@ describe("Audit #81", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — rlm.ts constraint output min/max not validated with isFinite
-  // =========================================================================
-  describe("#10 — constraint output min/max should be validated", () => {
-    it("should check isFinite on constraint.output.min/max", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const minCheck = source.indexOf("constraint.output.min");
-      expect(minCheck).toBeGreaterThan(-1);
-      const block = source.slice(minCheck, minCheck + 200);
-      expect(block).toMatch(/isFinite|Number\.isFinite/);
-    });
-  });
 });

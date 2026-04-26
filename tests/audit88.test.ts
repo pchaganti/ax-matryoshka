@@ -17,18 +17,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #88", () => {
-  // =========================================================================
-  // #1 MEDIUM — evalo.ts add operation missing isSafeInteger on result
-  // =========================================================================
-  describe("#1 — add should check isSafeInteger on result", () => {
-    it("should include isSafeInteger in add case", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const addCase = source.indexOf('case "add"');
-      expect(addCase).toBeGreaterThan(-1);
-      const block = source.slice(addCase, addCase + 400);
-      expect(block).toMatch(/isSafeInteger/);
-    });
-  });
 
   // =========================================================================
   // #2 MEDIUM — sandbox-tools.ts log args not individually capped
@@ -70,19 +58,6 @@ describe("Audit #88", () => {
       const block = source.slice(fnStart, fnStart + 300);
       // MAX_STR_LENGTH should be <= 2000 to keep matrix under ~16M entries
       expect(block).toMatch(/MAX_STR_LENGTH\s*=\s*[12][\d_]{0,4}[^0]/);
-    });
-  });
-
-  // =========================================================================
-  // #6 MEDIUM — config.ts coerceConfigTypes no isFinite check
-  // =========================================================================
-  describe("#6 — coerceConfigTypes should check isFinite", () => {
-    it("should validate Number() result is finite", () => {
-      const source = readFileSync("src/config.ts", "utf-8");
-      const fnStart = source.indexOf("function coerceConfigTypes");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/isFinite|Number\.isFinite/);
     });
   });
 

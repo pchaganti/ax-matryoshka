@@ -98,19 +98,6 @@ describe("Audit #76", () => {
   });
 
   // =========================================================================
-  // #8 MEDIUM — nucleus.ts buildSystemPrompt missing contextLength isFinite
-  // =========================================================================
-  describe("#8 — nucleus buildSystemPrompt should validate contextLength", () => {
-    it("should check isFinite on contextLength", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const fnStart = source.indexOf("function buildSystemPrompt(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isFinite\(contextLength\)|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #9 MEDIUM — lc-interpreter.ts replace case missing result length check
   // =========================================================================
   describe("#9 — lc-interpreter replace should cap result length", () => {

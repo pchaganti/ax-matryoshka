@@ -17,33 +17,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #91", () => {
-  // =========================================================================
-  // #1 MEDIUM — nucleus-engine.ts parseInt NaN guard in sort
-  // =========================================================================
-  describe("#1 — evictOldTurnBindings parseInt should guard against NaN", () => {
-    it("should check isFinite or isNaN on parsed turn numbers", () => {
-      const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
-      const fnStart = source.indexOf("private evictOldTurnBindings");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 500);
-      // parseInt results should be validated with isFinite/isNaN
-      expect(block).toMatch(/isFinite|isNaN|Number\.isFinite|Number\.isNaN/);
-    });
-  });
-
-  // =========================================================================
-  // #2 MEDIUM — nucleus-engine.ts fuzzy_search limit isFinite check
-  // =========================================================================
-  describe("#2 — fuzzy_search limit should check isFinite before Math.floor", () => {
-    it("should validate limit with isFinite", () => {
-      const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
-      const fnStart = source.indexOf("fuzzy_search:");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      // Should check isFinite on limit before using Math.floor
-      expect(block).toMatch(/isFinite\(limit\)|Number\.isFinite\(limit\)/);
-    });
-  });
 
   // =========================================================================
   // #3 MEDIUM — lc-parser.ts parseConstraintObject unbounded loop

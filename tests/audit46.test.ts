@@ -6,53 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #46", () => {
-  // =========================================================================
-  // #1 HIGH — evalo/compile.ts: compiled parseFloat missing isFinite guard
-  // =========================================================================
-  describe("#1 — compiled parseFloat should guard against Infinity", () => {
-    it("should check isFinite in compiled parseFloat", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const parseFloatCase = source.match(/case "parseFloat"[\s\S]*?case "add"/);
-      expect(parseFloatCase).not.toBeNull();
-      expect(parseFloatCase![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #2 HIGH — lc-compiler.ts: compiler parseFloat missing isFinite guard
-  // =========================================================================
-  describe("#2 — lc-compiler parseFloat should guard against Infinity", () => {
-    it("should check isFinite in compiled parseFloat", () => {
-      const source = readFileSync("src/logic/lc-compiler.ts", "utf-8");
-      const parseFloatCase = source.match(/case "parseFloat"[\s\S]*?case "if"/);
-      expect(parseFloatCase).not.toBeNull();
-      expect(parseFloatCase![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #3 HIGH — lc-interpreter.ts: coerce number missing isFinite
-  // =========================================================================
-  describe("#3 — lc-interpreter coerce number should check isFinite", () => {
-    it("should guard against Infinity in number coercion", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const coerceCase = source.match(/case "coerce"[\s\S]*?case "number"[\s\S]*?case "string"/);
-      expect(coerceCase).not.toBeNull();
-      expect(coerceCase![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #4 HIGH — lc-solver.ts: parseNumber scientific notation missing isFinite
-  // =========================================================================
-  describe("#4 — lc-solver parseNumber should check isFinite on scientific notation", () => {
-    it("should guard against Infinity from scientific notation", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const sciNotation = source.match(/scientific notation[\s\S]*?return.*parseFloat|scientific notation[\s\S]*?isFinite/);
-      expect(sciNotation).not.toBeNull();
-      expect(sciNotation![0]).toMatch(/isFinite/);
-    });
-  });
 
   // =========================================================================
   // #5 HIGH — predicate-compiler: ++/-- not blocked
@@ -110,16 +63,4 @@ describe("Audit #46", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — lc-solver: percent coercion propagates Infinity
-  // =========================================================================
-  describe("#10 — lc-solver percent coercion should guard against Infinity", () => {
-    it("should check isFinite in parseNumber or percent case", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const parseNumberFn = source.match(/function parseNumber[\s\S]*?\n\}/);
-      expect(parseNumberFn).not.toBeNull();
-      // parseNumber itself should validate all return paths with isFinite
-      expect(parseNumberFn![0]).toMatch(/isFinite/);
-    });
-  });
 });

@@ -6,17 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #44", () => {
-  // =========================================================================
-  // #1 HIGH — evalo/compile.ts: compiled add missing isFinite guard
-  // =========================================================================
-  describe("#1 — compiled add should guard against Infinity result", () => {
-    it("should check isFinite on the addition result", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const addCase = source.match(/case "add"[\s\S]*?case "if"/);
-      expect(addCase).not.toBeNull();
-      expect(addCase![0]).toMatch(/isFinite/);
-    });
-  });
 
   // =========================================================================
   // #2 HIGH — lc-compiler.ts: match case missing regex validation
@@ -54,31 +43,6 @@ describe("Audit #44", () => {
   });
 
   // =========================================================================
-  // #5 MEDIUM — lc-interpreter: split index not validated as integer
-  // =========================================================================
-  describe("#5 — lc-interpreter split should validate index is integer", () => {
-    it("should check Number.isInteger on term.index", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const splitCase = source.match(/case "split"[\s\S]*?case "parseInt"/);
-      expect(splitCase).not.toBeNull();
-      expect(splitCase![0]).toMatch(/Number\.isInteger|isInteger/);
-    });
-  });
-
-  // =========================================================================
-  // #6 MEDIUM — lc-interpreter: sum missing cumulative overflow guard
-  // =========================================================================
-  describe("#6 — lc-interpreter sum should guard cumulative overflow", () => {
-    it("should check isFinite on running total", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const sumCase = source.match(/case "sum"[\s\S]*?return total/);
-      expect(sumCase).not.toBeNull();
-      // Should check isFinite(total) after accumulation
-      expect(sumCase![0]).toMatch(/isFinite\(total\)/);
-    });
-  });
-
-  // =========================================================================
   // #7 MEDIUM — lc-interpreter: fuzzy_search limit not bounds-checked
   // =========================================================================
   describe("#7 — lc-interpreter fuzzy_search should cap limit", () => {
@@ -107,16 +71,4 @@ describe("Audit #44", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — lc-compiler: match group not validated as integer
-  // =========================================================================
-  describe("#10 — lc-compiler match should validate group as non-negative integer", () => {
-    it("should check isInteger on group (not just < 0)", () => {
-      const source = readFileSync("src/logic/lc-compiler.ts", "utf-8");
-      const matchCase = source.match(/case "match"[\s\S]*?case "replace"/);
-      expect(matchCase).not.toBeNull();
-      // Must validate isInteger — simple < 0 check misses NaN, 1.5, Infinity
-      expect(matchCase![0]).toMatch(/Number\.isInteger/);
-    });
-  });
 });

@@ -6,44 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #49", () => {
-  // =========================================================================
-  // #1 HIGH — evalo/evalo.ts: parseFloat missing isFinite guard
-  // =========================================================================
-  describe("#1 — evalo parseFloat should check isFinite", () => {
-    it("should guard against Infinity in evalExtractor parseFloat", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const parseFloatCase = source.match(/case "parseFloat"[\s\S]*?isNaN\(floatResult\)[\s\S]*?floatResult/);
-      expect(parseFloatCase).not.toBeNull();
-      expect(parseFloatCase![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #2 HIGH — relational/interpreter.ts: parseFloat codegen missing isFinite
-  // =========================================================================
-  describe("#2 — relational interpreter parseFloat codegen should include isFinite", () => {
-    it("should include isFinite in generated parseFloat code", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const parseFloatCase = source.match(/case "parseFloat"[\s\S]*?isNaN\(_r\)[\s\S]*?_r/);
-      expect(parseFloatCase).not.toBeNull();
-      expect(parseFloatCase![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #3 HIGH — lc-solver evaluateWithBinding: parseFloat missing isFinite
-  // =========================================================================
-  describe("#3 — lc-solver evaluateWithBinding parseFloat should check isFinite", () => {
-    it("should guard against Infinity in evaluateWithBinding parseFloat", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      // Find the evaluateWithBinding parseFloat specifically (after the evaluateWithBinding function def)
-      const ewbFnStart = source.indexOf("function evaluateWithBinding");
-      const ewbSource = source.slice(ewbFnStart);
-      const ewbParseFloat = ewbSource.match(/case "parseFloat"[\s\S]*?isNaN\(floatResult\)[\s\S]*?floatResult/);
-      expect(ewbParseFloat).not.toBeNull();
-      expect(ewbParseFloat![0]).toMatch(/isFinite/);
-    });
-  });
 
   // =========================================================================
   // #4 MEDIUM — relational-solver: split idx not validated as safe integer

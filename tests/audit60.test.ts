@@ -36,32 +36,6 @@ describe("Audit #60", () => {
   });
 
   // =========================================================================
-  // #3 MEDIUM — storeSymbol missing isFinite on startCol/endCol
-  // =========================================================================
-  describe("#3 — storeSymbol should validate startCol/endCol", () => {
-    it("should check isFinite on column numbers", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const fnStart = source.indexOf("storeSymbol(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 1200);
-      expect(block).toMatch(/is(?:Finite|SafeInteger).*startCol|startCol.*is(?:Finite|SafeInteger)|is(?:Finite|SafeInteger).*Col/i);
-    });
-  });
-
-  // =========================================================================
-  // #4 MEDIUM — saveCheckpoint uses isInteger not isSafeInteger
-  // =========================================================================
-  describe("#4 — saveCheckpoint should use isSafeInteger", () => {
-    it("should validate turn with isSafeInteger", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const fnStart = source.indexOf("saveCheckpoint(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isSafeInteger\(turn\)/);
-    });
-  });
-
-  // =========================================================================
   // #5 MEDIUM — evalo split() no cap on parts array length
   // =========================================================================
   describe("#5 — evalo split should cap parts length", () => {

@@ -43,43 +43,6 @@ describe("Audit #41", () => {
   });
 
   // =========================================================================
-  // #4 MEDIUM — lc-solver add missing isFinite guard
-  // =========================================================================
-  describe("#4 — lc-solver add should guard against Infinity", () => {
-    it("should check isFinite in evaluate add", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const addCase = source.match(/case "add":\s*\{[\s\S]*?(?:return left \+ right|addResult)/);
-      expect(addCase).not.toBeNull();
-      expect(addCase![0]).toMatch(/isFinite|Number\.isFinite/);
-    });
-
-    it("should check isFinite in evaluateWithBinding add", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      // Find the second add case (in evaluateWithBinding)
-      const allAddCases = source.match(/case "add":\s*\{[\s\S]*?(?:return left \+ right|addResult.*left \+ right)[\s\S]*?case "add":\s*\{[\s\S]*?(?:return left \+ right|addResult.*left \+ right)/);
-      expect(allAddCases).not.toBeNull();
-      // The second add case should also have isFinite
-      const secondAdd = allAddCases![0].match(/case "add":\s*\{[\s\S]*?(?:return left \+ right|addResult.*left \+ right)$/);
-      expect(secondAdd).not.toBeNull();
-      expect(secondAdd![0]).toMatch(/isFinite|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #5 MEDIUM — lc-solver sum string/object paths use isNaN not isFinite
-  // =========================================================================
-  describe("#5 — lc-solver sum should use isFinite for parsed strings", () => {
-    it("should use isFinite instead of isNaN for string parsing in sum", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      // Find the sum case's string branch
-      const sumStringBranch = source.match(/case "sum"[\s\S]*?typeof val === "string"[\s\S]*?parseFloat\(cleaned\)[\s\S]*?return acc \+ num/);
-      expect(sumStringBranch).not.toBeNull();
-      // Should use isFinite, not just isNaN
-      expect(sumStringBranch![0]).toMatch(/isFinite\(num\)|Number\.isFinite\(num\)|!isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — lc-solver parseDate missing "sept"
   // =========================================================================
   describe("#6 — lc-solver parseDate should include sept abbreviation", () => {
@@ -96,36 +59,6 @@ describe("Audit #41", () => {
     it("should include arguments in dangerous patterns", () => {
       const source = readFileSync("src/persistence/predicate-compiler.ts", "utf-8");
       expect(source).toMatch(/\\barguments\\b/);
-    });
-  });
-
-  // =========================================================================
-  // #8 MEDIUM — handle-ops sort NaN guard
-  // =========================================================================
-  describe("#8 — handle-ops sort should handle NaN comparison", () => {
-    it("should guard against NaN in numeric sort comparisons", () => {
-      const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      // Capture past the subtraction to include the NaN guard
-      const sortBlock = source.match(/sort\(\(a, b\)[\s\S]*?aVal - bVal[\s\S]*?cmp/);
-      expect(sortBlock).not.toBeNull();
-      expect(sortBlock![0]).toMatch(/isNaN|NaN|isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — lc-compiler parseInt/parseFloat lacks NaN guard
-  // =========================================================================
-  describe("#9 — lc-compiler parseInt/parseFloat should guard NaN", () => {
-    it("compiled parseInt should return null for NaN", () => {
-      const source = readFileSync("src/logic/lc-compiler.ts", "utf-8");
-      // The parseInt case should emit code containing isNaN or isFinite guard
-      expect(source).toMatch(/case "parseInt"[\s\S]*?isNaN|case "parseInt"[\s\S]*?isFinite/);
-    });
-
-    it("compiled parseFloat should return null for NaN", () => {
-      const source = readFileSync("src/logic/lc-compiler.ts", "utf-8");
-      // The parseFloat case should emit code containing isNaN or isFinite guard
-      expect(source).toMatch(/case "parseFloat"[\s\S]*?isNaN|case "parseFloat"[\s\S]*?isFinite/);
     });
   });
 

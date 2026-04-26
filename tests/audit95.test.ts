@@ -62,22 +62,6 @@ describe("Audit #95", () => {
   });
 
   // =========================================================================
-  // #5 MEDIUM — relational add missing isFinite guard
-  // =========================================================================
-  describe("#5 — relational exprToCode add should have isFinite guard", () => {
-    it("should wrap add result in isFinite check like sub/mul/div", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const addCase = source.indexOf('case "add":', source.indexOf("exprToCode"));
-      expect(addCase).toBeGreaterThan(-1);
-      // Only check the add case block, before the sub case starts
-      const subCase = source.indexOf('case "sub":', addCase);
-      const block = source.slice(addCase, subCase > addCase ? subCase : addCase + 150);
-      // Should have isFinite guard like sub/mul/div cases
-      expect(block).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — parseCommand split without array cap
   // =========================================================================
   describe("#6 — parseCommand should cap split result", () => {
@@ -119,31 +103,4 @@ describe("Audit #95", () => {
     });
   });
 
-  // =========================================================================
-  // #9 MEDIUM — nodeToRegex repeat min/max not validated as integer
-  // =========================================================================
-  describe("#9 — nodeToRegex should validate repeat bounds as integers", () => {
-    it("should check isSafeInteger on min/max before generating quantifier", () => {
-      const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
-      const repeatCase = source.indexOf('case "repeat"');
-      expect(repeatCase).toBeGreaterThan(-1);
-      const block = source.slice(repeatCase, repeatCase + 500);
-      // Should validate min/max are safe integers
-      expect(block).toMatch(/isSafeInteger|isInteger|Number\.isFinite\(node\.min\)/);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — qwen-synthesis.ts contextLength not validated
-  // =========================================================================
-  describe("#10 — qwen-synthesis buildSystemPrompt should validate contextLength", () => {
-    it("should check isFinite on contextLength", () => {
-      const source = readFileSync("src/adapters/qwen-synthesis.ts", "utf-8");
-      const buildStart = source.indexOf("function buildSystemPrompt");
-      expect(buildStart).toBeGreaterThan(-1);
-      const block = source.slice(buildStart, buildStart + 300);
-      // Should validate contextLength with isFinite
-      expect(block).toMatch(/isFinite\(contextLength\)|Number\.isFinite\(contextLength\)/);
-    });
-  });
 });

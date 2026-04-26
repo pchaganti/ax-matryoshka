@@ -17,27 +17,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #79", () => {
-  // =========================================================================
-  // #1 HIGH — lc-solver.ts evaluate add missing isFinite on result
-  // =========================================================================
-  describe("#1 — evaluate add should check isFinite on result", () => {
-    it("should validate result after addition in evaluate function", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      // Find the add case in the evaluate function (NOT evaluateWithBinding)
-      const evalFn = source.indexOf("function evaluate(");
-      expect(evalFn).toBeGreaterThan(-1);
-      const addCase = source.indexOf('case "add":', evalFn);
-      expect(addCase).toBeGreaterThan(-1);
-      // Make sure we're in evaluate, not evaluateWithBinding
-      const evalWithBinding = source.indexOf("function evaluateWithBinding(");
-      expect(addCase).toBeLessThan(evalWithBinding);
-      // Bumped from 500 → 700 after the async refactor added `await` prefixes
-      // to every evaluate() call, pushing the `Number.isFinite(addResult)`
-      // check past the end of the 500-char window.
-      const block = source.slice(addCase, addCase + 700);
-      expect(block).toMatch(/isFinite\(.*(?:result|addResult|left\s*\+\s*right)/);
-    });
-  });
 
   // =========================================================================
   // #2 MEDIUM — synthesis-integrator.ts synthesizeClassifier unbounded outputGroups

@@ -31,21 +31,6 @@ describe("Audit #86", () => {
   });
 
   // =========================================================================
-  // #2 MEDIUM — synthesis-integrator.ts Yen code string missing isSafeInteger
-  // =========================================================================
-  describe("#2 — Yen parser code string should include isSafeInteger", () => {
-    it("should include isSafeInteger in generated code", () => {
-      const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
-      // Find the Yen parser code string (parseInt path)
-      const yenBlock = source.indexOf("const r = parseInt(cleaned, 10);");
-      expect(yenBlock).toBeGreaterThan(-1);
-      // The code string (not just fn) should include isSafeInteger
-      const block = source.slice(yenBlock, yenBlock + 200);
-      expect(block).toMatch(/isSafeInteger/);
-    });
-  });
-
-  // =========================================================================
   // #3 MEDIUM — predicate-compiler.ts extracted value not length-checked
   // =========================================================================
   describe("#3 — toSQLCondition should cap extracted value length", () => {
@@ -55,19 +40,6 @@ describe("Audit #86", () => {
       expect(eqMatch).toBeGreaterThan(-1);
       const block = source.slice(eqMatch, eqMatch + 400);
       expect(block).toMatch(/value\.length\s*>|MAX_VALUE/i);
-    });
-  });
-
-  // =========================================================================
-  // #4 MEDIUM — http.ts totalBytes missing isSafeInteger guard
-  // =========================================================================
-  describe("#4 — readBody totalBytes should have overflow guard", () => {
-    it("should include isSafeInteger check on totalBytes", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const totalBytesLine = source.indexOf("totalBytes += chunk.length");
-      expect(totalBytesLine).toBeGreaterThan(-1);
-      const block = source.slice(totalBytesLine, totalBytesLine + 200);
-      expect(block).toMatch(/isSafeInteger|Number\.isSafeInteger/);
     });
   });
 

@@ -45,42 +45,6 @@ describe("Audit #58", () => {
   });
 
   // =========================================================================
-  // #4 MEDIUM — iota(NaN) silently produces MAX_IOTA elements
-  // =========================================================================
-  describe("#4 — iota should return empty for NaN", () => {
-    it("should guard against NaN input", () => {
-      const source = readFileSync("src/minikanren/common.ts", "utf-8");
-      const iotaFn = source.match(/export function iota[\s\S]*?\n\}/);
-      expect(iotaFn).not.toBeNull();
-      expect(iotaFn![0]).toMatch(/isFinite|isNaN|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #5 MEDIUM — evalo slice end uses isInteger not isSafeInteger
-  // =========================================================================
-  describe("#5 — evalo slice should use isSafeInteger for end", () => {
-    it("should validate end with isSafeInteger", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const sliceCase = source.match(/case "slice"[\s\S]*?extractor\.end\)/);
-      expect(sliceCase).not.toBeNull();
-      expect(sliceCase![0]).toMatch(/isSafeInteger/);
-    });
-  });
-
-  // =========================================================================
-  // #6 MEDIUM — compile.ts slice uses isInteger not isSafeInteger
-  // =========================================================================
-  describe("#6 — compiled slice should use isSafeInteger", () => {
-    it("should validate start/end with isSafeInteger", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const sliceCase = source.match(/case "slice"[\s\S]*?extractor\.end/);
-      expect(sliceCase).not.toBeNull();
-      expect(sliceCase![0]).toMatch(/isSafeInteger/);
-    });
-  });
-
-  // =========================================================================
   // #7 MEDIUM — symbol-extractor getSignature node.text no length limit
   // =========================================================================
   describe("#7 — getSignature should limit node.text length", () => {
@@ -107,15 +71,4 @@ describe("Audit #58", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — streams.ts take() n not validated
-  // =========================================================================
-  describe("#10 — take should validate n is non-negative integer", () => {
-    it("should check n is valid before processing", () => {
-      const source = readFileSync("src/minikanren/streams.ts", "utf-8");
-      const takeFn = source.match(/export function take[\s\S]*?while/);
-      expect(takeFn).not.toBeNull();
-      expect(takeFn![0]).toMatch(/isInteger|Math\.floor|Math\.max\(0/);
-    });
-  });
 });

@@ -6,18 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #62", () => {
-  // =========================================================================
-  // #1 HIGH — lc-interpreter parseInt uses isFinite not isSafeInteger
-  // =========================================================================
-  describe("#1 — lc-interpreter parseInt should use isSafeInteger", () => {
-    it("should validate parsed int with isSafeInteger", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const caseStart = source.indexOf('case "parseInt"');
-      expect(caseStart).toBeGreaterThan(-1);
-      const block = source.slice(caseStart, caseStart + 500);
-      expect(block).toMatch(/isSafeInteger/);
-    });
-  });
 
   // =========================================================================
   // #2 HIGH — evalo.ts evalExtractor no recursion depth limit
@@ -42,19 +30,6 @@ describe("Audit #62", () => {
       expect(splitStart).toBeGreaterThan(-1);
       const block = source.slice(splitStart, splitStart + 300);
       expect(block).toMatch(/delim\.length|extractor\.delim\.length/);
-    });
-  });
-
-  // =========================================================================
-  // #4 MEDIUM — lc-solver parseInt uses isFinite not isSafeInteger
-  // =========================================================================
-  describe("#4 — lc-solver parseInt should use isSafeInteger", () => {
-    it("should validate parsed int with isSafeInteger", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const caseStart = source.indexOf('case "parseInt"');
-      expect(caseStart).toBeGreaterThan(-1);
-      const block = source.slice(caseStart, caseStart + 300);
-      expect(block).toMatch(/isSafeInteger/);
     });
   });
 

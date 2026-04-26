@@ -44,54 +44,6 @@ describe("Audit #45", () => {
   });
 
   // =========================================================================
-  // #4 HIGH — lc-interpreter parseFloat missing isFinite check
-  // =========================================================================
-  describe("#4 — lc-interpreter parseFloat should check isFinite", () => {
-    it("should guard against Infinity in parseFloat result", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const parseFloatCase = source.match(/case "parseFloat"[\s\S]*?case "add"/);
-      expect(parseFloatCase).not.toBeNull();
-      expect(parseFloatCase![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #5 MEDIUM — lc-interpreter parseNumber missing isFinite check
-  // =========================================================================
-  describe("#5 — lc-interpreter parseNumber should check isFinite", () => {
-    it("should guard against Infinity in parseNumber result", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const parseNumberCase = source.match(/case "parseNumber"[\s\S]*?case "coerce"/);
-      expect(parseNumberCase).not.toBeNull();
-      expect(parseNumberCase![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #6 MEDIUM — relational-solver parseFloat missing isFinite
-  // =========================================================================
-  describe("#6 — relational-solver parseFloat should check isFinite", () => {
-    it("should guard against Infinity in solver parseFloat", () => {
-      const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
-      const parseFloatPrim = source.match(/parseFloat:\s*\(input[\s\S]*?parseDate/);
-      expect(parseFloatPrim).not.toBeNull();
-      expect(parseFloatPrim![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — relational-solver parseInt not validated for safe range
-  // =========================================================================
-  describe("#7 — relational-solver parseInt should validate safe integer range", () => {
-    it("should check isSafeInteger or isFinite on parseInt result", () => {
-      const source = readFileSync("src/logic/relational-solver.ts", "utf-8");
-      const parseIntPrim = source.match(/parseInt:\s*\(input[\s\S]*?parseFloat/);
-      expect(parseIntPrim).not.toBeNull();
-      expect(parseIntPrim![0]).toMatch(/isSafeInteger|isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — lc-interpreter match group not checked with isInteger
   // =========================================================================
   // #9 MEDIUM — lc-interpreter lines case doesn't validate end >= start

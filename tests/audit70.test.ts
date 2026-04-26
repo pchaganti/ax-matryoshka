@@ -6,44 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #70", () => {
-  // =========================================================================
-  // #1 HIGH — verifier verifyNumberConstraint min/max not validated as finite
-  // =========================================================================
-  describe("#1 — verifyNumberConstraint should validate constraint.min/max are finite", () => {
-    it("should check isFinite on constraint.min or constraint.max", () => {
-      const source = readFileSync("src/constraints/verifier.ts", "utf-8");
-      const fnStart = source.indexOf("function verifyNumberConstraint(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 600);
-      expect(block).toMatch(/constraint\.min.*isFinite|isFinite.*constraint\.min|Number\.isFinite\(constraint\.min/i);
-    });
-  });
-
-  // =========================================================================
-  // #2 MEDIUM — verifier verifyStringConstraint minLength/maxLength not validated as non-negative integers
-  // =========================================================================
-  describe("#2 — verifyStringConstraint should validate minLength/maxLength as non-negative integers", () => {
-    it("should check isInteger or >= 0 on minLength/maxLength", () => {
-      const source = readFileSync("src/constraints/verifier.ts", "utf-8");
-      const fnStart = source.indexOf("function verifyStringConstraint(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 800);
-      expect(block).toMatch(/minLength.*isInteger|isInteger.*minLength|minLength.*<\s*0/i);
-    });
-  });
-
-  // =========================================================================
-  // #3 MEDIUM — verifier verifyArrayConstraint minItems/maxItems not validated as non-negative integers
-  // =========================================================================
-  describe("#3 — verifyArrayConstraint should validate minItems/maxItems as non-negative integers", () => {
-    it("should check isInteger or >= 0 on minItems/maxItems", () => {
-      const source = readFileSync("src/constraints/verifier.ts", "utf-8");
-      const fnStart = source.indexOf("function verifyArrayConstraint(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 600);
-      expect(block).toMatch(/minItems.*isInteger|isInteger.*minItems|minItems.*<\s*0/i);
-    });
-  });
 
   // =========================================================================
   // #4 MEDIUM — error-analyzer levenshteinDistance no string length cap

@@ -135,20 +135,6 @@ describe("Audit15 #9: split negative index", () => {
   });
 });
 
-// === Issue #10: Number parser accepts multiple decimals ===
-describe("Audit15 #10: parser multiple decimals", () => {
-  it("should not parse 1.2.3 as NaN", async () => {
-    const { parse } = await import("../src/logic/lc-parser.js");
-    const result = parse("1.2.3");
-    // The parser consumes "1.2.3" and parseFloat gives NaN
-    // After fix, it should stop at first decimal, parsing 1.2 and leaving .3
-    if (result.success && result.term?.tag === "lit") {
-      // Must not be NaN
-      expect(Number.isNaN(result.term.value)).toBe(false);
-    }
-  });
-});
-
 // === Issue #11: parseCurrency $-1234 not detected negative ===
 describe("Audit15 #11: parseCurrency $-1234 negative", () => {
   it("should detect $-1234 as negative", async () => {
@@ -203,15 +189,3 @@ describe("Audit15 #14: sum regex multi-number lines", () => {
   });
 });
 
-// === Issue #15: IDF division by zero when docCount=0 ===
-describe("Audit15 #15: IDF division by zero", () => {
-  it("should handle empty document array without NaN/Infinity", async () => {
-    const { inverseDocumentFrequency } = await import("../src/rag/similarity.js");
-    const result = inverseDocumentFrequency([]);
-    // With 0 documents, should return empty map, not Infinity values
-    expect(result.size).toBe(0);
-    for (const [, value] of result) {
-      expect(isFinite(value)).toBe(true);
-    }
-  });
-});

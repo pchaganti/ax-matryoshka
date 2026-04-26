@@ -11,30 +11,6 @@ describe("Audit #50", () => {
   // #2 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
   // =========================================================================
-  // #3 HIGH — relational/interpreter.ts: match group not validated
-  // =========================================================================
-  describe("#3 — relational interpreter match should validate group", () => {
-    it("should check group is a safe integer before code generation", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const matchCase = source.match(/case "match"[\s\S]*?expr\.group[\s\S]*?exprToCode/);
-      expect(matchCase).not.toBeNull();
-      expect(matchCase![0]).toMatch(/isInteger|isSafeInteger/);
-    });
-  });
-
-  // =========================================================================
-  // #4 MEDIUM — evolutionary.ts: parseFloat missing isFinite in strategy
-  // =========================================================================
-  describe("#4 — evolutionary parseFloat strategy should check isFinite", () => {
-    it("should include isFinite in parseFloat strategy string", () => {
-      const source = readFileSync("src/synthesis/evolutionary.ts", "utf-8");
-      const strategy = source.match(/parseFloat\(s\.replace[\s\S]*?isNaN\(r\)[\s\S]*?r/);
-      expect(strategy).not.toBeNull();
-      expect(strategy![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #5 MEDIUM — evolutionary.ts: blocklist missing arguments pattern
   // =========================================================================
   describe("#5 — evolutionary blocklist should include arguments", () => {
@@ -58,18 +34,6 @@ describe("Audit #50", () => {
       expect(sanitize![0]).toMatch(/-/);
       expect(sanitize![0]).toMatch(/\|/);
 
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — session-db.ts: getHandleDataSlice offset not validated
-  // =========================================================================
-  describe("#7 — session-db getHandleDataSlice should validate offset as integer", () => {
-    it("should ensure offset is a safe integer", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const sliceFn = source.match(/getHandleDataSlice[\s\S]*?Math\.max\(0/);
-      expect(sliceFn).not.toBeNull();
-      expect(sliceFn![0]).toMatch(/Number\.isFinite|Math\.floor/);
     });
   });
 

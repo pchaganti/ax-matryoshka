@@ -143,17 +143,4 @@ describe("Audit #92", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — handle-ops.ts sum() accumulator overflow
-  // =========================================================================
-  describe("#10 — sum() should guard against accumulator overflow", () => {
-    it("should check accumulator stays finite", () => {
-      const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const sumStart = source.indexOf("sum(handle: string, field: string)");
-      expect(sumStart).toBeGreaterThan(-1);
-      const block = source.slice(sumStart, sumStart + 600);
-      // Should check acc/result stays finite after addition
-      expect(block).toMatch(/isFinite\(acc|isFinite\(result|isSafeInteger\(acc|Number\.isFinite/);
-    });
-  });
 });

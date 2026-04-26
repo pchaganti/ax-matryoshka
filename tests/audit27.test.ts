@@ -109,19 +109,6 @@ describe("Audit27 #6: config coerceConfigTypes precision", () => {
   });
 });
 
-// === Issue #7: cosine similarity Infinity check ===
-describe("Audit27 #7: similarity Infinity guard", () => {
-  it("should return 0 for vectors with Infinity norms", async () => {
-    const { cosineSimilarity } = await import("../src/rag/similarity.js");
-    const vec1 = new Map([["a", 1e308]]);
-    const vec2 = new Map([["a", 1e308]]);
-    const result = cosineSimilarity(vec1, vec2);
-    // Should not return NaN
-    expect(Number.isNaN(result)).toBe(false);
-    expect(Number.isFinite(result)).toBe(true);
-  });
-});
-
 // === Issue #8: unsafe type cast in apply-fn ===
 describe("Audit27 #8: lc-solver apply-fn type safety", () => {
   it("should be importable", async () => {

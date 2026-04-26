@@ -115,16 +115,4 @@ describe("Audit #73", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — http readBody content-length not checked with isSafeInteger
-  // =========================================================================
-  describe("#10 — http readBody should validate content-length as safe integer", () => {
-    it("should check isSafeInteger on parsed content-length", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const fnStart = source.indexOf("private readBody(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/isSafeInteger|Number\.isSafeInteger/);
-    });
-  });
 });

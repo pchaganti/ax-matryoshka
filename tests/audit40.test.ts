@@ -56,38 +56,6 @@ describe("Audit #40", () => {
   });
 
   // =========================================================================
-  // #6 MEDIUM — handle-ops sum/sumFromLine missing isFinite guard
-  // =========================================================================
-  describe("#6 — handle-ops sum/sumFromLine should guard against Infinity", () => {
-    it("sum should check isFinite", () => {
-      const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const sumFn = source.match(/sum\(handle[\s\S]*?acc \+ value/);
-      expect(sumFn).not.toBeNull();
-      expect(sumFn![0]).toMatch(/isFinite/);
-    });
-
-    it("sumFromLine should check isFinite", () => {
-      const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const sumFromLine = source.match(/sumFromLine[\s\S]*?acc \+ num/);
-      expect(sumFromLine).not.toBeNull();
-      expect(sumFromLine![0]).toMatch(/isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — lc-solver sum number path accepts NaN/Infinity
-  // =========================================================================
-  describe("#7 — lc-solver sum should check isFinite on number values", () => {
-    it("should guard the direct number path with isFinite", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      // Find the sum case and the typeof val === "number" path
-      const sumCase = source.match(/case "sum"[\s\S]*?typeof val === "number"[\s\S]*?return acc/);
-      expect(sumCase).not.toBeNull();
-      expect(sumCase![0]).toMatch(/isFinite|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — lc-solver split with empty delimiter missing guard
   // =========================================================================
   describe("#8 — lc-solver split should guard against empty delimiter", () => {

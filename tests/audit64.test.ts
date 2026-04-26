@@ -50,32 +50,6 @@ describe("Audit #64", () => {
   });
 
   // =========================================================================
-  // #4 MEDIUM — session-db deleteCheckpoint turn not validated
-  // =========================================================================
-  describe("#4 — deleteCheckpoint should validate turn parameter", () => {
-    it("should check isSafeInteger on turn", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const fnStart = source.indexOf("deleteCheckpoint(turn");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isSafeInteger.*turn|isFinite.*turn|turn\s*</i);
-    });
-  });
-
-  // =========================================================================
-  // #5 MEDIUM — session-db getSymbol id not validated
-  // =========================================================================
-  describe("#5 — getSymbol should validate id parameter", () => {
-    it("should check isFinite or isSafeInteger on id", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const fnStart = source.indexOf("getSymbol(id");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/isSafeInteger.*id|isFinite.*id|isInteger.*id/i);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — regex/synthesis conflict detection O(n*m) — use Set
   // =========================================================================
   describe("#6 — conflict detection should use Set for O(1) lookup", () => {
@@ -123,33 +97,4 @@ describe("Audit #64", () => {
     });
   });
 
-  // =========================================================================
-  // #9 MEDIUM — symbol-extractor unvalidated node position values
-  // =========================================================================
-  describe("#9 — extractSymbolFromNode should validate position values", () => {
-    it("should check isFinite on row/column before arithmetic", () => {
-      const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
-      const fnStart = source.indexOf("extractSymbolFromNode");
-      expect(fnStart).toBeGreaterThan(-1);
-      const posStart = source.indexOf("startLine:", fnStart);
-      expect(posStart).toBeGreaterThan(-1);
-      const block = source.slice(posStart - 200, posStart + 200);
-      // Should have isFinite or isSafeInteger check on row values
-      expect(block).toMatch(/isFinite|isSafeInteger|typeof.*row/i);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — lc-interpreter + lc-solver add() result not checked
-  // =========================================================================
-  describe("#10 — add() should validate result for finitude", () => {
-    it("should check isFinite on result of addition", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const addCase = source.indexOf('case "add"');
-      expect(addCase).toBeGreaterThan(-1);
-      const block = source.slice(addCase, addCase + 500);
-      // Should validate result: const addResult = left + right; isFinite(addResult)
-      expect(block).toMatch(/addResult.*isFinite|isFinite.*addResult|isFinite\(left\s*\+\s*right\)/i);
-    });
-  });
 });

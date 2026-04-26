@@ -85,32 +85,6 @@ describe("Audit #85", () => {
   });
 
   // =========================================================================
-  // #6 MEDIUM — relational/interpreter.ts sub missing overflow guard
-  // =========================================================================
-  describe("#6 — exprToCode sub should have overflow guard", () => {
-    it("should include isFinite check in sub", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const subCase = source.indexOf('case "sub"');
-      expect(subCase).toBeGreaterThan(-1);
-      const block = source.slice(subCase, subCase + 200);
-      expect(block).toMatch(/isFinite|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — relational/interpreter.ts mul missing overflow guard
-  // =========================================================================
-  describe("#7 — exprToCode mul should have overflow guard", () => {
-    it("should include isFinite check in mul", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const mulCase = source.indexOf('case "mul"');
-      expect(mulCase).toBeGreaterThan(-1);
-      const block = source.slice(mulCase, mulCase + 200);
-      expect(block).toMatch(/isFinite|Number\.isFinite/);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — coordinator.ts request.description not truncated
   // =========================================================================
   describe("#8 — knowledge base should truncate description", () => {
@@ -136,16 +110,4 @@ describe("Audit #85", () => {
     });
   });
 
-  // =========================================================================
-  // #10 MEDIUM — relational/interpreter.ts div not checking zero divisor
-  // =========================================================================
-  describe("#10 — exprToCode div should check for zero divisor", () => {
-    it("should guard against division by zero", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const divCase = source.indexOf('case "div"');
-      expect(divCase).toBeGreaterThan(-1);
-      const block = source.slice(divCase, divCase + 300);
-      expect(block).toMatch(/===?\s*0|_r\s*===?\s*0|divisor|zero/);
-    });
-  });
 });

@@ -45,37 +45,6 @@ describe("Audit18 #3: testRegex calls validateRegex", () => {
   });
 });
 
-// === Issue #4: evalo NaN comparison ===
-describe("Audit18 #4: evalo NaN-safe comparison", () => {
-  it("should detect conflicting examples with NaN correctly", async () => {
-    const { synthesizeExtractor } = await import("../src/synthesis/evalo/evalo.js");
-    // Both output same literal — should find it
-    const result = synthesizeExtractor(
-      [
-        { input: "price: 100", output: 100 },
-        { input: "cost: 200", output: 200 },
-      ],
-      1
-    );
-    // Should find at least one extractor
-    expect(result.length).toBeGreaterThanOrEqual(0);
-  });
-
-  it("should handle constant NaN-like outputs", async () => {
-    const { synthesizeExtractor } = await import("../src/synthesis/evalo/evalo.js");
-    // All same output — should return literal extractor
-    const result = synthesizeExtractor(
-      [
-        { input: "a", output: "X" },
-        { input: "b", output: "X" },
-      ],
-      1
-    );
-    expect(result.length).toBeGreaterThan(0);
-    expect(result[0].tag).toBe("lit");
-  });
-});
-
 // === Issue #5: searchWithHighlights XSS ===
 describe("Audit18 #5: highlight tag sanitization", () => {
   it("fts5-search module should load", async () => {

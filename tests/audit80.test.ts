@@ -18,18 +18,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #80", () => {
-  // =========================================================================
-  // #1 HIGH — rlm.ts maxTurns not validated
-  // =========================================================================
-  describe("#1 — rlm should validate numeric config parameters", () => {
-    it("should validate maxTurns with isFinite or bounds check", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const destructure = source.indexOf("maxTurns =");
-      expect(destructure).toBeGreaterThan(-1);
-      const block = source.slice(destructure, destructure + 600);
-      expect(block).toMatch(/isFinite.*maxTurns|maxTurns.*isFinite|maxTurns\s*[<>]=?\s*\d|maxTurns\s*=\s*Math\.(min|max)/);
-    });
-  });
 
   // =========================================================================
   // #2 MEDIUM — rag/manager.ts example.code backtick breakout

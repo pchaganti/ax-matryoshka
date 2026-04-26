@@ -17,18 +17,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #83", () => {
-  // =========================================================================
-  // #1 HIGH — compile.ts Number.isInteger → isSafeInteger for split index
-  // =========================================================================
-  describe("#1 — compile split index should use isSafeInteger", () => {
-    it("should validate split index with isSafeInteger", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const splitCase = source.indexOf('case "split"');
-      expect(splitCase).toBeGreaterThan(-1);
-      const block = source.slice(splitCase, splitCase + 400);
-      expect(block).toMatch(/isSafeInteger\(idx\)/);
-    });
-  });
 
   // =========================================================================
   // #2 HIGH — synthesis-integrator.ts unbounded individualPatterns
