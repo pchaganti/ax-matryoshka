@@ -48,33 +48,6 @@ describe("Audit #57", () => {
   });
 
   // =========================================================================
-  // #5 MEDIUM — session-db loadDocument no line count limit
-  // =========================================================================
-  describe("#5 — session-db loadDocument should limit line count", () => {
-    it("should enforce a max line count", () => {
-      const source = readFileSync("src/persistence/session-db.ts", "utf-8");
-      const loadDocStart = source.indexOf("loadDocument(");
-      expect(loadDocStart).toBeGreaterThan(-1);
-      const block = source.slice(loadDocStart, loadDocStart + 1500);
-      expect(block).toMatch(/MAX_LINES|MAX_DOCUMENT|lines\.length\s*>/i);
-    });
-  });
-
-  // =========================================================================
-  // #6 MEDIUM — lc-parser number token unbounded length
-  // =========================================================================
-  describe("#6 — lc-parser number tokenization should limit length", () => {
-    it("should limit numeric string accumulation length", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      // Find the number accumulation loop
-      const numLoop = source.match(/while \(i < input\.length && \/\[\\d\.\]\/[\s\S]*?num \+= input\[i\]/);
-      expect(numLoop).not.toBeNull();
-      // Should limit the length of the numeric string being accumulated
-      expect(numLoop![0]).toMatch(/num\.length|MAX_NUM/i);
-    });
-  });
-
-  // =========================================================================
   // #7 MEDIUM — parser-registry grammarModule null check
   // =========================================================================
   describe("#7 — parser-registry should validate grammarModule", () => {

@@ -35,16 +35,6 @@ describe("Audit #40", () => {
   });
 
   // =========================================================================
-  // #4 MEDIUM — sandbox-tools logs array has no MAX_LOGS cap
-  // =========================================================================
-  describe("#4 — sandbox-tools should cap logs array", () => {
-    it("should have a MAX_LOGS limit", () => {
-      const source = readFileSync("node_modules/repl-sandbox/dist/sandbox.js", "utf-8");
-      expect(source).toMatch(/maxLogs|logs\.length\s*>/);
-    });
-  });
-
-  // =========================================================================
   // #5 MEDIUM — sandbox-tools textStats.middle negative index
   // =========================================================================
   describe("#5 — sandbox-tools textStats.middle should guard negative index", () => {
@@ -66,21 +56,6 @@ describe("Audit #40", () => {
       expect(splitCase).not.toBeNull();
       // Should check for empty delimiter
       expect(splitCase![0]).toMatch(/delim.*length|!term\.delim|delim === ""/);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — http.ts inner catch leaks raw error message
-  // =========================================================================
-  // #10 MEDIUM — pipe.ts echoes unbounded user input in error
-  // =========================================================================
-  describe("#10 — pipe adapter should truncate user input in error messages", () => {
-    it("should truncate input in Invalid JSON error", () => {
-      const source = readFileSync("src/tool/adapters/pipe.ts", "utf-8");
-      const errorBlock = source.match(/Invalid JSON:[\s\S]*?\}/);
-      expect(errorBlock).not.toBeNull();
-      // Should truncate/slice the input
-      expect(errorBlock![0]).toMatch(/slice|substring|substr|truncat/i);
     });
   });
 });

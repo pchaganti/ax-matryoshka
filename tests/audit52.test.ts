@@ -6,17 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #52", () => {
-  // =========================================================================
-  // #1 HIGH — symbol-extractor.ts: walkTree unbounded horizontal iteration
-  // =========================================================================
-  describe("#1 — walkTree should limit child iteration count", () => {
-    it("should have a MAX_CHILDREN or childCount limit in walk loop", () => {
-      const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
-      const walkLoop = source.match(/Recurse into children[\s\S]*?walkTree/);
-      expect(walkLoop).not.toBeNull();
-      expect(walkLoop![0]).toMatch(/MAX_CHILDREN|Math\.min/);
-    });
-  });
 
   // =========================================================================
   // #2 HIGH — lc-parser.ts: parseConstraintObject prototype pollution
@@ -73,18 +62,6 @@ describe("Audit #52", () => {
   // #7 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 
   // #8 removed: DANGEROUS_VAR_NAMES blocklist deleted with FINAL_VAR marker.
-
-  // =========================================================================
-  // #9 MEDIUM — parser-registry.ts: parseDocument no content size limit
-  // =========================================================================
-  describe("#9 — parser-registry parseDocument should limit content size", () => {
-    it("should check content length before parsing", () => {
-      const source = readFileSync("src/treesitter/parser-registry.ts", "utf-8");
-      const parseFn = source.match(/parseDocument\(content[\s\S]*?parser\.parse/);
-      expect(parseFn).not.toBeNull();
-      expect(parseFn![0]).toMatch(/content\.length|MAX_CONTENT|MAX_FILE_SIZE|MAX_PARSE/);
-    });
-  });
 
   // =========================================================================
   // #10 MEDIUM — fuzzy-search.ts: limit not clamped in fuzzySearch

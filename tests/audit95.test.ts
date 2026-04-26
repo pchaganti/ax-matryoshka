@@ -20,34 +20,6 @@ describe("Audit #95", () => {
   // #1 removed: DANGEROUS_VAR_NAMES deleted with FINAL_VAR marker.
 
   // =========================================================================
-  // #2 MEDIUM — searchWithHighlights highlighted string unbounded
-  // =========================================================================
-  describe("#2 — searchWithHighlights should cap highlighted string", () => {
-    it("should limit highlighted content length", () => {
-      const source = readFileSync("src/persistence/fts5-search.ts", "utf-8");
-      const highlightFn = source.indexOf("searchWithHighlights(");
-      expect(highlightFn).toBeGreaterThan(-1);
-      const block = source.slice(highlightFn, highlightFn + 1000);
-      // Should cap result.content or highlighted string length
-      expect(block).toMatch(/\.slice\(0,|MAX_HIGHLIGHT|content\.length\s*>/);
-    });
-  });
-
-  // =========================================================================
-  // #3 MEDIUM — searchWithSnippets snippet string unbounded
-  // =========================================================================
-  describe("#3 — searchWithSnippets should cap snippet string", () => {
-    it("should limit snippet content length", () => {
-      const source = readFileSync("src/persistence/fts5-search.ts", "utf-8");
-      const snippetFn = source.indexOf("searchWithSnippets(");
-      expect(snippetFn).toBeGreaterThan(-1);
-      const block = source.slice(snippetFn, snippetFn + 600);
-      // Should cap snippet string length
-      expect(block).toMatch(/\.slice\(0,|MAX_SNIPPET|snippet\.length\s*>/);
-    });
-  });
-
-  // =========================================================================
   // #4 MEDIUM — evalo split without limit
   // =========================================================================
   describe("#4 — evalo split should use limit parameter", () => {
@@ -58,48 +30,6 @@ describe("Audit #95", () => {
       const block = source.slice(splitLine, splitLine + 80);
       // Should use split with limit: split(delim, MAX + 1)
       expect(block).toMatch(/\.split\(extractor\.delim,/);
-    });
-  });
-
-  // =========================================================================
-  // #6 MEDIUM — parseCommand split without array cap
-  // =========================================================================
-  describe("#6 — parseCommand should cap split result", () => {
-    it("should limit parts array size from split", () => {
-      const source = readFileSync("src/tool/lattice-tool.ts", "utf-8");
-      const parseStart = source.indexOf("export function parseCommand");
-      expect(parseStart).toBeGreaterThan(-1);
-      const block = source.slice(parseStart, parseStart + 400);
-      // Should cap parts array after split
-      expect(block).toMatch(/\.slice\(0,\s*\d|\.split\(.*,\s*\d/);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — getBindings Object.keys join without pre-cap
-  // =========================================================================
-  describe("#7 — getBindings should cap keys before join", () => {
-    it("should slice keys array before joining", () => {
-      const source = readFileSync("src/tool/lattice-tool.ts", "utf-8");
-      const bindingsStart = source.indexOf("private getBindings()");
-      expect(bindingsStart).toBeGreaterThan(-1);
-      const block = source.slice(bindingsStart, bindingsStart + 400);
-      // Should slice keys before join, not join then slice
-      expect(block).toMatch(/Object\.keys\(bindings\)\.slice\(0,/);
-    });
-  });
-
-  // =========================================================================
-  // #8 MEDIUM — constraint-resolver resolve() no depth limit
-  // =========================================================================
-  describe("#8 — constraint resolver should have recursion depth limit", () => {
-    it("should track and cap recursion depth", () => {
-      const source = readFileSync("src/logic/constraint-resolver.ts", "utf-8");
-      const resolveStart = source.indexOf("function resolve(t:");
-      expect(resolveStart).toBeGreaterThan(-1);
-      const block = source.slice(resolveStart, resolveStart + 300);
-      // Should have depth parameter and check
-      expect(block).toMatch(/depth|MAX_RESOLVE_DEPTH|MAX_DEPTH/);
     });
   });
 

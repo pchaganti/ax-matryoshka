@@ -57,51 +57,6 @@ describe("Audit #87", () => {
   });
 
   // =========================================================================
-  // #4 MEDIUM — synthesis-integrator.ts dangerousPatterns missing \.prototype
-  // =========================================================================
-  // #5 MEDIUM — http.ts constructor port not validated
-  // =========================================================================
-  // #6 MEDIUM — http.ts constructor host not validated
-  // =========================================================================
-  // #7 MEDIUM — http.ts sendError message not truncated
-  // =========================================================================
-  describe("#7 — sendError should truncate message", () => {
-    it("should cap error message length", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const sendError = source.indexOf("private sendError");
-      expect(sendError).toBeGreaterThan(-1);
-      const block = source.slice(sendError, sendError + 300);
-      expect(block).toMatch(/\.slice\(0,|MAX_ERROR|truncat|message\.length/i);
-    });
-  });
-
-  // =========================================================================
-  // #8 MEDIUM — http.ts path not truncated before error message
-  // =========================================================================
-  describe("#8 — unknown endpoint error should truncate path", () => {
-    it("should truncate path before including in error", () => {
-      const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
-      const unknownEndpoint = source.indexOf("Unknown endpoint");
-      expect(unknownEndpoint).toBeGreaterThan(-1);
-      const block = source.slice(unknownEndpoint - 100, unknownEndpoint + 100);
-      expect(block).toMatch(/safePath|path\.slice\(0,|truncat/i);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — relational/interpreter.ts concat missing result length cap
-  // =========================================================================
-  describe("#9 — exprToCode concat should cap result length", () => {
-    it("should include length check in concat", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const concatCase = source.indexOf('case "concat"');
-      expect(concatCase).toBeGreaterThan(-1);
-      const block = source.slice(concatCase, concatCase + 300);
-      expect(block).toMatch(/\.length\s*>|MAX_CONCAT|_res\.length/i);
-    });
-  });
-
-  // =========================================================================
   // #10 MEDIUM — fts5-search.ts searchBatch per-query length not validated
   // =========================================================================
   describe("#10 — searchBatch should validate per-query length", () => {

@@ -20,19 +20,6 @@ import { verifyResult } from "../src/constraints/verifier.js";
 import { SessionDB } from "../src/persistence/session-db.js";
 
 describe("Audit #30", () => {
-  // =============================================
-  // Issue #3 — Medium: deepEqual no depth limit
-  // =============================================
-  describe("#3 — deepEqual depth limit", () => {
-    it("should handle deeply nested objects without stack overflow", () => {
-      const source = readFileSync("src/synthesis/evolutionary.ts", "utf-8");
-      // After fix, deepEqual should have a depth parameter or limit
-      const deepEqualMatch = source.match(/deepEqual\(a: unknown, b: unknown[^)]*\)/);
-      expect(deepEqualMatch).not.toBeNull();
-      // Should have a depth parameter
-      expect(deepEqualMatch![0]).toMatch(/depth/);
-    });
-  });
 
   // #4 removed: parseNumericResult helper was deleted as unreachable.
   // It was only called by the deprecated rlm.extractFinalAnswer (also

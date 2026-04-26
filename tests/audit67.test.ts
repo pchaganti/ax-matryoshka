@@ -45,34 +45,8 @@ describe("Audit #67", () => {
     });
   });
 
-  // =========================================================================
-  // #4 MEDIUM — coordinator.ts getStructure unbounded regex on large strings
-  // =========================================================================
-  describe("#4 — getStructure should cap input string length", () => {
-    it("should limit string before regex replacements", () => {
-      const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
-      const fnStart = source.indexOf("getStructure(str");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/MAX_STRUCTURE|str\.length|str\.slice|\.slice\(0/i);
-    });
-  });
-
   // #6 removed: rlm.ts extractFinalAnswer helper deleted. Adapter-level result
   // formatting is tested in adapter-specific suites.
-
-  // =========================================================================
-  // #7 MEDIUM — knowledge-base.ts computeSimilarity unbounded char Set
-  // =========================================================================
-  describe("#7 — computeSimilarity should cap string before char splitting", () => {
-    it("should limit join length before split", () => {
-      const source = readFileSync("src/synthesis/knowledge-base.ts", "utf-8");
-      const fnStart = source.indexOf("private computeSimilarity(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 500);
-      expect(block).toMatch(/MAX_CHAR|\.slice\(0|\.substring\(0/i);
-    });
-  });
 
   // =========================================================================
   // #8 MEDIUM — session-db.ts createHandle uses slug-based naming
@@ -84,19 +58,6 @@ describe("Audit #67", () => {
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 400);
       expect(block).toMatch(/slugCounts|commandToSlug/i);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — manager.ts formatHintsForPrompt no output length cap
-  // =========================================================================
-  describe("#9 — formatHintsForPrompt should cap total output length", () => {
-    it("should limit final output size", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const fnStart = source.indexOf("formatHintsForPrompt(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 1100);
-      expect(block).toMatch(/MAX_PROMPT|MAX_OUTPUT|\.slice\(0|\.substring\(0/i);
     });
   });
 

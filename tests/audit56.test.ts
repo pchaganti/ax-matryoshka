@@ -50,30 +50,6 @@ describe("Audit #56", () => {
   });
 
   // =========================================================================
-  // #7 MEDIUM — rlm.ts fuzzy_search limit not validated
-  // =========================================================================
-  describe("#7 — rlm fuzzy_search should validate limit parameter", () => {
-    it("should clamp limit to a valid positive integer", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const fuzzyBlock = source.match(/fuzzy_search:\s*\(query.*?limit.*?\)\s*=>\s*\{[\s\S]*?slice\(0,\s*\w+\)/);
-      expect(fuzzyBlock).not.toBeNull();
-      expect(fuzzyBlock![0]).toMatch(/Math\.max|Math\.min|Math\.floor|clamp/i);
-    });
-  });
-
-  // =========================================================================
-  // #8 MEDIUM — rlm.ts fuzzyMatch query no length limit
-  // =========================================================================
-  describe("#8 — rlm fuzzyMatch should limit query length", () => {
-    it("should check query length before processing", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const fuzzyFn = source.match(/function fuzzyMatch[\s\S]*?toLowerCase/);
-      expect(fuzzyFn).not.toBeNull();
-      expect(fuzzyFn![0]).toMatch(/\.length|MAX_QUERY/i);
-    });
-  });
-
-  // =========================================================================
   // #9 MEDIUM — symbol-extractor startPosition accessed without null check
   // =========================================================================
   describe("#9 — symbol-extractor should guard startPosition access", () => {

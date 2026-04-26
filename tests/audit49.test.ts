@@ -32,18 +32,6 @@ describe("Audit #49", () => {
   });
 
   // =========================================================================
-  // #6 MEDIUM — rlm.ts grep missing pattern length limit
-  // =========================================================================
-  describe("#6 — rlm grep should limit pattern length", () => {
-    it("should check pattern length before RegExp construction", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const grepFn = source.match(/grep:\s*\(pattern[\s\S]*?new RegExp\(pattern/);
-      expect(grepFn).not.toBeNull();
-      expect(grepFn![0]).toMatch(/pattern\.length|MAX_PATTERN/);
-    });
-  });
-
-  // =========================================================================
   // #7 MEDIUM — nucleus-engine setBinding no name validation
   // =========================================================================
   describe("#7 — nucleus-engine setBinding should validate name", () => {

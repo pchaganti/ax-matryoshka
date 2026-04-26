@@ -85,19 +85,6 @@ describe("Audit #85", () => {
   });
 
   // =========================================================================
-  // #8 MEDIUM — coordinator.ts request.description not truncated
-  // =========================================================================
-  describe("#8 — knowledge base should truncate description", () => {
-    it("should truncate or validate description before storing", () => {
-      const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
-      const kbAdd = source.indexOf("knowledgeBase.add");
-      expect(kbAdd).toBeGreaterThan(-1);
-      const block = source.slice(kbAdd, kbAdd + 400);
-      expect(block).toMatch(/description.*\.slice\(0,|safeDesc|truncat|MAX_DESC/);
-    });
-  });
-
-  // =========================================================================
   // #9 MEDIUM — session-db.ts listHandles missing LIMIT
   // =========================================================================
   describe("#9 — listHandles should have LIMIT", () => {

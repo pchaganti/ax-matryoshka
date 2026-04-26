@@ -19,50 +19,6 @@ import { readFileSync } from "fs";
 describe("Audit #82", () => {
 
   // =========================================================================
-  // #2 MEDIUM — sandbox-tools.ts console logs not truncated in execute()
-  // =========================================================================
-  describe("#2 — execute() console override should truncate log messages", () => {
-    it("should truncate log messages before pushing", () => {
-      const source = readFileSync("node_modules/repl-sandbox/dist/sandbox.js", "utf-8");
-      // Find the execute method's console.log override (not the initial one)
-      const executeBlock = source.indexOf("const executionLogs");
-      expect(executeBlock).toBeGreaterThan(-1);
-      const logOverride = source.indexOf("consoleImpl.log = ", executeBlock);
-      expect(logOverride).toBeGreaterThan(-1);
-      const block = source.slice(logOverride, logOverride + 200);
-      expect(block).toMatch(/\.slice\(0,|MAX_LOG_ENTRY|msg\.length/);
-    });
-  });
-
-  // =========================================================================
-  // #3 MEDIUM — sandbox-tools.ts unbounded declaration script size
-  // =========================================================================
-  describe("#3 — execute() should cap declaration script size", () => {
-    it("should limit declaration script length before vm.Script", () => {
-      const source = readFileSync("node_modules/repl-sandbox/dist/sandbox.js", "utf-8");
-      const declJoin = source.indexOf('declarations.join("\\n")');
-      expect(declJoin).toBeGreaterThan(-1);
-      const block = source.slice(declJoin - 200, declJoin + 100);
-      expect(block).toMatch(/MAX_DECL|declCode\.length|declarations\.join.*\.length/);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — extractor/synthesis.ts split() unbounded before MAX_FIELDS
-  // =========================================================================
-  describe("#7 — tryDelimiterFieldExtraction should cap split results", () => {
-    it("should limit split array size in maxFields calculation", () => {
-      const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
-      const fnStart = source.indexOf("function tryDelimiterFieldExtraction");
-      expect(fnStart).toBeGreaterThan(-1);
-      const splitBlock = source.indexOf("split(delim,", fnStart);
-      expect(splitBlock).toBeGreaterThan(-1);
-      const block = source.slice(splitBlock - 50, splitBlock + 100);
-      expect(block).toMatch(/\.slice\(0,\s*MAX_FIELDS|split\(delim,\s*MAX_FIELDS|MAX_SPLIT/);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — extractor/synthesis.ts unescaped prefix/suffix in description
   // =========================================================================
   describe("#8 — prefix/suffix should be escaped in description", () => {

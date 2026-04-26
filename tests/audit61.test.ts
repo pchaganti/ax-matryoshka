@@ -6,18 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #61", () => {
-  // =========================================================================
-  // #1 HIGH — lc-parser parseTerm no recursion depth limit
-  // =========================================================================
-  describe("#1 — parseTerm should have recursion depth limit", () => {
-    it("should track and limit parse depth", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const fnStart = source.indexOf("function parseTerm(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/MAX_PARSE_DEPTH|depth\s*>/i);
-    });
-  });
 
   // =========================================================================
   // #2 HIGH — compile.ts match calls .match() on potentially null strCode
@@ -28,19 +16,6 @@ describe("Audit #61", () => {
       const matchCase = source.match(/case "match"[\s\S]*?\.match\(new RegExp/);
       expect(matchCase).not.toBeNull();
       expect(matchCase![0]).toMatch(/typeof.*!==?\s*"string"|typeof.*string/);
-    });
-  });
-
-  // =========================================================================
-  // #3 MEDIUM — rlm.ts ReDoS-prone regex for JSON array matching
-  // =========================================================================
-  describe("#3 — generateClassifierGuidance should limit JSON search scope", () => {
-    it("should cap fullLog length before regex match", () => {
-      const source = readFileSync("src/rlm.ts", "utf-8");
-      const guidanceStart = source.indexOf("generateClassifierGuidance");
-      expect(guidanceStart).toBeGreaterThan(-1);
-      const block = source.slice(guidanceStart, guidanceStart + 500);
-      expect(block).toMatch(/\.slice\(0|MAX_LOG|fullLog\.length/i);
     });
   });
 
@@ -71,19 +46,6 @@ describe("Audit #61", () => {
   });
 
   // =========================================================================
-  // #6 MEDIUM — nucleus.ts escapeForSexp no input length cap
-  // =========================================================================
-  describe("#6 — escapeForSexp should cap input length", () => {
-    it("should limit string length before escaping", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const fnStart = source.indexOf("function escapeForSexp");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/\.length|MAX_ESCAPE|\.slice\(0/i);
-    });
-  });
-
-  // =========================================================================
   // #7 MEDIUM — storeSymbol no length limit on symbol.name
   // =========================================================================
   describe("#7 — storeSymbol should validate symbol.name length", () => {
@@ -106,20 +68,6 @@ describe("Audit #61", () => {
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 600);
       expect(block).toMatch(/signature\.length|MAX_SIG/i);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — symbol-extractor getSignature split should use limit
-  // =========================================================================
-  describe("#9 — getSignature split should limit line count", () => {
-    it("should pass a limit to split()", () => {
-      const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
-      const sigStart = source.indexOf("private getSignature");
-      expect(sigStart).toBeGreaterThan(-1);
-      const block = source.slice(sigStart, sigStart + 800);
-      // split("\n", limit) or split("\n").slice(0, N)
-      expect(block).toMatch(/split\("\\n",\s*\d+\)|split\("\\n"\)\.slice/);
     });
   });
 

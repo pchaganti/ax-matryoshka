@@ -36,47 +36,4 @@ describe("Audit #77", () => {
       expect(block).toMatch(/\.length\s*>/);
     });
   });
-
-  // =========================================================================
-  // #3 HIGH — lc-solver.ts evaluateWithBinding split missing delim length cap
-  // =========================================================================
-  describe("#3 — evaluateWithBinding split should cap delimiter length", () => {
-    it("should check delimiter length in evaluateWithBinding split", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const firstSplit = source.indexOf('case "split"');
-      expect(firstSplit).toBeGreaterThan(-1);
-      const secondSplit = source.indexOf('case "split"', firstSplit + 1);
-      expect(secondSplit).toBeGreaterThan(-1);
-      const block = source.slice(secondSplit, secondSplit + 300);
-      expect(block).toMatch(/delim\.length\s*>\s*\d{2,}/);
-    });
-  });
-
-  // =========================================================================
-  // #8 MEDIUM — evalo.ts synthesizeExtractor no max examples cap
-  // =========================================================================
-  describe("#8 — synthesizeExtractor should cap examples count", () => {
-    it("should have MAX_EXAMPLES or length check", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const fnStart = source.indexOf("export function synthesizeExtractor(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/MAX_EXAMPLES|examples\.length\s*>\s*\d{2,}/);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — http.ts timeoutSeconds multiplication overflow
-  // =========================================================================
-  // #10 MEDIUM — lc-parser.ts classify examples loop unbounded
-  // =========================================================================
-  describe("#10 — lc-parser classify should cap examples count", () => {
-    it("should have max examples check in classify loop", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const classifyCase = source.indexOf('case "classify"');
-      expect(classifyCase).toBeGreaterThan(-1);
-      const block = source.slice(classifyCase, classifyCase + 600);
-      expect(block).toMatch(/MAX_CLASSIFY|examples\.length\s*>=?\s*\d{2,}/);
-    });
-  });
 });

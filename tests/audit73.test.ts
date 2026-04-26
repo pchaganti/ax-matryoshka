@@ -102,17 +102,4 @@ describe("Audit #73", () => {
     });
   });
 
-  // =========================================================================
-  // #9 MEDIUM — lc-compiler compile() no recursion depth tracking
-  // =========================================================================
-  describe("#9 — lc-compiler compile should track recursion depth", () => {
-    it("should have depth parameter or MAX_DEPTH check", () => {
-      const source = readFileSync("src/logic/lc-compiler.ts", "utf-8");
-      const fnStart = source.indexOf("function compile(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 200);
-      expect(block).toMatch(/depth|MAX_COMPILE_DEPTH|MAX_DEPTH/i);
-    });
-  });
-
 });

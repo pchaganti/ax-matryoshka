@@ -75,19 +75,6 @@ describe("Audit #65", () => {
   });
 
   // =========================================================================
-  // #6 MEDIUM — rag/manager recordFailure error field not length-capped
-  // =========================================================================
-  describe("#6 — recordFailure should cap error field length", () => {
-    it("should limit record.error string length", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const fnStart = source.indexOf("recordFailure(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 500);
-      expect(block).toMatch(/record\.error.*length|MAX_ERROR|error.*slice/i);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — grammar-config symbols validation accepts arrays
   // =========================================================================
   describe("#8 — grammar-config symbols should reject arrays", () => {

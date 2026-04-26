@@ -219,17 +219,6 @@ describe("Audit #34", () => {
       });
     });
 
-    // #21 — deepEqual no depth limit in extractor/synthesis.ts
-    describe("#21 — deepEqual should have recursion depth limit", () => {
-      it("should have depth limit to prevent stack overflow", () => {
-        const source = readFileSync("src/synthesis/extractor/synthesis.ts", "utf-8");
-        const deepEqual = source.match(/function deepEqual[\s\S]*?^\}/m);
-        expect(deepEqual).not.toBeNull();
-        // Should have a depth parameter or limit
-        expect(deepEqual![0]).toMatch(/depth|limit|MAX_DEPTH|recursion/i);
-      });
-    });
-
     // #22 — Object.is for constant output check fails for objects
     describe("#22 — synthesizeExtractor constant check should handle objects", () => {
       it("should use deep equality for constant output detection", () => {

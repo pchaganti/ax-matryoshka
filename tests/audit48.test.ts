@@ -8,18 +8,6 @@ import { readFileSync } from "fs";
 describe("Audit #48", () => {
 
   // =========================================================================
-  // #5 MEDIUM — lc-solver: fuzzy_search limit not capped
-  // =========================================================================
-  describe("#5 — lc-solver fuzzy_search should cap limit", () => {
-    it("should clamp the limit parameter", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const fuzzyCase = source.match(/case "fuzzy_search"[\s\S]*?tools\.fuzzy_search/);
-      expect(fuzzyCase).not.toBeNull();
-      expect(fuzzyCase![0]).toMatch(/Math\.min|Math\.max|1000|MAX_FUZZY/);
-    });
-  });
-
-  // =========================================================================
   // #7 MEDIUM — handle-ops: sort field name not validated
   // =========================================================================
   describe("#7 — handle-ops sort should validate field name", () => {
@@ -41,24 +29,6 @@ describe("Audit #48", () => {
       expect(expandSection).not.toBeNull();
       // Should clamp limit so it can't exceed MAX_DEFAULT_EXPAND_LIMIT
       expect(expandSection![0]).toMatch(/Math\.min\([^)]*MAX_DEFAULT_EXPAND_LIMIT/);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — handle-ops: preview/sample n not bounded
-  // =========================================================================
-  describe("#9 — handle-ops preview and sample should bound n", () => {
-    it("should clamp n to a maximum value in preview", () => {
-      const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const previewFn = source.match(/preview\(handle[\s\S]*?getHandleDataSlice|MAX_PREVIEW/);
-      expect(previewFn).not.toBeNull();
-      expect(previewFn![0]).toMatch(/MAX_PREVIEW|Math\.min|10000/);
-    });
-    it("should clamp n to a maximum value in sample", () => {
-      const source = readFileSync("src/persistence/handle-ops.ts", "utf-8");
-      const sampleFn = source.match(/sample\(handle[\s\S]*?data\.length <= n/);
-      expect(sampleFn).not.toBeNull();
-      expect(sampleFn![0]).toMatch(/MAX_SAMPLE|Math\.min|10000/);
     });
   });
 

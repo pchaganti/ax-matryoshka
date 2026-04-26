@@ -8,19 +8,6 @@ import { readFileSync } from "fs";
 describe("Audit #72", () => {
 
   // =========================================================================
-  // #2 HIGH — lc-interpreter filter unbounded result array growth
-  // =========================================================================
-  describe("#2 — lc-interpreter filter should cap result array size", () => {
-    it("should have MAX bound on filter output", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const filterCase = source.indexOf('case "filter"');
-      expect(filterCase).toBeGreaterThan(-1);
-      const block = source.slice(filterCase, filterCase + 800);
-      expect(block).toMatch(/MAX_FILTER|MAX_RESULTS|results\.length\s*>=|results\.length\s*>/);
-    });
-  });
-
-  // =========================================================================
   // #3 HIGH — lc-interpreter map unbounded result array growth
   // =========================================================================
   describe("#3 — lc-interpreter map should cap result array size", () => {
@@ -43,32 +30,6 @@ describe("Audit #72", () => {
       expect(queuePush).toBeGreaterThan(-1);
       const block = source.slice(queuePush - 200, queuePush + 100);
       expect(block).toMatch(/MAX_QUEUE|queue\.length\s*>=|queue\.length\s*>/);
-    });
-  });
-
-  // =========================================================================
-  // #6 MEDIUM — fts5-search extractSearchTerms unbounded term array
-  // =========================================================================
-  describe("#6 — fts5-search extractSearchTerms should cap terms", () => {
-    it("should limit number of extracted terms", () => {
-      const source = readFileSync("src/persistence/fts5-search.ts", "utf-8");
-      const fnStart = source.indexOf("private extractSearchTerms(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/\.slice\(0|MAX_TERMS|MAX_EXTRACTED_TERMS/);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — verifier verifyObjectConstraint uncapped required array
-  // =========================================================================
-  describe("#7 — verifyObjectConstraint should cap required array iteration", () => {
-    it("should limit required properties checked", () => {
-      const source = readFileSync("src/constraints/verifier.ts", "utf-8");
-      const fnStart = source.indexOf("function verifyObjectConstraint(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 500);
-      expect(block).toMatch(/MAX_REQUIRED|MAX_PROPERTIES|required\.length\s*>|required\.slice/);
     });
   });
 

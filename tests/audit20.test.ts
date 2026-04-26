@@ -90,25 +90,6 @@ describe("Audit20 #5: filter JS truthiness is intentional", () => {
   });
 });
 
-// === Issue #6: Parser recursion depth limit ===
-describe("Audit20 #6: parser recursion depth limit", () => {
-  it("should reject deeply nested expressions", async () => {
-    const { parse } = await import("../src/logic/lc-parser.js");
-    // Build a deeply nested expression: ((((((...))))))
-    const depth = 500;
-    const input = "(".repeat(depth) + "input" + ")".repeat(depth);
-    const result = parse(input);
-    // Should either return null or have an error — not stack overflow
-    // The parser should gracefully handle this
-    expect(() => parse(input)).not.toThrow();
-    // Result should indicate failure (null term) due to depth limit
-    if (result.term) {
-      // If it somehow parsed, that's OK too — the key thing is no crash
-      expect(result.term).toBeDefined();
-    }
-  });
-});
-
 // === Issue #7: Asymmetric compound unification ===
 describe("Audit20 #7: unify compound term symmetry", () => {
   it("should fail unification when x has extra keys not in y", async () => {

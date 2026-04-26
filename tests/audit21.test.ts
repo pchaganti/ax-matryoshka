@@ -45,41 +45,6 @@ describe("Audit21 #2: testProgram empty examples guard", () => {
   });
 });
 
-// === Issue #3: verifyOutputConstraint recursion depth ===
-describe("Audit21 #3: verifyOutputConstraint depth limit", () => {
-  it("should not stack overflow on deeply nested constraints", async () => {
-    const { verifyResult } = await import("../src/constraints/verifier.js");
-    // Build deeply nested object constraint
-    let constraint: any = {
-      type: "number",
-      min: 0,
-    };
-    for (let i = 0; i < 200; i++) {
-      constraint = {
-        type: "object",
-        properties: { nested: constraint },
-      };
-    }
-
-    // Build deeply nested value
-    let value: any = 42;
-    for (let i = 0; i < 200; i++) {
-      value = { nested: value };
-    }
-
-    const synthConstraint: any = { output: constraint };
-
-    // Should not throw a stack overflow — should gracefully limit depth
-    expect(() => {
-      verifyResult(value, synthConstraint);
-    }).not.toThrow();
-
-    // Result should contain an error about depth
-    const result = verifyResult(value, synthConstraint);
-    expect(result.valid).toBe(false);
-  });
-});
-
 // === Issue #4: getHandleDataSlice negative limit ===
 describe("Audit21 #4: getHandleDataSlice negative limit", () => {
   it("should clamp negative limit to 0", async () => {

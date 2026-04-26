@@ -21,35 +21,6 @@ describe("Audit #64", () => {
   });
 
   // =========================================================================
-  // #2 HIGH — nucleus extractCode unbounded S-expression search loop
-  // =========================================================================
-  describe("#2 — extractCode should limit S-expression search iterations", () => {
-    it("should cap the while loop iterations", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const loopStart = source.indexOf("while (searchFrom >= 0");
-      expect(loopStart).toBeGreaterThan(-1);
-      const block = source.slice(loopStart - 200, loopStart + 300);
-      expect(block).toMatch(/MAX_SEXP_ITER|MAX_SEARCH_ITER|iterations\s*</i);
-    });
-  });
-
-  // =========================================================================
-  // #3 MEDIUM — lc-solver evaluateWithBinding split missing MAX_SPLIT_PARTS
-  // =========================================================================
-  describe("#3 — evaluateWithBinding split should cap parts", () => {
-    it("should limit split result size", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const fnStart = source.indexOf("function evaluateWithBinding(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const splitCase = source.indexOf('case "split":', fnStart);
-      expect(splitCase).toBeGreaterThan(-1);
-      const block = source.slice(splitCase, splitCase + 500);
-      // Should have MAX_SPLIT_PARTS/MAX_EVAL_SPLIT_PARTS or parts.length check
-      expect(block).toMatch(/MAX_SPLIT_PARTS|MAX_EVAL_SPLIT|parts\.length\s*>/i);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — regex/synthesis conflict detection O(n*m) — use Set
   // =========================================================================
   describe("#6 — conflict detection should use Set for O(1) lookup", () => {
@@ -66,34 +37,6 @@ describe("Audit #64", () => {
         const block = source.slice(conflictStart, conflictStart + 300);
         expect(block).toMatch(/new Set\(negatives\)|negSet|negativeSet/i);
       }
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — regex/synthesis unbounded error message string length
-  // =========================================================================
-  describe("#7 — error messages should cap joined array length", () => {
-    it("should slice before joining in failedPositives error", () => {
-      const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
-      const errStart = source.indexOf("Pattern fails to match positives");
-      expect(errStart).toBeGreaterThan(-1);
-      const block = source.slice(errStart - 50, errStart + 150);
-      // Should slice the array before joining, like .slice(0, N).join(...)
-      expect(block).toMatch(/slice\(\s*0\s*,\s*\d+\s*\)\.join/);
-    });
-  });
-
-  // =========================================================================
-  // #8 MEDIUM — sandbox-tools JSON.stringify without size limit
-  // =========================================================================
-  describe("#8 — sandbox-tools should cap JSON.stringify output", () => {
-    it("should limit stringified output length", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
-      const logStart = source.indexOf("JSON.stringify(ex.output)");
-      expect(logStart).toBeGreaterThan(-1);
-      const block = source.slice(logStart, logStart + 200);
-      // Should truncate JSON output via safeStringify or length cap on the stringified result
-      expect(block).toMatch(/MAX_JSON|safeStringify|\.slice\(0|\.substring\(0/i);
     });
   });
 

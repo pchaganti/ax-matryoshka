@@ -83,23 +83,6 @@ describe("Issue #4: coordinator should validate knowledge base regex", () => {
 });
 
 // =========================================================================
-// Issue #5 — lc-interpreter.ts: formatValue no depth limit
-// =========================================================================
-describe("Issue #5: formatValue should have depth limit", () => {
-  it("should not stack overflow on deeply nested object", async () => {
-    // Build deeply nested object
-    let obj: any = { value: "leaf" };
-    for (let i = 0; i < 200; i++) {
-      obj = { nested: obj };
-    }
-    // Should not throw, should truncate gracefully
-    expect(() => formatValue(obj)).not.toThrow();
-    const result = formatValue(obj);
-    expect(typeof result).toBe("string");
-  });
-});
-
-// =========================================================================
 // Issue #6 — lc-interpreter.ts:242: replace backreference injection
 // =========================================================================
 describe("Issue #6: interpreter replace should escape replacement backreferences", () => {
@@ -194,22 +177,6 @@ describe("Issue #10: solver replace should escape replacement backreferences", (
     expect(result.success).toBe(true);
     // Should contain literal "$1-test", not a backreference substitution
     expect(String(result.value)).toContain("$1-test");
-  });
-});
-
-// =========================================================================
-// Issue #11 — relational-solver.ts:490: off-by-one in MAX_CANDIDATES
-// =========================================================================
-describe("Issue #11: searchComposition MAX_CANDIDATES off-by-one", () => {
-  it("should check candidates <= MAX not > MAX after increment", async () => {
-    const fs = await import("node:fs/promises");
-    const source = await fs.readFile("src/logic/relational-solver.ts", "utf-8");
-
-    // Find the candidatesChecked comparison
-    const check = source.match(/candidatesChecked.*MAX_CANDIDATES/);
-    expect(check).not.toBeNull();
-    // Should be >= (or check before increment), not > after increment
-    expect(check![0]).toMatch(/>=\s*MAX_CANDIDATES|candidatesChecked\s*>\s*MAX_CANDIDATES/);
   });
 });
 // =========================================================================

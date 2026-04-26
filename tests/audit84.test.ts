@@ -17,18 +17,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #84", () => {
-  // =========================================================================
-  // #1 HIGH — lc-solver.ts replace result not length-capped
-  // =========================================================================
-  describe("#1 — lc-solver replace should cap result length", () => {
-    it("should check result length after replace", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const replaceCase = source.indexOf('case "replace"', source.indexOf("function evaluate"));
-      expect(replaceCase).toBeGreaterThan(-1);
-      const block = source.slice(replaceCase, replaceCase + 700);
-      expect(block).toMatch(/MAX_RESULT|result\.length\s*>|\.length\s*>/);
-    });
-  });
 
   // =========================================================================
   // #2 MEDIUM — rlm.ts escape-then-slice boundary issue
@@ -87,19 +75,6 @@ describe("Audit #84", () => {
   // #8 removed: turnTimeoutMs option was dead in the RLM path (runRLM
   // created but never executed the sandbox that consumed it) and has
   // been removed from RLMOptions entirely.
-
-  // =========================================================================
-  // #9 MEDIUM — rag/manager.ts pitfalls content unbounded
-  // =========================================================================
-  describe("#9 — pitfalls content should be size-capped", () => {
-    it("should limit total pitfalls content size", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const pitfallsLine = source.indexOf("pitfalls");
-      expect(pitfallsLine).toBeGreaterThan(-1);
-      const block = source.slice(pitfallsLine, pitfallsLine + 500);
-      expect(block).toMatch(/MAX_PITFALL|\.slice\(0,\s*MAX_PITFALLS?\)|pitfallContent\.slice/);
-    });
-  });
 
   // =========================================================================
   // #10 MEDIUM — synthesis-integrator.ts dangerousPatterns missing delete

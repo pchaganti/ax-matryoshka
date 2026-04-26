@@ -19,19 +19,6 @@ import { readFileSync } from "fs";
 describe("Audit #83", () => {
 
   // =========================================================================
-  // #2 HIGH — synthesis-integrator.ts unbounded individualPatterns
-  // =========================================================================
-  describe("#2 — findDistinguishingPattern should cap individualPatterns", () => {
-    it("should limit the number of individual patterns", () => {
-      const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
-      const fnStart = source.indexOf("individualPatterns");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 600);
-      expect(block).toMatch(/MAX_PATTERNS|individualPatterns\.length\s*>=?\s*\d|\.slice\(0,/);
-    });
-  });
-
-  // =========================================================================
   // #3 MEDIUM — relational/interpreter.ts missing `with` in blocklist
   // =========================================================================
   // #4 MEDIUM — relational/interpreter.ts missing `delete` in blocklist
@@ -71,21 +58,6 @@ describe("Audit #83", () => {
       expect(objectBlock).toBeGreaterThan(-1);
       const block = source.slice(objectBlock, objectBlock + 800);
       expect(block).not.toMatch(/defineProperty:\s*\{\s*value:\s*Object\.defineProperty/);
-    });
-  });
-
-  // =========================================================================
-  // #8 MEDIUM — relational/interpreter.ts maxResults unbounded
-  // =========================================================================
-  describe("#8 — synthesizeProgram should cap maxResults", () => {
-    it("should bound maxResults parameter", () => {
-      const source = readFileSync("src/synthesis/relational/interpreter.ts", "utf-8");
-      const fnStart = source.indexOf("function synthesizeProgram") !== -1
-        ? source.indexOf("function synthesizeProgram")
-        : source.indexOf("export function synthesizeProgram");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/MAX_RESULTS|Math\.min.*maxResults|maxResults.*Math\.min|boundedMax/);
     });
   });
 

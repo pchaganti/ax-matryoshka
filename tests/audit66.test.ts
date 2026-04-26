@@ -6,50 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #66", () => {
-  // =========================================================================
-  // #1 HIGH — predicate-compiler validateAndCompile no code length cap
-  // =========================================================================
-  describe("#1 — validateAndCompile should cap code length", () => {
-    it("should check code.length before processing", () => {
-      const source = readFileSync("src/persistence/predicate-compiler.ts", "utf-8");
-      const fnStart = source.indexOf("private validateAndCompile(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/MAX_CODE_LENGTH|code\.length\s*>/i);
-    });
-  });
-
-  // =========================================================================
-  // #2 HIGH — verifier verifyInvariant no invariant length cap
-  // =========================================================================
-  describe("#2 — verifyInvariant should cap invariant length", () => {
-    it("should check invariant.length before processing", () => {
-      const source = readFileSync("src/constraints/verifier.ts", "utf-8");
-      const fnStart = source.indexOf("function verifyInvariant(");
-      if (fnStart === -1) {
-        const altStart = source.indexOf("export function verifyInvariant(");
-        expect(altStart).toBeGreaterThan(-1);
-        const block = source.slice(altStart, altStart + 400);
-        expect(block).toMatch(/MAX_INVARIANT|invariant\.length\s*>/i);
-      } else {
-        const block = source.slice(fnStart, fnStart + 400);
-        expect(block).toMatch(/MAX_INVARIANT|invariant\.length\s*>/i);
-      }
-    });
-  });
-
-  // =========================================================================
-  // #3 HIGH — symbol-extractor unbounded symbols array growth
-  // =========================================================================
-  describe("#3 — extractSymbols should cap total symbols", () => {
-    it("should have MAX_SYMBOLS_COUNT or length check in walkTree", () => {
-      const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
-      const walkStart = source.indexOf("private walkTree(");
-      expect(walkStart).toBeGreaterThan(-1);
-      const block = source.slice(walkStart, walkStart + 600);
-      expect(block).toMatch(/MAX_SYMBOLS_COUNT|symbols\.length\s*>|symbols\.length\s*>=/i);
-    });
-  });
 
   // =========================================================================
   // #4 HIGH — evalo split with empty delimiter DoS

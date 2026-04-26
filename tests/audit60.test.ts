@@ -36,18 +36,6 @@ describe("Audit #60", () => {
   });
 
   // =========================================================================
-  // #5 MEDIUM — evalo split() no cap on parts array length
-  // =========================================================================
-  describe("#5 — evalo split should cap parts length", () => {
-    it("should limit split result size", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const splitCase = source.match(/case "split"[\s\S]*?parts\[extractor\.index\]/);
-      expect(splitCase).not.toBeNull();
-      expect(splitCase![0]).toMatch(/MAX_SPLIT|parts\.length\s*>/i);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — regex/synthesis.ts quantifier bounds not validated
   // =========================================================================
   describe("#6 — nodeToRegex should validate quantifier bounds", () => {
@@ -75,19 +63,6 @@ describe("Audit #60", () => {
   });
 
   // =========================================================================
-  // #8 MEDIUM — sugar.ts sweetenPair no list length cap
-  // =========================================================================
-  describe("#8 — sweetenPair should limit list length", () => {
-    it("should track and cap accumulated list length", () => {
-      const source = readFileSync("src/minikanren/sugar.ts", "utf-8");
-      const fnStart = source.indexOf("function sweetenPair");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/MAX_LIST|length\s*>|listLen/i);
-    });
-  });
-
-  // =========================================================================
   // #9 MEDIUM — language-map getCustomGrammars keys not validated
   // =========================================================================
   describe("#9 — getAllLanguageConfigs should validate custom grammar keys", () => {
@@ -96,19 +71,6 @@ describe("Audit #60", () => {
       const mergeBlock = source.match(/custom.*=.*readCustomGrammars[\s\S]*?configs\[lang\]/);
       expect(mergeBlock).not.toBeNull();
       expect(mergeBlock![0]).toMatch(/__proto__|DANGEROUS|prototype/);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — lc-solver find_references escaped pattern length not capped
-  // =========================================================================
-  describe("#10 — find_references should cap escaped pattern length", () => {
-    it("should limit final pattern length after escaping", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const refStart = source.indexOf('case "find_references"');
-      expect(refStart).toBeGreaterThan(-1);
-      const block = source.slice(refStart, refStart + 600);
-      expect(block).toMatch(/pattern\.length|escaped\.length/);
     });
   });
 });

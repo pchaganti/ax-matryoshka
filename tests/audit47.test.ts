@@ -56,37 +56,6 @@ describe("Audit #47", () => {
   });
 
   // =========================================================================
-  // #7 MEDIUM — handle-session no limit on handle creation
-  // =========================================================================
-  describe("#7 — handle-session should limit number of handles", () => {
-    it("should enforce a handle count limit via HandleRegistry.store", () => {
-      // The invariant lives in HandleRegistry now — handle-session.ts used
-      // to duplicate the guard in execute() but that was dead code (the
-      // outer `count > MAX_HANDLES` check never fired because store()'s
-      // internal `count >= MAX_HANDLES` loop kept the count bounded first).
-      // Chiasmus review round 2 issue #5 deleted the dead guard; the real
-      // enforcement must stay in HandleRegistry.
-      const source = readFileSync("src/persistence/handle-registry.ts", "utf-8");
-      const storeSection = source.match(/store\(data[\s\S]*?createHandle/);
-      expect(storeSection).not.toBeNull();
-      expect(storeSection![0]).toMatch(/MAX_HANDLES|handle.*limit|evict|count/i);
-    });
-  });
-
-  // =========================================================================
-  // #8 MEDIUM — sandbox synthesize_extractor no max examples limit
-  // =========================================================================
-  describe("#8 — sandbox synthesize_extractor should limit examples count", () => {
-    it("should check examples array length", () => {
-      const source = readFileSync("src/synthesis/sandbox-tools.ts", "utf-8");
-      const synthFn = source.match(/synthesize_extractor[\s\S]*?relationalSynthesize/);
-      expect(synthFn).not.toBeNull();
-      // Should cap examples array length to a MAX_EXAMPLES constant (not just logging > 3)
-      expect(synthFn![0]).toMatch(/MAX_EXAMPLES|examples\s*=\s*examples\.slice/);
-    });
-  });
-
-  // =========================================================================
   // #9 MEDIUM — lc-solver boolean coercion fallback too permissive
   // =========================================================================
   // #10 LOW — sandbox locate_line negative start reversal

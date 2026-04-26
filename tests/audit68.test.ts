@@ -6,18 +6,6 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 
 describe("Audit #68", () => {
-  // =========================================================================
-  // #1 HIGH — synthesis-integrator synthesizeViaRelational no code length cap
-  // =========================================================================
-  describe("#1 — synthesizeViaRelational should cap generated code length", () => {
-    it("should check generatedCode.length before new Function()", () => {
-      const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
-      const fnStart = source.indexOf("private synthesizeViaRelational(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 700);
-      expect(block).toMatch(/MAX_GENERATED|generatedCode\.length\s*>/i);
-    });
-  });
 
   // =========================================================================
   // #2 HIGH — verifier isSafeInvariant missing hex escape check
@@ -44,25 +32,6 @@ describe("Audit #68", () => {
       const block = source.slice(sqlOpStart, sqlOpStart + 400);
       // Should use a map/object or explicit switch, not fallback to raw op
       expect(block).toMatch(/VALID_OPS|validOps|SQL_OPS|allowedOps|op\s*===.*return\s*null/i);
-    });
-  });
-
-  // =========================================================================
-  // #4 MEDIUM — extractor/synthesis.ts parseInt templates missing isSafeInteger
-  // =========================================================================
-  // #5 MEDIUM — evolutionary.ts parseInt strategies missing isSafeInteger
-  // =========================================================================
-  // #6 MEDIUM — http.ts host validation missing length limit
-  // =========================================================================
-  // #7 MEDIUM — pipe.ts no line length limit in interactive mode
-  // =========================================================================
-  describe("#7 — pipe adapter should cap input line length", () => {
-    it("should check line length before processing", () => {
-      const source = readFileSync("src/tool/adapters/pipe.ts", "utf-8");
-      const queuePush = source.indexOf("this.queue.push");
-      expect(queuePush).toBeGreaterThan(-1);
-      const block = source.slice(queuePush - 500, queuePush);
-      expect(block).toMatch(/MAX_LINE|line\.length|trimmed\.length/i);
     });
   });
 

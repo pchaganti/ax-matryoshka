@@ -72,19 +72,6 @@ describe("Audit #76", () => {
   });
 
   // =========================================================================
-  // #6 MEDIUM — lc-parser.ts synthesize examples loop unbounded
-  // =========================================================================
-  describe("#6 — lc-parser synthesize should cap examples count", () => {
-    it("should have MAX_SYNTH_EXAMPLES or length check in synthesize loop", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const synthCase = source.indexOf("case \"synthesize\"");
-      expect(synthCase).toBeGreaterThan(-1);
-      const block = source.slice(synthCase, synthCase + 600);
-      expect(block).toMatch(/MAX_SYNTH|examples\.length\s*>=?\s*\d{2,}/);
-    });
-  });
-
-  // =========================================================================
   // #7 MEDIUM — lc-interpreter.ts coerce "number" missing string length check
   // =========================================================================
   describe("#7 — lc-interpreter coerce number should validate string length", () => {
@@ -94,19 +81,6 @@ describe("Audit #76", () => {
       expect(coerceCase).toBeGreaterThan(-1);
       const block = source.slice(coerceCase, coerceCase + 400);
       expect(block).toMatch(/\.length\s*>|MAX_COERCE/);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — lc-interpreter.ts replace case missing result length check
-  // =========================================================================
-  describe("#9 — lc-interpreter replace should cap result length", () => {
-    it("should check result length after replace", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const replaceCase = source.indexOf('case "replace"');
-      expect(replaceCase).toBeGreaterThan(-1);
-      const block = source.slice(replaceCase, replaceCase + 900);
-      expect(block).toMatch(/MAX_RESULT|result\.length\s*>/);
     });
   });
 

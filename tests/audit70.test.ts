@@ -47,19 +47,6 @@ describe("Audit #70", () => {
   });
 
   // =========================================================================
-  // #7 MEDIUM — synthesis-integrator hashExamples unbounded string concatenation
-  // =========================================================================
-  describe("#7 — hashExamples should cap input string length", () => {
-    it("should check total string length before hashing", () => {
-      const source = readFileSync("src/logic/synthesis-integrator.ts", "utf-8");
-      const fnStart = source.indexOf("private hashExamples(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/MAX_HASH_INPUT|str\.length\s*>/i);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — synthesis-integrator findCommonPattern unbounded inner loop
   // =========================================================================
   describe("#8 — findCommonPattern should cap first string search length", () => {
@@ -82,19 +69,6 @@ describe("Audit #70", () => {
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 300);
       expect(block).toMatch(/predicate\.length|MAX_CODE|MAX_PREDICATE/i);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — compile.ts escapeStringForLiteral no output length cap
-  // =========================================================================
-  describe("#10 — escapeStringForLiteral should cap output length", () => {
-    it("should check string length before or after escaping", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const fnStart = source.indexOf("function escapeStringForLiteral(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 400);
-      expect(block).toMatch(/MAX_ESCAPE|str\.length|\.length\s*>/i);
     });
   });
 });

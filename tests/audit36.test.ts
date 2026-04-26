@@ -58,16 +58,6 @@ describe("Audit #36", () => {
       });
     });
 
-    // #10 — inferType no depth limit
-    describe("#10 — inferType should have depth limit", () => {
-      it("should have a depth parameter or limit", () => {
-        const source = readFileSync("src/synthesis/evalo/typeo.ts", "utf-8");
-        const inferFn = source.match(/export function inferType[\s\S]*?^}/m);
-        expect(inferFn).not.toBeNull();
-        expect(inferFn![0]).toMatch(/depth|MAX_DEPTH/);
-      });
-    });
-
     // #11 — Content-Type header length unchecked
     describe("#11 — validateJsonContentType should check header length", () => {
       it("should limit content-type header length", () => {

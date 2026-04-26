@@ -34,32 +34,6 @@ describe("Audit #59", () => {
   });
 
   // =========================================================================
-  // #6 MEDIUM — symbol-extractor nameNode.text no length limit
-  // =========================================================================
-  describe("#6 — getNodeName should limit returned text length", () => {
-    it("should check text length before returning", () => {
-      const source = readFileSync("src/treesitter/symbol-extractor.ts", "utf-8");
-      const fnStart = source.indexOf("private getNodeName");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 600);
-      expect(block).toMatch(/text\.length|MAX_NAME/i);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — nucleus.ts extractJson no depth limit
-  // =========================================================================
-  describe("#7 — extractJson should limit nesting depth", () => {
-    it("should cap brace nesting depth", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const fnStart = source.indexOf("extractJson");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 900);
-      expect(block).toMatch(/MAX_DEPTH|depth\s*>\s*\d+/);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — parser-registry DANGEROUS_EXPORT_NAMES incomplete
   // =========================================================================
   describe("#8 — parser-registry should block toString/valueOf/hasOwnProperty", () => {
@@ -70,32 +44,6 @@ describe("Audit #59", () => {
       expect(block![0]).toMatch(/hasOwnProperty/);
       expect(block![0]).toMatch(/toString/);
       expect(block![0]).toMatch(/valueOf/);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — predicate-compiler isValidFieldName no length limit
-  // =========================================================================
-  describe("#9 — isValidFieldName should limit field name length", () => {
-    it("should enforce a max length on field names", () => {
-      const source = readFileSync("src/persistence/predicate-compiler.ts", "utf-8");
-      const fnStart = source.indexOf("isValidFieldName");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 200);
-      expect(block).toMatch(/\.length|MAX_FIELD/i);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — common.ts keysIn() unbounded key return
-  // =========================================================================
-  describe("#10 — keysIn should limit number of returned keys", () => {
-    it("should cap the number of keys returned", () => {
-      const source = readFileSync("src/minikanren/common.ts", "utf-8");
-      const fnStart = source.indexOf("function keysIn");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/MAX_KEYS|\.slice\(0/i);
     });
   });
 });

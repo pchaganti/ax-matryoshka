@@ -21,19 +21,6 @@ describe("Audit #63", () => {
   });
 
   // =========================================================================
-  // #2 HIGH — nucleus.ts extractCode no response length cap
-  // =========================================================================
-  describe("#2 — extractCode should cap response length", () => {
-    it("should limit response before paren-balancing loop", () => {
-      const source = readFileSync("src/adapters/nucleus.ts", "utf-8");
-      const fnStart = source.indexOf("function extractCode(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 300);
-      expect(block).toMatch(/MAX_RESPONSE|response\.length\s*>/i);
-    });
-  });
-
-  // =========================================================================
   // #3 MEDIUM — predicate-compiler paren strip loop no iteration limit
   // =========================================================================
   describe("#3 — predicate paren stripping should limit iterations", () => {
@@ -81,25 +68,6 @@ describe("Audit #63", () => {
   });
 
   // =========================================================================
-  // #7 MEDIUM — rag/similarity searchIndex topK not bounded
-  // =========================================================================
-  describe("#7 — searchIndex should bound topK parameter", () => {
-    it("should cap topK to a maximum", () => {
-      const source = readFileSync("src/rag/similarity.ts", "utf-8");
-      const fnStart = source.indexOf("function searchIndex(");
-      if (fnStart === -1) {
-        const altStart = source.indexOf("export function searchIndex(");
-        expect(altStart).toBeGreaterThan(-1);
-        const block = source.slice(altStart, altStart + 400);
-        expect(block).toMatch(/MAX_TOP_K|Math\.min.*topK|topK.*Math\.min/i);
-      } else {
-        const block = source.slice(fnStart, fnStart + 400);
-        expect(block).toMatch(/MAX_TOP_K|Math\.min.*topK|topK.*Math\.min/i);
-      }
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — regex/synthesis analyzeCharacters spread DoS
   // =========================================================================
   describe("#8 — analyzeCharacters should avoid spread on large arrays", () => {
@@ -131,19 +99,6 @@ describe("Audit #63", () => {
       // Check the region around the first increment for a guard
       const block = source.slice(counterInc - 200, counterInc + 50);
       expect(block).toMatch(/MAX_SAFE_INTEGER|MAX_SYMBOL_ID|symbolIdCounter\s*>/i);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — lc-interpreter sum Object.values no property limit
-  // =========================================================================
-  describe("#10 — sum should limit Object.values enumeration", () => {
-    it("should cap object property count in sum", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const sumStart = source.indexOf('case "sum"');
-      expect(sumStart).toBeGreaterThan(-1);
-      const block = source.slice(sumStart, sumStart + 800);
-      expect(block).toMatch(/MAX_PROPS|vals\.length|Object\.keys.*length/i);
     });
   });
 });

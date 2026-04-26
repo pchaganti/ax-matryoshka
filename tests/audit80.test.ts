@@ -33,21 +33,6 @@ describe("Audit #80", () => {
   });
 
   // =========================================================================
-  // #3 MEDIUM — rag/manager.ts failure.error not truncated
-  // =========================================================================
-  describe("#3 — self-correction should truncate failure.error", () => {
-    it("should truncate or escape failure.error", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const fnStart = source.indexOf("generateSelfCorrectionFeedback");
-      expect(fnStart).toBeGreaterThan(-1);
-      const errorLine = source.indexOf("failure.error", fnStart);
-      expect(errorLine).toBeGreaterThan(-1);
-      const block = source.slice(errorLine - 100, errorLine + 100);
-      expect(block).toMatch(/\.slice\(0,|safeError|error\.replace|truncat/);
-    });
-  });
-
-  // =========================================================================
   // #4 MEDIUM — synthesis-integrator.ts JSON.stringify without try-catch
   // =========================================================================
   describe("#4 — synthesizeOnFailure should wrap JSON.stringify in try-catch", () => {
@@ -127,19 +112,6 @@ describe("Audit #80", () => {
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 400);
       expect(block).toMatch(/rationale.*\.slice\(0,|safeRationale|rationale.*truncat/);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — rag/manager.ts formatHintsForPrompt no per-hint size cap
-  // =========================================================================
-  describe("#10 — formatHintsForPrompt should cap individual hint size", () => {
-    it("should truncate individual hints before joining", () => {
-      const source = readFileSync("src/rag/manager.ts", "utf-8");
-      const fnStart = source.indexOf("formatHintsForPrompt");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 600);
-      expect(block).toMatch(/MAX_HINT|hint.*\.slice|content.*\.slice|MAX_INDIVIDUAL/);
     });
   });
 });

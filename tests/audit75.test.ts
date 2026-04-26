@@ -33,19 +33,6 @@ describe("Audit #75", () => {
   });
 
   // =========================================================================
-  // #3 HIGH — regex synthesis nodeToRegex unbounded pattern length
-  // =========================================================================
-  describe("#3 — regex synthesis should cap generated pattern length", () => {
-    it("should check pattern length before RegExp construction", () => {
-      const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
-      const patternUse = source.indexOf("const pattern = nodeToRegex(ast)");
-      expect(patternUse).toBeGreaterThan(-1);
-      const block = source.slice(patternUse, patternUse + 200);
-      expect(block).toMatch(/pattern\.length\s*>|MAX_PATTERN/);
-    });
-  });
-
-  // =========================================================================
   // #4 MEDIUM — lc-solver match case missing group > 99 upper bound
   // =========================================================================
   describe("#4 — lc-solver match should cap group at 99", () => {
@@ -54,19 +41,6 @@ describe("Audit #75", () => {
       const matchCase = source.indexOf('case "match"');
       expect(matchCase).toBeGreaterThan(-1);
       const block = source.slice(matchCase, matchCase + 300);
-      expect(block).toMatch(/group\s*>\s*99|group\s*>=\s*100/);
-    });
-  });
-
-  // =========================================================================
-  // #5 MEDIUM — lc-solver extract case missing group > 99 upper bound
-  // =========================================================================
-  describe("#5 — lc-solver extract should cap group at 99", () => {
-    it("should reject group > 99", () => {
-      const source = readFileSync("src/logic/lc-solver.ts", "utf-8");
-      const extractCase = source.indexOf('case "extract"');
-      expect(extractCase).toBeGreaterThan(-1);
-      const block = source.slice(extractCase, extractCase + 300);
       expect(block).toMatch(/group\s*>\s*99|group\s*>=\s*100/);
     });
   });

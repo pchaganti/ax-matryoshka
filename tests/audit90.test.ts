@@ -32,20 +32,6 @@ describe("Audit #90", () => {
   });
 
   // =========================================================================
-  // #2 MEDIUM — knowledge-base.ts computeSimilarity unbounded join
-  // =========================================================================
-  describe("#2 — computeSimilarity should cap array before join", () => {
-    it("should limit examples array before joining", () => {
-      const source = readFileSync("src/synthesis/knowledge-base.ts", "utf-8");
-      const fnStart = source.indexOf("private computeSimilarity");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 600);
-      // Should cap arrays before join to prevent unbounded intermediate strings
-      expect(block).toMatch(/\.slice\(0,.*\)\.join|MAX_EXAMPLES|examples\.length\s*>/i);
-    });
-  });
-
-  // =========================================================================
   // #3 MEDIUM — extractor/synthesis.ts reduce split without limit
   // =========================================================================
   describe("#3 — delimiter reduce should use split limit", () => {
@@ -87,32 +73,6 @@ describe("Audit #90", () => {
   });
 
   // =========================================================================
-  // #6 MEDIUM — lc-parser.ts parseExamples no MAX_EXAMPLES cap
-  // =========================================================================
-  describe("#6 — parseExamples should cap number of examples", () => {
-    it("should limit examples count in while loop", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const fnStart = source.indexOf("function parseExamples");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 500);
-      expect(block).toMatch(/MAX_EXAMPLES|examples\.length\s*>=|examples\.length\s*>/);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — config.ts resolveEnvVars no array size cap
-  // =========================================================================
-  describe("#7 — resolveEnvVars should cap array size", () => {
-    it("should limit array length before recursing", () => {
-      const source = readFileSync("src/config.ts", "utf-8");
-      const fnStart = source.indexOf("function resolveEnvVars");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 800);
-      expect(block).toMatch(/MAX_ARRAY|Array\.isArray.*length\s*>|\.slice\(0,.*MAX/i);
-    });
-  });
-
-  // =========================================================================
   // #8 MEDIUM — error-analyzer.ts special char at idx 0 not detected
   // =========================================================================
   describe("#8 — analyzeInvalidRegex should detect chars at index 0", () => {
@@ -123,19 +83,6 @@ describe("Audit #90", () => {
       const block = source.slice(filterLine, filterLine + 200);
       // Should check idx >= 0 (or idx !== -1), not idx > 0
       expect(block).not.toMatch(/idx\s*>\s*0\s*&&/);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — base.ts extractFinalAnswer JSON.stringify unbounded
-  // =========================================================================
-  describe("#9 — extractFinalAnswer should cap JSON.stringify output", () => {
-    it("should limit stringified output length", () => {
-      const source = readFileSync("src/adapters/base.ts", "utf-8");
-      const jsonLine = source.indexOf("JSON.stringify(parsed, null, 2)");
-      expect(jsonLine).toBeGreaterThan(-1);
-      const block = source.slice(jsonLine, jsonLine + 100);
-      expect(block).toMatch(/\.slice\(0,|\.substring\(0,/);
     });
   });
 

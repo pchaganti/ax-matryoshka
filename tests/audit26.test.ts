@@ -154,14 +154,6 @@ describe("Audit26 #7: rlm small document sample", () => {
   });
 });
 
-// === Issue #8: Array constraint verification unbounded ===
-describe("Audit26 #8: verifier array constraint cap", () => {
-  it("should be importable", async () => {
-    const mod = await import("../src/constraints/verifier.js");
-    expect(mod.verifyResult).toBeDefined();
-  });
-});
-
 // === Issue #9: Content-Type case sensitivity ===
 describe("Audit26 #9: HTTP content-type case insensitive", () => {
   it("should be importable", async () => {

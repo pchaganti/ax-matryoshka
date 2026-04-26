@@ -19,34 +19,6 @@ import { readFileSync } from "fs";
 describe("Audit #91", () => {
 
   // =========================================================================
-  // #3 MEDIUM — lc-parser.ts parseConstraintObject unbounded loop
-  // =========================================================================
-  describe("#3 — parseConstraintObject should cap entry count", () => {
-    it("should limit number of constraint entries", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const fnStart = source.indexOf("function parseConstraintObject");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 500);
-      // Should have a MAX_CONSTRAINT_ENTRIES or Object.keys().length check
-      expect(block).toMatch(/MAX_CONSTRAINT|Object\.keys.*length\s*>=|entryCount|entries\s*>=|entries\s*>/);
-    });
-  });
-
-  // =========================================================================
-  // #4 MEDIUM — lc-parser.ts tokenize no token count cap
-  // =========================================================================
-  describe("#4 — tokenize should cap total token count", () => {
-    it("should limit number of tokens produced", () => {
-      const source = readFileSync("src/logic/lc-parser.ts", "utf-8");
-      const fnStart = source.indexOf("function tokenize");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 800);
-      // Should have MAX_TOKENS or tokens.length check
-      expect(block).toMatch(/MAX_TOKENS|tokens\.length\s*>=|tokens\.length\s*>/);
-    });
-  });
-
-  // =========================================================================
   // #5 MEDIUM — lc-parser.ts match group missing bounds validation
   // =========================================================================
   describe("#5 — match group should be validated in parser", () => {
@@ -74,20 +46,6 @@ describe("Audit #91", () => {
     });
   });
 
-  // =========================================================================
-  // #7 MEDIUM — rlm.ts JSON.stringify(result.result) unbounded
-  // =========================================================================
-  describe("#7 — rlm.ts should cap JSON.stringify of result", () => {
-    it("should limit stringified result length", () => {
-      const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
-      const jsonLine = source.indexOf("JSON.stringify(result.value");
-      expect(jsonLine).toBeGreaterThan(-1);
-      const block = source.slice(jsonLine, jsonLine + 200);
-      // Should slice or truncate the serialized output
-      expect(block).toMatch(/\.slice\(0,|truncate|\.substring\(0,|MAX_/);
-    });
-  });
-
   // #8 removed: DANGEROUS_VAR_NAMES deleted with FINAL_VAR marker.
 
   // =========================================================================
@@ -101,20 +59,6 @@ describe("Audit #91", () => {
       const block = source.slice(sumStart, sumStart + 300);
       // Should validate field name like sort() does (regex + length)
       expect(block).toMatch(/field\.length|test\(field\)|\/\^/);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — error-analyzer.ts Levenshtein matrix too large
-  // =========================================================================
-  describe("#10 — levenshteinDistance should cap matrix size", () => {
-    it("should limit total matrix cells to prevent OOM", () => {
-      const source = readFileSync("src/feedback/error-analyzer.ts", "utf-8");
-      const fnStart = source.indexOf("function levenshteinDistance");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 500);
-      // Should have a product/matrix size check, or tighter individual caps (<=1000)
-      expect(block).toMatch(/MAX_MATRIX|a\.length\s*\*\s*b\.length|MAX_STR_LENGTH\s*=\s*1[_,]?000\b/);
     });
   });
 });

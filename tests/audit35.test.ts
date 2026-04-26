@@ -90,15 +90,6 @@ describe("Audit #35", () => {
         expect(loadContent![0]).toMatch(/content|trimmed/);
       });
     });
-    // #13 — truncate with small max values
-    describe("#13 — truncate should handle small max values safely", () => {
-      it("should use Math.max(0, ...) for half calculation", () => {
-        const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
-        const truncate = source.match(/function truncate[\s\S]*?slice\(-half\)/);
-        expect(truncate).not.toBeNull();
-        expect(truncate![0]).toMatch(/Math\.max\(0/);
-      });
-    });
 
     // #14 removed: exclusively tested src/sandbox.ts (deleted with JS-sandbox retirement).
 

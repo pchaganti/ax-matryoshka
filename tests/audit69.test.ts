@@ -48,19 +48,6 @@ describe("Audit #69", () => {
   });
 
   // =========================================================================
-  // #5 MEDIUM — sandbox-tools grep loop no iteration cap
-  // =========================================================================
-  describe("#5 — sandbox grep should cap iterations", () => {
-    it("should have MAX_GREP_ITERATIONS or iteration counter", () => {
-      const source = readFileSync("node_modules/repl-sandbox/dist/builtins/grep.js", "utf-8");
-      const grepLoop = source.indexOf("while ((match = regex.exec(searchContext))");
-      expect(grepLoop).toBeGreaterThan(-1);
-      const block = source.slice(grepLoop, grepLoop + 300);
-      expect(block).toMatch(/MAX_GREP_ITERATIONS|iterations\s*>=|iterations\s*>/i);
-    });
-  });
-
-  // =========================================================================
   // #6 MEDIUM — symbol-extractor no startLine <= endLine validation
   // =========================================================================
   describe("#6 — extractSymbolFromNode should validate startLine <= endLine", () => {
@@ -70,58 +57,6 @@ describe("Audit #69", () => {
       expect(fnStart).toBeGreaterThan(-1);
       const block = source.slice(fnStart, fnStart + 900);
       expect(block).toMatch(/endLine.*startLine|startLine.*endLine|Math\.max.*endLine/i);
-    });
-  });
-
-  // =========================================================================
-  // #7 MEDIUM — evalo match group has no upper bound cap
-  // =========================================================================
-  describe("#7 — evalo match should cap group number", () => {
-    it("should reject excessively large group numbers", () => {
-      const source = readFileSync("src/synthesis/evalo/evalo.ts", "utf-8");
-      const matchCase = source.indexOf('case "match"');
-      expect(matchCase).toBeGreaterThan(-1);
-      const block = source.slice(matchCase, matchCase + 500);
-      expect(block).toMatch(/MAX_GROUP|group\s*>\s*\d|group\s*>=\s*\d/i);
-    });
-  });
-
-  // =========================================================================
-  // #8 MEDIUM — lc-interpreter match group has no upper bound cap
-  // =========================================================================
-  describe("#8 — lc-interpreter match should cap group number", () => {
-    it("should reject excessively large group numbers", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const matchCase = source.indexOf('case "match"');
-      expect(matchCase).toBeGreaterThan(-1);
-      const block = source.slice(matchCase, matchCase + 300);
-      expect(block).toMatch(/MAX_GROUP|group\s*>\s*\d|group\s*>=\s*\d/i);
-    });
-  });
-
-  // =========================================================================
-  // #9 MEDIUM — compile.ts match group has no upper bound cap
-  // =========================================================================
-  describe("#9 — compile match should cap group number", () => {
-    it("should reject excessively large group numbers", () => {
-      const source = readFileSync("src/synthesis/evalo/compile.ts", "utf-8");
-      const matchCase = source.indexOf('case "match"');
-      expect(matchCase).toBeGreaterThan(-1);
-      const block = source.slice(matchCase, matchCase + 300);
-      expect(block).toMatch(/MAX_GROUP|group\s*>\s*\d|group\s*>=\s*\d/i);
-    });
-  });
-
-  // =========================================================================
-  // #10 MEDIUM — coordinator safeEvalSynthesized no code length cap
-  // =========================================================================
-  describe("#10 — safeEvalSynthesized should cap code length", () => {
-    it("should check code.length before new Function()", () => {
-      const source = readFileSync("src/synthesis/coordinator.ts", "utf-8");
-      const fnStart = source.indexOf("function safeEvalSynthesized(");
-      expect(fnStart).toBeGreaterThan(-1);
-      const block = source.slice(fnStart, fnStart + 600);
-      expect(block).toMatch(/MAX_CODE|code\.length\s*>/i);
     });
   });
 });

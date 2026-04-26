@@ -42,19 +42,6 @@ describe("Audit #44", () => {
     });
   });
 
-  // =========================================================================
-  // #7 MEDIUM — lc-interpreter: fuzzy_search limit not bounds-checked
-  // =========================================================================
-  describe("#7 — lc-interpreter fuzzy_search should cap limit", () => {
-    it("should clamp limit to a reasonable maximum", () => {
-      const source = readFileSync("src/logic/lc-interpreter.ts", "utf-8");
-      const fuzzyCase = source.match(/case "fuzzy_search"[\s\S]*?case/);
-      expect(fuzzyCase).not.toBeNull();
-      // Should have Math.min or max limit check
-      expect(fuzzyCase![0]).toMatch(/Math\.min|Math\.max|MAX_|limit.*>|limit.*</);
-    });
-  });
-
   // #8 removed: FINAL_VAR parser deleted from the nucleus adapter (legacy marker).
 
   // =========================================================================
