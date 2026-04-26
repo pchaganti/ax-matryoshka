@@ -14,10 +14,10 @@ dist/
 # Coverage
 coverage/
 
-# Phase demo output snapshots — regenerated on every test run; only
-# baseline.json is tracked (after.test.ts reads it for delta math).
+# Phase demo output snapshots — regenerated on every test run.
 demos/**/after.json
 demos/**/after-b.json
+demos/**/baseline.json
 
 # Environment
 .env

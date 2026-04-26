@@ -1,7 +1,0 @@
-{
-  "mode": "baseline",
-  "scenario": "runaway-query",
-  "maxTurns": 4,
-  "result": "Max turns (4) reached without final answer.",
-  "elapsedMs": 1227
-}

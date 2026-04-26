@@ -1,9 +1,0 @@
-{
-  "mode": "baseline",
-  "scenario": "child-final-output-size",
-  "docChars": 2183,
-  "tagCount": 100,
-  "childCalls": 2,
-  "childOutputChars": 12103,
-  "avgChildOutputChars": 6052
-}
