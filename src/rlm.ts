@@ -795,8 +795,23 @@ export async function runRLMFromContent(
   // `(grep "pat" (context N))`) runs, it reads `tools.contexts`.
   solverTools.contexts = contexts;
 
-  // Build user message with optional constraints
-  let userMessage = `Query: ${query}`;
+  // Paper-conformance (Algorithm 1, line 3: hist <- [Metadata(state)]):
+  // The root LM must see a constant-size description of the prompt on
+  // turn 1 — total chars, chunk count, per-chunk lengths — so it can
+  // plan a reading strategy without a wasted (text_stats) probe.
+  // Reference impl in alexzhang13/rlm puts this in a separate user
+  // message; we fold it into the same one as the query for fewer
+  // history entries, which prune-friendly.
+  const totalChars = contexts.reduce((sum, c) => sum + c.length, 0);
+  const MAX_CHUNKS_SHOWN = 100;
+  const shownChunks = contexts.slice(0, MAX_CHUNKS_SHOWN).map((c) => c.length);
+  const elidedCount = contexts.length - shownChunks.length;
+  const chunkLensStr = shownChunks.join(", ") + (elidedCount > 0 ? `, …+${elidedCount} more` : "");
+  const chunkWord = contexts.length === 1 ? "chunk" : "chunks";
+  let userMessage =
+    `Context: ${contexts.length} ${chunkWord}, ${totalChars.toLocaleString()} total chars` +
+    ` (lengths: [${chunkLensStr}]). Use grep/lines/list_symbols to navigate.\n\n` +
+    `Query: ${query}`;
 
   if (constraint) {
     userMessage += `\n\n## OUTPUT CONSTRAINTS\n`;
