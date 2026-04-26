@@ -16,7 +16,7 @@ export interface LLMConfig {
 }
 
 export interface ProviderConfig {
-  baseUrl: string;
+  url: string;
   apiKey?: string;
   model?: string;
   options?: LLMOptions;

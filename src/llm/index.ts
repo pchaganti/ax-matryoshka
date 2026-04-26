@@ -57,7 +57,7 @@ function resolveEnvVar(value: string | undefined): string | undefined {
  * Create an LLM query function from configuration
  *
  * @param providerName - Name of the provider (ollama, deepseek, etc.)
- * @param providerConfig - Provider-specific configuration (baseUrl, apiKey, model, options)
+ * @param providerConfig - Provider-specific configuration (url, apiKey, model, options)
  * @param overrides - Optional overrides for model/options
  * @returns A function that takes a prompt and returns a response
  */
@@ -104,6 +104,7 @@ export function createLLMClient(
 export { createOllamaProvider } from "./ollama.js";
 export { createDeepSeekProvider } from "./deepseek.js";
 export { createGLMProvider } from "./glm.js";
+export { createOpenAICompatProvider } from "./openai-compat.js";
 export { fetchWithRetry, type RetryOptions } from "./retry.js";
 
 /**
@@ -142,8 +143,8 @@ export interface TieredClients {
  * {
  *   llm: { provider: "tiered", large: "deepseek", small: "ollama" },
  *   providers: {
- *     deepseek: { baseUrl: "...", apiKey: "...", model: "deepseek-chat" },
- *     ollama: { baseUrl: "...", model: "qwen3-coder:7b" }
+ *     deepseek: { url: "...", apiKey: "...", model: "deepseek-chat" },
+ *     ollama: { url: "...", model: "qwen3-coder:7b" }
  *   }
  * }
  */

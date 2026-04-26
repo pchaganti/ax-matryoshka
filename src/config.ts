@@ -29,7 +29,7 @@ export interface LLMConfig {
 }
 
 export interface ProviderConfig {
-  baseUrl: string;
+  url: string;
   apiKey?: string;
   model?: string;
   /** Adapter name for model-specific prompting (e.g., "qwen", "deepseek"). Auto-detected from model name if not specified. */
@@ -103,7 +103,7 @@ const DEFAULT_CONFIG: Config = {
   },
   providers: {
     ollama: {
-      baseUrl: "http://localhost:11434",
+      url: "http://localhost:11434/api/generate",
       model: "qwen3-coder:30b",
       options: {
         temperature: 0.2,

@@ -77,7 +77,7 @@ export async function removeCustomGrammar(language: string): Promise<boolean> {
 export const EXAMPLE_CONFIG: Config = {
   llm: { provider: "ollama" },
   providers: {
-    ollama: { baseUrl: "http://localhost:11434", model: "qwen3-coder:30b" },
+    ollama: { url: "http://localhost:11434/api/generate", model: "qwen3-coder:30b" },
   },
   rlm: { maxTurns: 10 },
   grammars: {

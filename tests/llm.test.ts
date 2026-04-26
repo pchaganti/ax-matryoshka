@@ -19,7 +19,7 @@ describe("LLM Provider System", () => {
     it("should create Ollama client from config", () => {
       const query = createLLMClient(
         "ollama",
-        { baseUrl: "http://localhost:11434" },
+        { url: "http://localhost:11434" },
         { provider: "ollama", model: "qwen3-coder:30b" }
       );
       expect(typeof query).toBe("function");
@@ -28,7 +28,7 @@ describe("LLM Provider System", () => {
     it("should create DeepSeek client from config", () => {
       const query = createLLMClient(
         "deepseek",
-        { baseUrl: "https://api.deepseek.com", apiKey: "test-key" },
+        { url: "https://api.deepseek.com", apiKey: "test-key" },
         { provider: "deepseek", model: "deepseek-coder" }
       );
       expect(typeof query).toBe("function");
@@ -38,7 +38,7 @@ describe("LLM Provider System", () => {
       expect(() =>
         createLLMClient(
           "unknown-provider",
-          { baseUrl: "http://localhost" },
+          { url: "http://localhost" },
           { provider: "unknown", model: "test" }
         )
       ).toThrow(/unknown.*provider/i);
@@ -49,7 +49,7 @@ describe("LLM Provider System", () => {
 
       const query = createLLMClient(
         "deepseek",
-        { baseUrl: "https://api.deepseek.com", apiKey: "${TEST_API_KEY}" },
+        { url: "https://api.deepseek.com", apiKey: "${TEST_API_KEY}" },
         { provider: "deepseek", model: "deepseek-coder" }
       );
       expect(typeof query).toBe("function");
@@ -63,7 +63,7 @@ describe("LLM Provider System", () => {
       expect(() =>
         createLLMClient(
           "deepseek",
-          { baseUrl: "https://api.deepseek.com", apiKey: "${MISSING_KEY}" },
+          { url: "https://api.deepseek.com", apiKey: "${MISSING_KEY}" },
           { provider: "deepseek", model: "deepseek-coder" }
         )
       ).toThrow(/environment variable.*not set/i);
@@ -74,7 +74,7 @@ describe("LLM Provider System", () => {
 
       const query = createLLMClient(
         "deepseek",
-        { baseUrl: "https://api.deepseek.com", apiKey: "Bearer ${TEST_EMBEDDED_TOKEN}" },
+        { url: "https://api.deepseek.com", apiKey: "Bearer ${TEST_EMBEDDED_TOKEN}" },
         { provider: "deepseek", model: "deepseek-coder" }
       );
       expect(typeof query).toBe("function");
@@ -85,7 +85,7 @@ describe("LLM Provider System", () => {
     it("should pass through strings without ${} unchanged", () => {
       const query = createLLMClient(
         "deepseek",
-        { baseUrl: "https://api.deepseek.com", apiKey: "plain-api-key" },
+        { url: "https://api.deepseek.com", apiKey: "plain-api-key" },
         { provider: "deepseek", model: "deepseek-coder" }
       );
       expect(typeof query).toBe("function");
@@ -110,7 +110,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
       const result = await provider.query("test prompt", {
         provider: "ollama",
@@ -134,7 +134,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
       await provider.query("my test prompt", {
         provider: "ollama",
@@ -157,7 +157,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
 
       await expect(
@@ -184,7 +184,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createDeepSeekProvider({
-        baseUrl: "https://api.deepseek.com",
+        url: "https://api.deepseek.com/chat/completions",
         apiKey: "test-key",
       });
       const result = await provider.query("test", {
@@ -206,7 +206,7 @@ describe("LLM Provider System", () => {
 
     it("should throw if apiKey not provided", async () => {
       const provider = createDeepSeekProvider({
-        baseUrl: "https://api.deepseek.com",
+        url: "https://api.deepseek.com/chat/completions",
       });
 
       await expect(
@@ -233,7 +233,7 @@ describe("LLM Provider System", () => {
       } as unknown as Response);
 
       const provider = createDeepSeekProvider({
-        baseUrl: "https://api.deepseek.com",
+        url: "https://api.deepseek.com/chat/completions",
         apiKey: "test-key",
       });
 
@@ -249,7 +249,7 @@ describe("LLM Provider System", () => {
       } as unknown as Response);
 
       const provider = createDeepSeekProvider({
-        baseUrl: "https://api.deepseek.com",
+        url: "https://api.deepseek.com/chat/completions",
         apiKey: "test-key",
       });
 
@@ -265,7 +265,7 @@ describe("LLM Provider System", () => {
       } as unknown as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
 
       await expect(
@@ -282,7 +282,7 @@ describe("LLM Provider System", () => {
       } as unknown as Response);
 
       const provider = createDeepSeekProvider({
-        baseUrl: "https://api.deepseek.com",
+        url: "https://api.deepseek.com/chat/completions",
         apiKey: "test-key",
       });
 
@@ -300,7 +300,7 @@ describe("LLM Provider System", () => {
       } as unknown as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
 
       await expect(
@@ -327,7 +327,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
       await provider.query("test", {
         provider: "ollama",
@@ -350,7 +350,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createDeepSeekProvider({
-        baseUrl: "https://api.deepseek.com",
+        url: "https://api.deepseek.com/chat/completions",
         apiKey: "test-key",
       });
       await provider.query("test", {
@@ -374,7 +374,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
       await provider.query("test", {
         provider: "ollama",
@@ -404,7 +404,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
       await provider.query("test", { provider: "ollama", model: "test" });
 
@@ -420,7 +420,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createDeepSeekProvider({
-        baseUrl: "https://api.deepseek.com",
+        url: "https://api.deepseek.com/chat/completions",
         apiKey: "test-key",
       });
       await provider.query("test", { provider: "deepseek", model: "test" });
@@ -449,7 +449,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
       await provider.query("test", {
         provider: "ollama",
@@ -472,7 +472,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
       await provider.query("test", { provider: "ollama", model: "test" });
 
@@ -491,7 +491,7 @@ describe("LLM Provider System", () => {
       } as Response);
 
       const provider = createOllamaProvider({
-        baseUrl: "http://localhost:11434",
+        url: "http://localhost:11434/api/generate",
       });
       await provider.query("test", {
         provider: "ollama",
@@ -523,14 +523,14 @@ describe("LLM Provider System", () => {
       // Create orchestrator client (large model)
       const orchestratorClient = createLLMClient(
         "deepseek",
-        { baseUrl: "https://api.deepseek.com", apiKey: "test-key" },
+        { url: "https://api.deepseek.com", apiKey: "test-key" },
         { model: "deepseek-chat" }
       );
 
       // Create worker client (small model)
       const workerClient = createLLMClient(
         "ollama",
-        { baseUrl: "http://localhost:11434" },
+        { url: "http://localhost:11434" },
         { model: "qwen3-coder:7b" }
       );
 
@@ -548,12 +548,12 @@ describe("LLM Provider System", () => {
         },
         providers: {
           deepseek: {
-            baseUrl: "https://api.deepseek.com",
+            url: "https://api.deepseek.com/chat/completions",
             apiKey: "test",
             model: "deepseek-chat",
           },
           ollama: {
-            baseUrl: "http://localhost:11434",
+            url: "http://localhost:11434/api/generate",
             model: "qwen3-coder:7b",
           },
         },
@@ -572,12 +572,12 @@ describe("LLM Provider System", () => {
         },
         providers: {
           deepseek: {
-            baseUrl: "https://api.deepseek.com",
+            url: "https://api.deepseek.com/chat/completions",
             apiKey: "test-key",
             model: "deepseek-chat",
           },
           ollama: {
-            baseUrl: "http://localhost:11434",
+            url: "http://localhost:11434/api/generate",
             model: "qwen3-coder:7b",
           },
         },
@@ -596,7 +596,7 @@ describe("LLM Provider System", () => {
         },
         providers: {
           ollama: {
-            baseUrl: "http://localhost:11434",
+            url: "http://localhost:11434/api/generate",
             model: "qwen3-coder:30b",
           },
         },
@@ -627,7 +627,7 @@ describe("Config Loader", () => {
     // Check default structure, not user-configurable values
     expect(config.llm.provider).toBe("ollama");
     expect(config.providers.ollama).toBeDefined();
-    expect(config.providers.ollama.baseUrl).toBe("http://localhost:11434");
+    expect(config.providers.ollama.url).toBe("http://localhost:11434/api/generate");
     expect(config.providers.ollama.model).toBe("qwen3-coder:30b");
     expect(config.rlm.maxTurns).toBe(10);
   });
@@ -646,6 +646,6 @@ describe("Config Loader", () => {
     const config = await loadConfig("./config.json");
 
     expect(config.providers.ollama).toBeDefined();
-    expect(config.providers.ollama.baseUrl).toBe("http://localhost:11434");
+    expect(config.providers.ollama.url).toBeDefined();
   });
 });
