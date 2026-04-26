@@ -9,6 +9,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { runRLM } from "./rlm.js";
 import { loadConfig } from "./config.js";
+import { CONFIG_FILE } from "./config/paths.js";
 import { createLLMClient } from "./llm/index.js";
 import { resolveAdapter, getAvailableAdapters } from "./adapters/index.js";
 import {
@@ -47,7 +48,7 @@ Options:
   --adapter <name>   Override the model adapter (qwen, deepseek, base)
   --output-type <t>  Expected output type: number, string, boolean, array, object
   --constraints <j>  Output constraints as JSON (e.g., '{"type":"number","min":0}')
-  --config <path>    Path to config file (default: ./config.json)
+  --config <path>    Path to config file (default: ./config.json or ~/.config/matryoshka/config.json)
   --verbose          Enable verbose output
   --dry-run          Show configuration without running
   -v, --version      Show version number
@@ -75,7 +76,7 @@ function parseArgs(args: string[]): CLIOptions {
     constraints: "",
     verbose: false,
     dryRun: false,
-    config: "./config.json",
+    config: CONFIG_FILE,
   };
 
   const positional: string[] = [];

@@ -247,7 +247,7 @@ npm run build
 
 ## Configuration
 
-Copy `config.example.json` to `config.json` and configure your LLM provider:
+Copy `config.example.json` to `~/.config/matryoshka/config.json` and configure your LLM provider:
 
 ```json
 {
@@ -561,7 +561,7 @@ Once a package is installed, the language is automatically available for symbol 
 
 #### Custom Language Configuration
 
-For languages without built-in mappings, create `~/.matryoshka/config.json` mapping tree-sitter node types to symbol kinds (`function`, `method`, `class`, `interface`, `type`, `struct`, `enum`, `trait`, `module`, `variable`, `constant`, `property`):
+For languages without built-in mappings, create `~/.config/matryoshka/config.json` mapping tree-sitter node types to symbol kinds (`function`, `method`, `class`, `interface`, `type`, `struct`, `enum`, `trait`, `module`, `variable`, `constant`, `property`):
 
 ```json
 {

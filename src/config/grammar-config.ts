@@ -1,104 +1,29 @@
 /**
- * Grammar configuration loader
+ * Grammar configuration helpers
  *
- * Loads grammar configurations from ~/.matryoshka/config.json
+ * Reads grammar configurations from the unified config file
  * and merges with built-in grammars.
  */
 
-import { readFileSync, existsSync, mkdirSync, writeFileSync, statSync } from "node:fs";
-import { join } from "node:path";
-import { homedir } from "node:os";
 import type { SymbolKind } from "../treesitter/types.js";
+import { loadConfig, saveConfig, type Config, type GrammarConfig } from "../config.js";
+import { CONFIG_DIR, CONFIG_FILE } from "./paths.js";
 
-/**
- * Grammar configuration for a language
- */
-export interface GrammarConfig {
-  /** npm package name (e.g., "tree-sitter-rust") */
-  package: string;
-  /** File extensions (e.g., [".rs"]) */
-  extensions: string[];
-  /** Map of AST node types to symbol kinds */
-  symbols: Record<string, SymbolKind>;
-  /** Optional: how to extract the grammar from the module */
-  moduleExport?: string;
-}
+export type { GrammarConfig } from "../config.js";
+export { CONFIG_DIR, CONFIG_FILE } from "./paths.js";
 
-/**
- * Full configuration file structure
- */
-export interface MatryoshkaConfig {
-  /** Custom grammar configurations */
-  grammars?: Record<string, GrammarConfig>;
-  /** Other config options can be added here */
-}
-
-/**
- * Default config directory and file paths
- */
-export const CONFIG_DIR = join(homedir(), ".matryoshka");
-export const CONFIG_FILE = join(CONFIG_DIR, "config.json");
-
-/**
- * Load configuration from ~/.matryoshka/config.json
- * Returns empty config if file doesn't exist
- */
-const MAX_CONFIG_FILE_SIZE = 10_000_000; // 10MB
-
-export function loadConfig(): MatryoshkaConfig {
-  if (!existsSync(CONFIG_FILE)) {
-    return {};
-  }
-
-  try {
-    const stats = statSync(CONFIG_FILE);
-    if (stats.size > MAX_CONFIG_FILE_SIZE) {
-      console.warn(`Warning: Config file too large (${stats.size} bytes, max ${MAX_CONFIG_FILE_SIZE})`);
-      return {};
-    }
-    const content = readFileSync(CONFIG_FILE, "utf-8");
-    return JSON.parse(content) as MatryoshkaConfig;
-  } catch (error) {
-    console.warn(`Warning: Failed to parse ${CONFIG_FILE}: ${error}`);
-    return {};
-  }
-}
-
-/**
- * Ensure config directory exists
- */
-export function ensureConfigDir(): void {
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true });
-  }
-}
-
-/**
- * Save configuration to ~/.matryoshka/config.json
- */
-export function saveConfig(config: MatryoshkaConfig): void {
-  ensureConfigDir();
-  writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
-}
-
-/**
- * Get custom grammars from config
- */
-export function getCustomGrammars(): Record<string, GrammarConfig> {
-  const config = loadConfig();
+export async function getCustomGrammars(): Promise<Record<string, GrammarConfig>> {
+  const config = await loadConfig();
   return config.grammars ?? {};
 }
 
-/**
- * Add a custom grammar to config
- */
 const DANGEROUS_LANG_NAMES = new Set(["__proto__", "constructor", "prototype", "__defineGetter__", "__defineSetter__", "__lookupGetter__", "__lookupSetter__", "hasOwnProperty", "toString", "valueOf", "toLocaleString", "isPrototypeOf", "propertyIsEnumerable"]);
 
 const MAX_EXTENSIONS = 50;
 
 const MAX_SYMBOLS = 500;
 
-export function addCustomGrammar(language: string, grammar: GrammarConfig): void {
+export async function addCustomGrammar(language: string, grammar: GrammarConfig): Promise<void> {
   if (DANGEROUS_LANG_NAMES.has(language) || !/^[a-zA-Z0-9_-]+$/.test(language)) {
     throw new Error(`Invalid language name: '${language}'`);
   }
@@ -133,29 +58,28 @@ export function addCustomGrammar(language: string, grammar: GrammarConfig): void
       }
     }
   }
-  const config = loadConfig();
+  const config = await loadConfig();
   config.grammars = config.grammars ?? {};
   config.grammars[language] = grammar;
-  saveConfig(config);
+  await saveConfig(config);
 }
 
-/**
- * Remove a custom grammar from config
- */
-export function removeCustomGrammar(language: string): boolean {
-  const config = loadConfig();
+export async function removeCustomGrammar(language: string): Promise<boolean> {
+  const config = await loadConfig();
   if (!config.grammars || !config.grammars[language]) {
     return false;
   }
   delete config.grammars[language];
-  saveConfig(config);
+  await saveConfig(config);
   return true;
 }
 
-/**
- * Example config for reference
- */
-export const EXAMPLE_CONFIG: MatryoshkaConfig = {
+export const EXAMPLE_CONFIG: Config = {
+  llm: { provider: "ollama" },
+  providers: {
+    ollama: { baseUrl: "http://localhost:11434", model: "qwen3-coder:30b" },
+  },
+  rlm: { maxTurns: 10 },
   grammars: {
     rust: {
       package: "tree-sitter-rust",
