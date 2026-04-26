@@ -78,6 +78,17 @@ export interface RLMContext {
   startTime: number;
   totalTokens: number;
   consecutiveErrors: number;
+  /**
+   * Counts consecutive LLM-client throws (auth failure, network error,
+   * bad URL). Reset to 0 after a successful LLM call. When it reaches
+   * `MAX_CONSECUTIVE_LLM_ERRORS`, the FSM aborts with the original
+   * error message in the abort string. Without this, an unrecoverable
+   * config error (e.g., invalid API key) would silently retry until
+   * maxTurns and surface as "max turns reached" — masking the real
+   * cause.
+   */
+  consecutiveLlmErrors: number;
+  lastLlmError: string;
   compactionThresholdChars?: number;
   compactionCount: number;
   /**
@@ -107,6 +118,15 @@ export interface RLMContext {
 // ===== HELPERS =====
 
 const MAX_HISTORY_ENTRIES = 40;
+
+/**
+ * Hard cap on consecutive LLM-client throws. Independent of the
+ * user-configurable `maxErrors` (which counts solver/parse errors).
+ * 3 is tight on purpose: auth failures and bad URLs are deterministic,
+ * not transient, so retrying past a small handful is just delaying the
+ * inevitable. A real network blip recovers within 1-2 retries.
+ */
+const MAX_CONSECUTIVE_LLM_ERRORS = 3;
 
 function pruneHistory(history: RLMContext["history"]): void {
   while (history.length > MAX_HISTORY_ENTRIES) {
@@ -239,7 +259,7 @@ function verifyAndReturnResult(
  * work — the partial answer is always surfaced when present.
  */
 function formatAbort(
-  reason: "timeout" | "tokens" | "errors",
+  reason: "timeout" | "tokens" | "errors" | "llm",
   detail: string,
   ctx: RLMContext
 ): string {
@@ -452,7 +472,20 @@ async function handleQueryLLM(ctx: RLMContext): Promise<RLMContext> {
       ctx.log(`[Turn ${ctx.turn}] Aborting — timeout hit during LLM call`);
       return ctx;
     }
+    ctx.consecutiveLlmErrors++;
+    ctx.lastLlmError = errMsg;
     ctx.log(`[Turn ${ctx.turn}] LLM error: ${errMsg}`);
+    if (ctx.consecutiveLlmErrors >= MAX_CONSECUTIVE_LLM_ERRORS) {
+      ctx.result = formatAbort(
+        "llm",
+        `${ctx.consecutiveLlmErrors} consecutive LLM call failures: ${errMsg}`,
+        ctx
+      );
+      ctx.log(
+        `[Turn ${ctx.turn}] Aborting — ${ctx.consecutiveLlmErrors} consecutive LLM call failures`
+      );
+      return ctx;
+    }
     ctx.history.push({
       role: "user",
       content: `LLM call failed: ${errMsg}. Please try again.`,
@@ -462,6 +495,7 @@ async function handleQueryLLM(ctx: RLMContext): Promise<RLMContext> {
   } finally {
     if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
   }
+  ctx.consecutiveLlmErrors = 0;
   ctx.totalTokens += response.length;
 
   if (!response) {
@@ -1090,6 +1124,8 @@ export function createInitialContext(opts: {
     startTime: Date.now(),
     totalTokens: 0,
     consecutiveErrors: 0,
+    consecutiveLlmErrors: 0,
+    lastLlmError: "",
     bestPartialAnswer: "",
     compactionThresholdChars: opts.compactionThresholdChars,
     compactionCount: 0,

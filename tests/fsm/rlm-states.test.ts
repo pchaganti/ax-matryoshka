@@ -167,6 +167,66 @@ describe("RLM FSM States", () => {
     });
   });
 
+  describe("LLM call failures", () => {
+    it("should abort and surface the original error after repeated LLM throws", async () => {
+      let calls = 0;
+      const ctx = createInitialContext({
+        query: "What?",
+        adapter: makeMockAdapter(),
+        llmClient: async () => {
+          calls++;
+          throw new Error("401 Unauthorized: invalid API key");
+        },
+        solverTools: makeMockTools("doc"),
+        systemPrompt: "system",
+        userMessage: "Query: What?",
+        maxTurns: 50,
+        sessionId: "test",
+        log: () => {},
+      });
+
+      const engine = new FSMEngine<RLMContext>();
+      const result = await engine.run(buildRLMSpec(), ctx);
+
+      // Must abort, not run to maxTurns
+      expect(calls).toBeLessThan(50);
+      expect(result.result).not.toBeNull();
+      // The aborted result must surface the actual LLM error message
+      expect(result.result).toMatch(/401 Unauthorized/);
+      // And label the abort reason as an LLM failure
+      expect(result.result).toMatch(/\[aborted: llm/);
+    });
+
+    it("should not abort on a single transient LLM error followed by success", async () => {
+      const responses = [
+        new Error("transient 503"),
+        '(grep "data")',
+        '<<<FINAL>>>data found<<<END>>>',
+      ];
+      let i = 0;
+      const ctx = createInitialContext({
+        query: "What?",
+        adapter: makeMockAdapter(),
+        llmClient: async () => {
+          const r = responses[i++];
+          if (r instanceof Error) throw r;
+          return r;
+        },
+        solverTools: makeMockTools("data: hello"),
+        systemPrompt: "system",
+        userMessage: "Query: What?",
+        maxTurns: 5,
+        sessionId: "test",
+        log: () => {},
+      });
+
+      const engine = new FSMEngine<RLMContext>();
+      const result = await engine.run(buildRLMSpec(), ctx);
+      expect(result.result).toMatch(/data found/);
+      expect(result.result).not.toMatch(/\[aborted/);
+    });
+  });
+
   describe("state trace", () => {
     it("should follow expected state sequence for simple query", async () => {
       const document = "answer: 42";
