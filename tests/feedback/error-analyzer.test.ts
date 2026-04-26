@@ -9,6 +9,7 @@ import {
   analyzeError,
   formatErrorFeedback,
 } from "../../src/feedback/error-analyzer.js";
+import { readFileSync } from "fs";
 
 describe("Levenshtein Distance", () => {
   it("should return 0 for identical strings", () => {
@@ -212,4 +213,45 @@ describe("Real-World Error Scenarios", () => {
     // Should suggest the correct function name
     expect(analysis.suggestions.some(s => s.includes("synthesize_extractor"))).toBe(true);
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit70.test.ts #4 — levenshteinDistance should cap input string lengths
+  describe("#4 — levenshteinDistance should cap input string lengths", () => {
+      it("should check a.length or b.length before allocating matrix", () => {
+        const source = readFileSync("src/feedback/error-analyzer.ts", "utf-8");
+        const fnStart = source.indexOf("function levenshteinDistance(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 300);
+        expect(block).toMatch(/MAX_STR|\.length\s*>/i);
+      });
+    });
+
+  // from tests/audit70.test.ts #5 — findSimilar sort should use safe comparator
+  describe("#5 — findSimilar sort should use safe comparator", () => {
+      it("should not use raw subtraction for distance sorting", () => {
+        const source = readFileSync("src/feedback/error-analyzer.ts", "utf-8");
+        const sortStart = source.indexOf(".sort((a, b) =>");
+        expect(sortStart).toBeGreaterThan(-1);
+        const block = source.slice(sortStart, sortStart + 80);
+        const hasRawSubtraction = /\.sort\(\(a,\s*b\)\s*=>\s*a\.distance\s*-\s*b\.distance\)/.test(block);
+        expect(hasRawSubtraction).toBe(false);
+      });
+    });
+
+  // from tests/audit90.test.ts #8 — analyzeInvalidRegex should detect chars at index 0
+  describe("#8 — analyzeInvalidRegex should detect chars at index 0", () => {
+      it("should use idx >= 0 not idx > 0 for special char detection", () => {
+        const source = readFileSync("src/feedback/error-analyzer.ts", "utf-8");
+        const filterLine = source.indexOf("specialChars.filter");
+        expect(filterLine).toBeGreaterThan(-1);
+        const block = source.slice(filterLine, filterLine + 200);
+        // Should check idx >= 0 (or idx !== -1), not idx > 0
+        expect(block).not.toMatch(/idx\s*>\s*0\s*&&/);
+      });
+    });
+
 });

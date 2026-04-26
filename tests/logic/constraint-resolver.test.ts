@@ -177,3 +177,80 @@ describe("Constraint Resolver", () => {
     });
   });
 });
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit33.test.ts #3 — constraint-resolver should recurse into all term types
+  describe("#3 — constraint-resolver should recurse into all term types", () => {
+      it("should recurse into 'sum' collection", async () => {
+        const { hasConstraints } = await import("../../src/logic/constraint-resolver.js");
+        const term = {
+          tag: "sum" as const,
+          collection: {
+            tag: "constrained" as const,
+            constraint: "∞/0" as const,
+            term: { tag: "grep" as const, pattern: "test" },
+          },
+        };
+        expect(hasConstraints(term as any)).toBe(true);
+      });
+
+      it("should recurse into 'count' collection", async () => {
+        const { hasConstraints } = await import("../../src/logic/constraint-resolver.js");
+        const term = {
+          tag: "count" as const,
+          collection: {
+            tag: "constrained" as const,
+            constraint: "∞/0" as const,
+            term: { tag: "grep" as const, pattern: "test" },
+          },
+        };
+        expect(hasConstraints(term as any)).toBe(true);
+      });
+
+      it("should recurse into 'coerce' term", async () => {
+        const { hasConstraints } = await import("../../src/logic/constraint-resolver.js");
+        const term = {
+          tag: "coerce" as const,
+          term: {
+            tag: "constrained" as const,
+            constraint: "Σ⚡μ" as const,
+            term: { tag: "lit" as const, value: "42" },
+          },
+          targetType: "number" as const,
+        };
+        expect(hasConstraints(term as any)).toBe(true);
+      });
+
+      it("should recurse into 'predicate' str", async () => {
+        const { hasConstraints } = await import("../../src/logic/constraint-resolver.js");
+        const term = {
+          tag: "predicate" as const,
+          str: {
+            tag: "constrained" as const,
+            constraint: "∞/0" as const,
+            term: { tag: "input" as const },
+          },
+        };
+        expect(hasConstraints(term as any)).toBe(true);
+      });
+
+      it("resolve should handle 'sum' correctly", async () => {
+        const { resolveConstraints } = await import("../../src/logic/constraint-resolver.js");
+        const term = {
+          tag: "sum" as const,
+          collection: {
+            tag: "constrained" as const,
+            constraint: "∞/0" as const,
+            term: { tag: "grep" as const, pattern: "test" },
+          },
+        };
+        const result = resolveConstraints(term as any);
+        // The constraint should have been resolved (removed)
+        expect(result.transformations.length).toBeGreaterThan(0);
+      });
+    });
+
+});

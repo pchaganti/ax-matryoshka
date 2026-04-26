@@ -335,3 +335,79 @@ describe("SymbolGraph", () => {
     });
   });
 });
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit96.test.ts #7 — SymbolGraph.neighborhood treats depth as undirected
+  describe("#7 — SymbolGraph.neighborhood treats depth as undirected", () => {
+      function mkSymbol(name: string, kind: "function" | "class" = "function"): Symbol {
+        return {
+          name,
+          kind,
+          startLine: 1,
+          endLine: 2,
+          startCol: 0,
+          endCol: 0,
+        };
+      }
+
+      it("finds a node reachable only via a mixed out→in path", async () => {
+        // Graph: A → B ← C
+        // neighborhood(A, 2) should include C — it's 2 undirected hops away
+        // (A→B, then B←C). The old implementation only walked pure-outgoing
+        // or pure-incoming BFS from A, so it missed C entirely.
+        const graph = new SymbolGraph();
+        graph.addSymbol(mkSymbol("A"));
+        graph.addSymbol(mkSymbol("B"));
+        graph.addSymbol(mkSymbol("C"));
+        graph.addEdge("A", "B", "calls");
+        graph.addEdge("C", "B", "calls");
+
+        const n = graph.neighborhood("A", 2);
+        const nodeNames = n.nodes.map((s) => s.name).sort();
+        expect(nodeNames).toEqual(["A", "B", "C"]);
+      });
+
+      it("finds a chain through alternating directions", async () => {
+        // Graph: A → B ← C → D
+        // neighborhood(A, 3) should include D — 3 undirected hops via
+        // A→B←C→D. Old impl stopped at B.
+        const graph = new SymbolGraph();
+        for (const name of ["A", "B", "C", "D"]) graph.addSymbol(mkSymbol(name));
+        graph.addEdge("A", "B", "calls");
+        graph.addEdge("C", "B", "calls");
+        graph.addEdge("C", "D", "calls");
+
+        const n = graph.neighborhood("A", 3);
+        const nodeNames = n.nodes.map((s) => s.name).sort();
+        expect(nodeNames).toEqual(["A", "B", "C", "D"]);
+      });
+
+      it("respects the depth limit (doesn't grab the whole graph)", async () => {
+        // Graph: A → B → C → D  (chain)
+        // neighborhood(A, 2) should only reach {A, B, C}, not D.
+        const graph = new SymbolGraph();
+        for (const name of ["A", "B", "C", "D"]) graph.addSymbol(mkSymbol(name));
+        graph.addEdge("A", "B", "calls");
+        graph.addEdge("B", "C", "calls");
+        graph.addEdge("C", "D", "calls");
+
+        const n = graph.neighborhood("A", 2);
+        const nodeNames = n.nodes.map((s) => s.name).sort();
+        expect(nodeNames).toEqual(["A", "B", "C"]);
+      });
+
+      it("returns only the root for depth 0", async () => {
+        const graph = new SymbolGraph();
+        graph.addSymbol(mkSymbol("A"));
+        graph.addSymbol(mkSymbol("B"));
+        graph.addEdge("A", "B", "calls");
+
+        const n = graph.neighborhood("A", 0);
+        expect(n.nodes.map((s) => s.name)).toEqual(["A"]);
+      });
+    });
+
+});

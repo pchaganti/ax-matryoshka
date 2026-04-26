@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { NucleusEngine, createEngine, createEngineFromContent } from "../../src/engine/nucleus-engine.js";
+import { readFileSync } from "fs";
+import type { LCTerm } from "../../src/logic/types.js";
+import { solve } from "../../src/logic/lc-solver.js";
+import type { SolverTools } from "../../src/logic/lc-solver.js";
+import { parseAll, parse } from "../../src/logic/lc-parser.js";
 
 const SAMPLE_DOCUMENT = `FATAL: Database connection failed at 10:30:45
 INFO: User logged in successfully
@@ -518,4 +523,290 @@ describe("llmQuery option — symbolic recursion hook (P0-followup for MCP sampl
     expect(result.success).toBe(false);
     expect(result.error).toMatch(/llm_query is not available/i);
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit31.test.ts #3 — nucleus-engine groups filtering
+  describe("#3 — nucleus-engine groups filtering", () => {
+      it("should filter undefined from regex groups", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        // Find the grep function's results.push call
+        const pushSection = source.match(/groups:\s*match\.slice\(1\)[^,}]*/);
+        expect(pushSection).not.toBeNull();
+        // Should filter out undefined values
+        expect(pushSection![0]).toMatch(/filter|\.map\(.*\?\?|as string/);
+      });
+    });
+
+  // from tests/audit35.test.ts #11 — loadContent should be consistent
+  describe("#11 — loadContent should be consistent", () => {
+        it("should store trimmed content if trimming for empty check", () => {
+          const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+          const loadContent = source.match(/loadContent\(content: string\)[\s\S]*?this\.bindings\.clear/);
+          expect(loadContent).not.toBeNull();
+          // If trimmed.length > 0, should store content consistently
+          // (either always trimmed or document the behavior)
+          expect(loadContent![0]).toMatch(/content|trimmed/);
+        });
+      });
+
+  // from tests/audit46.test.ts #9 — nucleus-engine grep should validate pattern length
+  describe("#9 — nucleus-engine grep should validate pattern length", () => {
+      it("should check pattern length before RegExp construction", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        const grepSection = source.match(/grep:\s*\(pattern[\s\S]*?new RegExp/);
+        expect(grepSection).not.toBeNull();
+        expect(grepSection![0]).toMatch(/pattern\.length|MAX_PATTERN|length\s*>/);
+      });
+    });
+
+  // from tests/audit47.test.ts #5 — nucleus-engine fuzzy_search should validate query length
+  describe("#5 — nucleus-engine fuzzy_search should validate query length", () => {
+      it("should check query length before processing", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        const fuzzySection = source.match(/fuzzy_search[\s\S]*?for \(let i/);
+        expect(fuzzySection).not.toBeNull();
+        expect(fuzzySection![0]).toMatch(/query\.length|MAX_QUERY/);
+      });
+    });
+
+  // from tests/audit49.test.ts #7 — nucleus-engine setBinding should validate name
+  describe("#7 — nucleus-engine setBinding should validate name", () => {
+      it("should validate binding name format", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        const setBindingFn = source.match(/setBinding\(name[\s\S]*?this\.bindings\.set/);
+        expect(setBindingFn).not.toBeNull();
+        expect(setBindingFn![0]).toMatch(/test\(name\)|Invalid.*name|name\.length/i);
+      });
+    });
+
+  // from tests/audit51.test.ts #5 — nucleus-engine fuzzy_search should clamp limit
+  describe("#5 — nucleus-engine fuzzy_search should clamp limit", () => {
+      it("should clamp limit before slicing results", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        const fuzzyFn = source.match(/fuzzy_search:[\s\S]*?results\.slice\(0,\s*\w+\)/);
+        expect(fuzzyFn).not.toBeNull();
+        expect(fuzzyFn![0]).toMatch(/Math\.min|Math\.max|Math\.floor|clamp/);
+      });
+    });
+
+  // from tests/audit73.test.ts #2 — nucleus-engine fuzzy_search should use safe sort
+  describe("#2 — nucleus-engine fuzzy_search should use safe sort", () => {
+      it("should not use raw subtraction for score sorting", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        const fuzzySort = source.indexOf("b.score - a.score");
+        // Should NOT have raw subtraction sort
+        expect(fuzzySort).toBe(-1);
+      });
+    });
+
+  // from tests/audit73.test.ts #5 — nucleus-engine evictOldTurnBindings should use safe sort
+  describe("#5 — nucleus-engine evictOldTurnBindings should use safe sort", () => {
+      it("should not use parseInt subtraction for sorting", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        const evictFn = source.indexOf("private evictOldTurnBindings");
+        expect(evictFn).toBeGreaterThan(-1);
+        const block = source.slice(evictFn, evictFn + 300);
+        // Should NOT contain subtraction-based sort
+        const hasSubtraction = /parseInt\(a.*-.*parseInt\(b|parseInt\(b.*-.*parseInt\(a/.test(block);
+        expect(hasSubtraction).toBe(false);
+      });
+    });
+
+  // from tests/audit78.test.ts #1 — getBindings should filter dangerous keys
+  describe("#1 — getBindings should filter dangerous keys", () => {
+      it("should use Object.create(null) or filter __proto__", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        const fnStart = source.indexOf("getBindings()");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/Object\.create\(null\)|__proto__|hasOwnProperty|DANGEROUS|prototype/);
+      });
+    });
+
+  // from tests/audit79.test.ts #7 — _fn_ binding should validate fnObj.name
+  describe("#7 — _fn_ binding should validate fnObj.name", () => {
+      it("should validate fnObj.name before creating binding key", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        const fnBinding = source.indexOf("_fn_${fnObj.name}");
+        expect(fnBinding).toBeGreaterThan(-1);
+        // Look backwards for validation
+        const block = source.slice(Math.max(0, fnBinding - 300), fnBinding + 100);
+        expect(block).toMatch(/fnObj\.name.*test|fnObj\.name.*match|typeof fnObj\.name|fnObj\.name\.length/);
+      });
+    });
+
+  // from tests/audit80.test.ts #8 — fuzzyMatch should reject empty queries
+  describe("#8 — fuzzyMatch should reject empty queries", () => {
+      it("should guard against empty query string", () => {
+        const source = readFileSync("src/engine/nucleus-engine.ts", "utf-8");
+        const fnStart = source.indexOf("function fuzzyMatch");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 300);
+        expect(block).toMatch(/query\.length\s*[<>=]+\s*0|!query|queryLower\.length\s*[<>=]+\s*0|!queryLower/);
+      });
+    });
+
+  // from tests/audit96.test.ts #1 — match should be case-insensitive like grep
+  describe("#1 — match should be case-insensitive like grep", () => {
+      let engine: NucleusEngine;
+
+      beforeEach(() => {
+        engine = new NucleusEngine();
+        engine.loadContent([
+          "Error 500: Internal Server Error",
+          "WARNING: disk space low",
+          "info: all systems nominal",
+          "FATAL: database connection lost",
+        ].join("\n"));
+      });
+
+      it("top-level (match \"Error\" \"error\" 0) returns match (case-insensitive)", async () => {
+        // This hits evaluate() match case at lc-solver.ts:547
+        const result = await engine.execute('(match "Error 500" "error" 0)');
+        expect(result.success).toBe(true);
+        // Case-insensitive regex matches "Error"
+        expect(result.value).not.toBeNull();
+        expect(typeof result.value).toBe("string");
+        expect((result.value as string).toLowerCase()).toBe("error");
+      });
+
+      it("(filter RESULTS (lambda x (match x \"error\" 0))) keeps upper-case matches", async () => {
+        // This hits evaluatePredicate match case at lc-solver.ts:1078
+        const grepResult = await engine.execute('(grep "error")');
+        expect(grepResult.success).toBe(true);
+        // Grep is case-insensitive — finds "Error 500" and "Error" in "Internal Server Error"
+        expect(Array.isArray(grepResult.value)).toBe(true);
+
+        const filterResult = await engine.execute(
+          '(filter RESULTS (lambda x (match x "error" 0)))'
+        );
+        expect(filterResult.success).toBe(true);
+        expect(Array.isArray(filterResult.value)).toBe(true);
+        const kept = filterResult.value as Array<{ line: string }>;
+        // The "Error 500: Internal Server Error" line should survive —
+        // its source line contains uppercase "Error", and filter match must
+        // match case-insensitively.
+        const hasError500 = kept.some((r) => r.line.includes("Error 500"));
+        expect(hasError500).toBe(true);
+      });
+
+      it("(map RESULTS (lambda x (match x \"fatal\" 0))) matches upper-case FATAL", async () => {
+        // This hits evaluateWithBinding match case at lc-solver.ts:1184
+        const grepResult = await engine.execute('(grep "fatal")');
+        expect(grepResult.success).toBe(true);
+
+        const mapResult = await engine.execute(
+          '(map RESULTS (lambda x (match x "fatal" 0)))'
+        );
+        expect(mapResult.success).toBe(true);
+        expect(Array.isArray(mapResult.value)).toBe(true);
+        const mapped = mapResult.value as Array<string | null>;
+        // At least one non-null entry — the FATAL line should produce a match
+        const nonNull = mapped.filter((v) => v !== null);
+        expect(nonNull.length).toBeGreaterThan(0);
+      });
+    });
+
+  // from tests/audit96.test.ts #2 — sum over grep results takes first numeric token only
+  describe("#2 — sum over grep results takes first numeric token only", () => {
+      function makeTools(lines: string[]): SolverTools {
+        return {
+          grep: () =>
+            lines.map((line, i) => ({
+              match: line,
+              line,
+              lineNum: i + 1,
+              index: 0,
+              groups: [],
+            })),
+          fuzzy_search: () => [],
+          bm25: () => [],
+          semantic: () => [],
+          text_stats: () => ({
+            length: 0,
+            lineCount: lines.length,
+            sample: { start: "", middle: "", end: "" },
+          }),
+          context: lines.join("\n"),
+          lines,
+        };
+      }
+
+      it("sums $100 + $200, NOT $100+5 + $200+10 (multi-number line)", async () => {
+        // Before the fix: regex accumulates ALL numbers per line:
+        //   Line 1: 100 + 5 = 105
+        //   Line 2: 200 + 10 = 210
+        //   Total = 315
+        // After the fix: take first number per line only:
+        //   Line 1: 100
+        //   Line 2: 200
+        //   Total = 300
+        const tools = makeTools(["Item: $100 Qty: 5", "Item: $200 Qty: 10"]);
+        const term: LCTerm = {
+          tag: "sum",
+          collection: { tag: "grep", pattern: "Item" },
+        };
+        const result = await solve(term, tools);
+        expect(result.success).toBe(true);
+        expect(result.value).toBe(300);
+      });
+
+      it("sums error code 500 + error code 404 = 904 (no currency case)", async () => {
+        // Before the fix: "Error 500: timeout 30s" would sum 500+30 = 530
+        //                 "Error 404: attempt 2 of 3" would sum 404+2+3 = 409
+        //                 Total = 939 (garbage)
+        // After the fix: takes first number per line:
+        //                 500 + 404 = 904
+        const tools = makeTools([
+          "Error 500: timeout 30s",
+          "Error 404: attempt 2 of 3",
+        ]);
+        const term: LCTerm = {
+          tag: "sum",
+          collection: { tag: "grep", pattern: "Error" },
+        };
+        const result = await solve(term, tools);
+        expect(result.success).toBe(true);
+        expect(result.value).toBe(904);
+      });
+
+      it("plain numeric-string entries still parse correctly (no regression)", async () => {
+        // Plain strings go through the `typeof val === "string"` branch, not
+        // the grep-object branch. Verify that branch is unaffected by the fix.
+        const stringEngine = new NucleusEngine();
+        stringEngine.loadContent("$1,000\n$2,500.50");
+        const result = await stringEngine.execute("(sum (lines 1 2))");
+        expect(result.success).toBe(true);
+        expect(result.value).toBe(3500.5);
+      });
+    });
+
+  // from tests/audit96.test.ts #14 — setBinding and synthesized-fn auto-register use one regex
+  describe("#14 — setBinding and synthesized-fn auto-register use one regex", () => {
+      it("setBinding accepts hyphenated names so `_fn_parse-date` round-trips", async () => {
+        const engine = new NucleusEngine();
+        engine.loadContent("anything");
+        // Before the fix: setBinding rejects hyphens via
+        // /^[a-zA-Z_][a-zA-Z0-9_]*$/, even though the synthesized-function
+        // auto-register path emits `_fn_parse-date`-style keys via direct
+        // bindings.set. After the fix, the two paths use the same regex
+        // and setBinding works with the auto-generated keys.
+        expect(() => engine.setBinding("_fn_parse-date", { foo: 1 })).not.toThrow();
+        expect(engine.getBinding("_fn_parse-date")).toEqual({ foo: 1 });
+      });
+
+      it("setBinding still rejects other invalid characters", async () => {
+        const engine = new NucleusEngine();
+        engine.loadContent("anything");
+        // Quick sanity: things that should still be invalid stay invalid.
+        expect(() => engine.setBinding("has space", 1)).toThrow();
+        expect(() => engine.setBinding("has$dollar", 1)).toThrow();
+        expect(() => engine.setBinding("__proto__", 1)).toThrow();
+      });
+    });
+
 });

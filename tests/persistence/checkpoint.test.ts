@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { CheckpointManager } from "../../src/persistence/checkpoint.js";
 import { HandleRegistry } from "../../src/persistence/handle-registry.js";
 import { SessionDB } from "../../src/persistence/session-db.js";
+import { readFileSync } from "fs";
 
 describe("CheckpointManager", () => {
   let db: SessionDB;
@@ -237,4 +238,67 @@ describe("CheckpointManager", () => {
       expect(turns).toHaveLength(0);
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit31.test.ts #2 — checkpoint restore clears stale RESULTS
+  describe("#2 — checkpoint restore clears stale RESULTS", () => {
+      it("should clear RESULTS when checkpoint has no RESULTS binding", () => {
+        const source = readFileSync("src/persistence/checkpoint.ts", "utf-8");
+        const restoreMethod = source.match(/restore\(turn: number\)[\s\S]*?return true;\s*\}/);
+        expect(restoreMethod).not.toBeNull();
+        // Should clear RESULTS when checkpoint doesn't have it
+        expect(restoreMethod![0]).toMatch(/clearResults|setResults\(null\)|resultsHandle\s*=\s*null/);
+      });
+    });
+
+  // from tests/audit34.test.ts #26 — checkpoint restore should verify handles
+  describe("#26 — checkpoint restore should verify handles", () => {
+        it("should check handle existence during restore", () => {
+          const source = readFileSync("src/persistence/checkpoint.ts", "utf-8");
+          const restore = source.match(/restore[\s\S]*?^\}/m);
+          expect(restore).not.toBeNull();
+          // Should verify handles exist before restoring
+          expect(restore![0]).toMatch(/exist|valid|verify|getHandle|has\(|registry/i);
+        });
+      });
+
+  // from tests/audit84.test.ts #6 — checkpoint restore should validate handle format
+  describe("#6 — checkpoint restore should validate handle format", () => {
+      it("should validate resultsHandle format before use", () => {
+        const source = readFileSync("src/persistence/checkpoint.ts", "utf-8");
+        const restoreMethod = source.indexOf("restore(turn");
+        expect(restoreMethod).toBeGreaterThan(-1);
+        const block = source.slice(restoreMethod, restoreMethod + 400);
+        expect(block).toMatch(/\$res|test\(resultsHandle\)|validHandle|resultsHandle\.startsWith/);
+      });
+    });
+
+  // from tests/audit91.test.ts #6 — checkpoint save/delete should validate turn
+  describe("#6 — checkpoint save/delete should validate turn", () => {
+      it("should validate turn parameter in save method", () => {
+        const source = readFileSync("src/persistence/checkpoint.ts", "utf-8");
+        const saveStart = source.indexOf("save(turn:");
+        expect(saveStart).toBeGreaterThan(-1);
+        const block = source.slice(saveStart, saveStart + 300);
+        // Should validate turn is a safe non-negative integer
+        expect(block).toMatch(/isSafeInteger|isFinite|turn\s*<\s*0|typeof turn/);
+      });
+    });
+
+  // from tests/audit92.test.ts #5 — setSessionId should validate input
+  describe("#5 — setSessionId should validate input", () => {
+      it("should validate session ID length and format", () => {
+        const source = readFileSync("src/persistence/checkpoint.ts", "utf-8");
+        const setStart = source.indexOf("setSessionId(id:");
+        expect(setStart).toBeGreaterThan(-1);
+        const block = source.slice(setStart, setStart + 300);
+        // Should validate length or format
+        expect(block).toMatch(/id\.length|\.test\(id\)|MAX_SESSION/);
+      });
+    });
+
 });

@@ -6,6 +6,7 @@ import {
   isExtensionSupported,
   isLanguageAvailable,
 } from "../../src/treesitter/language-map.js";
+import { readFileSync } from "fs";
 
 describe("Language Map", () => {
   it("should return correct language for TypeScript extensions", () => {
@@ -299,4 +300,32 @@ function incomplete(
       freshRegistry.dispose();
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit57.test.ts #7 — parser-registry should validate grammarModule
+  describe("#7 — parser-registry should validate grammarModule", () => {
+      it("should check grammarModule is not null after require", () => {
+        const source = readFileSync("src/treesitter/parser-registry.ts", "utf-8");
+        const requireBlock = source.match(/grammarModule = require[\s\S]*?moduleExport/);
+        expect(requireBlock).not.toBeNull();
+        expect(requireBlock![0]).toMatch(/!grammarModule|grammarModule\s*==\s*null|typeof grammarModule/);
+      });
+    });
+
+  // from tests/audit59.test.ts #8 — parser-registry should block toString/valueOf/hasOwnProperty
+  describe("#8 — parser-registry should block toString/valueOf/hasOwnProperty", () => {
+      it("should include toString, valueOf, hasOwnProperty in blocklist", () => {
+        const source = readFileSync("src/treesitter/parser-registry.ts", "utf-8");
+        const block = source.match(/DANGEROUS_EXPORT_NAMES[\s\S]*?\)/);
+        expect(block).not.toBeNull();
+        expect(block![0]).toMatch(/hasOwnProperty/);
+        expect(block![0]).toMatch(/toString/);
+        expect(block![0]).toMatch(/valueOf/);
+      });
+    });
+
 });

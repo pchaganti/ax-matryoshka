@@ -7,6 +7,7 @@ import {
   clearLanguageCache,
 } from "../../src/treesitter/language-map.js";
 import { BUILTIN_GRAMMARS } from "../../src/treesitter/builtin-grammars.js";
+import { readFileSync } from "fs";
 
 describe("Grammar Configuration", () => {
   describe("Built-in Grammars", () => {
@@ -158,4 +159,171 @@ describe("New Language Support", () => {
   // not installed and its native-binding format is incompatible with the
   // other tree-sitter grammars this project uses. YAML support is not on
   // the roadmap. A future PR adding the dependency can add a fresh test.
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit59.test.ts #2 — addCustomGrammar should block dangerous language names
+  describe("#2 — addCustomGrammar should block dangerous language names", () => {
+      it("should reject __proto__/constructor/prototype as language", () => {
+        const source = readFileSync("src/config/grammar-config.ts", "utf-8");
+        const fnStart = source.indexOf("function addCustomGrammar");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/__proto__|DANGEROUS|prototype/);
+      });
+    });
+
+  // from tests/audit60.test.ts #9 — getAllLanguageConfigs should validate custom grammar keys
+  describe("#9 — getAllLanguageConfigs should validate custom grammar keys", () => {
+      it("should reject dangerous keys from custom grammars", () => {
+        const source = readFileSync("src/treesitter/language-map.ts", "utf-8");
+        const mergeBlock = source.match(/custom.*=.*readCustomGrammars[\s\S]*?configs\[lang\]/);
+        expect(mergeBlock).not.toBeNull();
+        expect(mergeBlock![0]).toMatch(/__proto__|DANGEROUS|prototype/);
+      });
+    });
+
+  // from tests/audit61.test.ts #4 — addCustomGrammar should validate extensions array
+  describe("#4 — addCustomGrammar should validate extensions array", () => {
+      it("should check extensions array bounds and format", () => {
+        const source = readFileSync("src/config/grammar-config.ts", "utf-8");
+        const fnStart = source.indexOf("function addCustomGrammar");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 600);
+        expect(block).toMatch(/extensions\.length|MAX_EXT|Array\.isArray.*extensions/i);
+      });
+    });
+
+  // from tests/audit62.test.ts #6 — addCustomGrammar should validate package field
+  describe("#6 — addCustomGrammar should validate package field", () => {
+      it("should check package name format", () => {
+        const source = readFileSync("src/config/grammar-config.ts", "utf-8");
+        const fnStart = source.indexOf("function addCustomGrammar(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 800);
+        expect(block).toMatch(/grammar\.package|package.*length|package.*test/i);
+      });
+    });
+
+  // from tests/audit62.test.ts #7 — addCustomGrammar should validate symbols object
+  describe("#7 — addCustomGrammar should validate symbols object", () => {
+      it("should check symbols object size", () => {
+        const source = readFileSync("src/config/grammar-config.ts", "utf-8");
+        const fnStart = source.indexOf("function addCustomGrammar(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 1800);
+        expect(block).toMatch(/symbols.*keys|Object\.keys.*symbols|MAX_SYMBOLS/i);
+      });
+    });
+
+  // from tests/audit65.test.ts #1 — getLanguageConfig should reject dangerous keys
+  describe("#1 — getLanguageConfig should reject dangerous keys", () => {
+      it("should guard against __proto__ and similar keys", () => {
+        const source = readFileSync("src/treesitter/language-map.ts", "utf-8");
+        const fnStart = source.indexOf("function getLanguageConfig(");
+        if (fnStart === -1) {
+          const altStart = source.indexOf("export function getLanguageConfig(");
+          expect(altStart).toBeGreaterThan(-1);
+          const block = source.slice(altStart, altStart + 400);
+          expect(block).toMatch(/DANGEROUS|__proto__|hasOwnProperty|Object\.hasOwn/i);
+        } else {
+          const block = source.slice(fnStart, fnStart + 400);
+          expect(block).toMatch(/DANGEROUS|__proto__|hasOwnProperty|Object\.hasOwn/i);
+        }
+      });
+    });
+
+  // from tests/audit65.test.ts #8 — grammar-config symbols should reject arrays
+  describe("#8 — grammar-config symbols should reject arrays", () => {
+      it("should exclude Array.isArray from symbols check", () => {
+        const source = readFileSync("src/config/grammar-config.ts", "utf-8");
+        const symbolsCheck = source.indexOf("grammar.symbols && typeof grammar.symbols");
+        expect(symbolsCheck).toBeGreaterThan(-1);
+        const block = source.slice(symbolsCheck, symbolsCheck + 200);
+        expect(block).toMatch(/Array\.isArray/);
+      });
+    });
+
+  // from tests/audit65.test.ts #10 — buildExtensionMap should validate ext is string
+  describe("#10 — buildExtensionMap should validate ext is string", () => {
+      it("should check typeof ext before toLowerCase", () => {
+        const source = readFileSync("src/treesitter/language-map.ts", "utf-8");
+        const fnStart = source.indexOf("function buildExtensionMap(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/typeof ext\s*===?\s*"string"|typeof ext\s*!==?\s*"string"/);
+      });
+    });
+
+  // from tests/audit66.test.ts #6 — addCustomGrammar should validate moduleExport
+  describe("#6 — addCustomGrammar should validate moduleExport", () => {
+      it("should check moduleExport for dangerous names", () => {
+        const source = readFileSync("src/config/grammar-config.ts", "utf-8");
+        const fnStart = source.indexOf("function addCustomGrammar(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 1500);
+        expect(block).toMatch(/moduleExport.*DANGEROUS|DANGEROUS.*moduleExport|moduleExport.*typeof/i);
+      });
+    });
+
+  // from tests/audit66.test.ts #7 — addCustomGrammar should validate symbol kind values
+  describe("#7 — addCustomGrammar should validate symbol kind values", () => {
+      it("should check symbol values against valid kinds", () => {
+        const source = readFileSync("src/config/grammar-config.ts", "utf-8");
+        const fnStart = source.indexOf("function addCustomGrammar(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 1500);
+        expect(block).toMatch(/VALID_KINDS|VALID_SYMBOL|validKind/i);
+      });
+    });
+
+  // from tests/audit66.test.ts #10 — getAllLanguageConfigs DANGEROUS_KEYS should include toString/valueOf
+  describe("#10 — getAllLanguageConfigs DANGEROUS_KEYS should include toString/valueOf", () => {
+      it("should block hasOwnProperty/toString/valueOf in language keys", () => {
+        const source = readFileSync("src/treesitter/language-map.ts", "utf-8");
+        const keysStart = source.indexOf("DANGEROUS_LANG_KEYS");
+        expect(keysStart).toBeGreaterThan(-1);
+        const block = source.slice(keysStart, keysStart + 400);
+        expect(block).toMatch(/hasOwnProperty|toString|valueOf/);
+      });
+    });
+
+  // from tests/audit68.test.ts #8 — getAllLanguageConfigs should protect builtin loop too
+  describe("#8 — getAllLanguageConfigs should protect builtin loop too", () => {
+      it("should check DANGEROUS_KEYS for builtin grammars", () => {
+        const source = readFileSync("src/treesitter/language-map.ts", "utf-8");
+        const builtinLoop = source.indexOf("for (const [lang, builtin]");
+        expect(builtinLoop).toBeGreaterThan(-1);
+        // The DANGEROUS_KEYS check should be inside the builtin loop body, not just in the custom loop
+        const builtinBody = source.slice(builtinLoop, builtinLoop + 120);
+        expect(builtinBody).toMatch(/DANGEROUS.*\.has\(lang\)|__proto__|skip.*dangerous/i);
+      });
+    });
+
+  // from tests/audit73.test.ts #7 — grammar-config DANGEROUS_LANG_NAMES should include all dangerous keys
+  describe("#7 — grammar-config DANGEROUS_LANG_NAMES should include all dangerous keys", () => {
+      it("should include hasOwnProperty and toString", () => {
+        const source = readFileSync("src/config/grammar-config.ts", "utf-8");
+        const dangerousSet = source.indexOf("DANGEROUS_LANG_NAMES");
+        expect(dangerousSet).toBeGreaterThan(-1);
+        const block = source.slice(dangerousSet, dangerousSet + 500);
+        expect(block).toMatch(/hasOwnProperty/);
+        expect(block).toMatch(/toString/);
+      });
+    });
+
+  // from tests/audit88.test.ts #7 — addCustomGrammar should reject .. in package name
+  describe("#7 — addCustomGrammar should reject .. in package name", () => {
+      it("should block path traversal in package name", () => {
+        const source = readFileSync("src/config/grammar-config.ts", "utf-8");
+        const fnStart = source.indexOf("function addCustomGrammar");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 1000);
+        expect(block).toMatch(/\.\."|includes\("\.\."\)|\.\.\/|path.*traversal/i);
+      });
+    });
+
 });

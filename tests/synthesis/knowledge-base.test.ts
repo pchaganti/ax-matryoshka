@@ -8,6 +8,7 @@ import {
   KnowledgeBase,
   SynthesizedComponent,
 } from "../../src/synthesis/knowledge-base.js";
+import { readFileSync } from "fs";
 
 describe("Knowledge Base", () => {
   let kb: KnowledgeBase;
@@ -835,4 +836,256 @@ describe("Knowledge Base", () => {
       expect(Array.isArray(similar)).toBe(true);
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit16.test.ts Audit16 #14: knowledge base eviction score
+  describe("Audit16 #14: knowledge base eviction score", () => {
+    it("eviction score should weight usageCount over successCount", async () => {
+      // The old formula: successCount * 2 + successRate
+      // This double-counted successCount, meaning a component with
+      // successCount=100 but usageCount=1 would outscore one with
+      // usageCount=100, successCount=50
+      // Fixed formula: usageCount * 2 + successRate
+      const { KnowledgeBase } = await import("../../src/synthesis/knowledge-base.js");
+      const kb = new KnowledgeBase();
+
+      // Fill to capacity (MAX_COMPONENTS = 500) with filler
+      for (let i = 0; i < 500; i++) {
+        kb.add({
+          id: `filler_${i}`, type: "regex", name: `filler${i}`,
+          description: "", pattern: `test${i}`,
+          positiveExamples: [`${i}`], negativeExamples: [],
+          usageCount: 50, successCount: 25, lastUsed: new Date(),
+          composableWith: [],
+        });
+      }
+
+      // Override one with high usage
+      kb.add({
+        id: "high_usage", type: "regex", name: "high",
+        description: "", pattern: "\\d+",
+        positiveExamples: ["1"], negativeExamples: [],
+        usageCount: 1000, successCount: 900, lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      // Override one with low usage but high success count (old formula would keep this)
+      kb.add({
+        id: "low_usage_high_success", type: "regex", name: "low",
+        description: "", pattern: "\\w+",
+        positiveExamples: ["a"], negativeExamples: [],
+        usageCount: 1, successCount: 1, lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      // Trigger eviction by adding one more
+      kb.add({
+        id: "trigger", type: "regex", name: "trigger",
+        description: "", pattern: "[0-9]+",
+        positiveExamples: ["9"], negativeExamples: [],
+        usageCount: 10, successCount: 5, lastUsed: new Date(),
+        composableWith: [],
+      });
+
+      // high_usage should NOT be evicted (highest score)
+      const high = kb.get("high_usage");
+      expect(high).toBeDefined();
+    });
+  });
+
+  // from tests/audit19.test.ts Audit19 #4: KnowledgeBase re-add index cleanup
+  describe("Audit19 #4: KnowledgeBase re-add index cleanup", () => {
+    it("should clean old type index when re-adding with different type", async () => {
+      const { KnowledgeBase } = await import("../../src/synthesis/knowledge-base.js");
+      const kb = new KnowledgeBase();
+
+      const component: any = {
+        id: "comp1",
+        type: "regex",
+        name: "test",
+        description: "test component",
+        pattern: "\\d+",
+        positiveExamples: ["123"],
+        negativeExamples: [],
+        usageCount: 0,
+        successCount: 0,
+        lastUsed: new Date(),
+        composableWith: [],
+      };
+
+      kb.add(component);
+      expect(kb.getByType("regex").length).toBe(1);
+
+      // Re-add with different type
+      const updated = { ...component, type: "extractor" as const };
+      kb.add(updated);
+
+      // Old type index should be cleaned
+      expect(kb.getByType("regex").length).toBe(0);
+      expect(kb.getByType("extractor").length).toBe(1);
+    });
+
+    it("should clean old pattern index when re-adding with different examples", async () => {
+      const { KnowledgeBase } = await import("../../src/synthesis/knowledge-base.js");
+      const kb = new KnowledgeBase();
+
+      const component: any = {
+        id: "comp2",
+        type: "regex",
+        name: "test",
+        description: "test",
+        pattern: "\\d+",
+        positiveExamples: ["123"],
+        negativeExamples: [],
+        usageCount: 0,
+        successCount: 0,
+        lastUsed: new Date(),
+        composableWith: [],
+      };
+
+      kb.add(component);
+
+      // Re-add with different examples (changes signature)
+      const updated = { ...component, positiveExamples: ["abc", "def", "ghijklmnop"] };
+      kb.add(updated);
+
+      // Should not have stale entries — total components should still be 1
+      expect(kb.size()).toBe(1);
+    });
+  });
+
+  // from tests/audit26.test.ts Audit26 #2: knowledge base eviction score
+  describe("Audit26 #2: knowledge base eviction score", () => {
+    it("should evict never-used components before high-usage ones", async () => {
+      const { KnowledgeBase } = await import(
+        "../../src/synthesis/knowledge-base.js"
+      );
+      const kb = new KnowledgeBase();
+      const now = new Date();
+      // Add a component with high usage (should survive eviction)
+      kb.add({
+        id: "high-usage",
+        type: "extractor",
+        name: "high-usage",
+        description: "high usage component",
+        code: "(s) => s.trim()",
+        positiveExamples: ["hello"],
+        negativeExamples: [],
+        usageCount: 10,
+        successCount: 0,
+        lastUsed: now,
+        composableWith: [],
+      });
+      // Add a component with zero usage (should be evicted first)
+      kb.add({
+        id: "zero-usage",
+        type: "extractor",
+        name: "zero-usage",
+        description: "never used component",
+        code: "(s) => s",
+        positiveExamples: ["world"],
+        negativeExamples: [],
+        usageCount: 0,
+        successCount: 0,
+        lastUsed: now,
+        composableWith: [],
+      });
+      // Fill to capacity (500) to trigger eviction
+      for (let i = 0; i < 500; i++) {
+        kb.add({
+          id: `filler-${i}`,
+          type: "extractor",
+          name: `filler-${i}`,
+          description: `filler ${i}`,
+          code: `(s) => s + ${i}`,
+          positiveExamples: [`ex${i}`],
+          negativeExamples: [],
+          usageCount: 5,
+          successCount: 3,
+          lastUsed: now,
+          composableWith: [],
+        });
+      }
+      // After filling, one of our original components should have been evicted
+      // The zero-usage component should be evicted, not the high-usage one
+      const similar = kb.findSimilar(["hello"], "extractor");
+      const codes = similar.map((c: any) => c.code);
+      // High-usage component should still be there
+      expect(codes).toContain("(s) => s.trim()");
+    });
+  });
+
+  // from tests/audit26.test.ts Audit26 #6: knowledge base empty examples signature
+  describe("Audit26 #6: knowledge base empty examples signature", () => {
+    it("should handle component with empty positiveExamples gracefully", async () => {
+      const { KnowledgeBase } = await import(
+        "../../src/synthesis/knowledge-base.js"
+      );
+      const kb = new KnowledgeBase();
+      kb.add({
+        id: "empty-ex",
+        type: "extractor",
+        name: "empty",
+        description: "empty examples",
+        code: "(s) => s",
+        positiveExamples: [],
+        negativeExamples: [],
+        usageCount: 0,
+        successCount: 0,
+        lastUsed: new Date(),
+        composableWith: [],
+      });
+      expect(kb.size()).toBe(1);
+    });
+  });
+
+  // from tests/audit29.test.ts #4 — knowledge-base regex validation
+  describe("#4 — knowledge-base regex validation", () => {
+      it("should validate regex before new RegExp in findComposable", () => {
+        const source = readFileSync("src/synthesis/knowledge-base.ts", "utf-8");
+        // Find the findComposable method
+        const findSection = source.match(/findComposable[\s\S]*?return this\.findCoveringCompositions/);
+        expect(findSection).not.toBeNull();
+        // Should validate pattern before creating new RegExp
+        expect(findSection![0]).toMatch(/validateRegex|validation\.valid/);
+      });
+    });
+
+  // from tests/audit70.test.ts #6 — knowledge-base findSimilar sort should use safe comparator
+  describe("#6 — knowledge-base findSimilar sort should use safe comparator", () => {
+      it("should not use raw subtraction for weight sorting", () => {
+        const source = readFileSync("src/synthesis/knowledge-base.ts", "utf-8");
+        const sortStart = source.indexOf("return bWeight - aWeight");
+        // If raw subtraction exists, it needs fixing
+        expect(sortStart === -1).toBe(true);
+      });
+    });
+
+  // from tests/audit73.test.ts #6 — knowledge-base findCoveringCompositions should cap results
+  describe("#6 — knowledge-base findCoveringCompositions should cap results", () => {
+      it("should have MAX_COMPOSITIONS limit", () => {
+        const source = readFileSync("src/synthesis/knowledge-base.ts", "utf-8");
+        const fnStart = source.indexOf("private findCoveringCompositions(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 500);
+        expect(block).toMatch(/MAX_COMPOSITIONS|compositions\.length\s*>=|compositions\.length\s*>/);
+      });
+    });
+
+  // from tests/audit93.test.ts #6 — coversAll should validate regex before creating RegExp
+  describe("#6 — coversAll should validate regex before creating RegExp", () => {
+      it("should call validateRegex before new RegExp", () => {
+        const source = readFileSync("src/synthesis/knowledge-base.ts", "utf-8");
+        const coversAllStart = source.indexOf("private coversAll");
+        expect(coversAllStart).toBeGreaterThan(-1);
+        const block = source.slice(coversAllStart, coversAllStart + 400);
+        // Should call validateRegex before new RegExp(c.pattern)
+        expect(block).toMatch(/validateRegex/);
+      });
+    });
+
 });

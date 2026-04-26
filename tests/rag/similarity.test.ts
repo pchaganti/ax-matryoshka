@@ -13,6 +13,7 @@ import {
   buildSearchIndex,
   searchIndex,
 } from "../../src/rag/similarity.js";
+import { readFileSync } from "fs";
 
 describe("tokenize", () => {
   it("should split text into lowercase words", () => {
@@ -233,4 +234,111 @@ describe("combinedSimilarity", () => {
     const score = combinedSimilarity(queryTokens, docTokens, keywords, idf);
     expect(score).toBeGreaterThan(0.3);  // Keywords should boost score
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit18.test.ts Audit18 #15: keyword score normalization
+  describe("Audit18 #15: keyword score normalization", () => {
+    it("keyword score should not exceed 1.0", async () => {
+      const { keywordMatchScore } = await import("../../src/rag/similarity.js");
+      // Edge case: many query tokens matching few keywords
+      const score = keywordMatchScore(
+        ["error", "critical", "fatal"],
+        ["error", "critical", "fatal"]
+      );
+      expect(score).toBeLessThanOrEqual(1.0);
+    });
+
+    it("keyword score should handle empty query", async () => {
+      const { keywordMatchScore } = await import("../../src/rag/similarity.js");
+      const score = keywordMatchScore([], ["error"]);
+      expect(score).toBe(0);
+    });
+  });
+
+  // from tests/audit20.test.ts Audit20 #3: keywordMatchScore division by zero
+  describe("Audit20 #3: keywordMatchScore division by zero", () => {
+    it("should return 0 for empty queryTokens and empty keywords", async () => {
+      const { keywordMatchScore } = await import("../../src/rag/similarity.js");
+      const score = keywordMatchScore([], []);
+      expect(Number.isNaN(score)).toBe(false);
+      expect(score).toBe(0);
+    });
+
+    it("should return 0 for empty queryTokens with non-empty keywords", async () => {
+      const { keywordMatchScore } = await import("../../src/rag/similarity.js");
+      const score = keywordMatchScore([], ["error", "warning"]);
+      expect(Number.isNaN(score)).toBe(false);
+      expect(score).toBe(0);
+    });
+  });
+
+  // from tests/audit25.test.ts Audit25 #10: similarity IDF
+  describe("Audit25 #10: similarity IDF", () => {
+    it("should be importable", async () => {
+      const mod = await import("../../src/rag/similarity.js");
+      expect(mod.tfidfVector).toBeDefined();
+    });
+  });
+
+  // from tests/audit28.test.ts #6 — IDF zero with single document
+  describe("#6 — IDF zero with single document", () => {
+      it("should produce non-zero IDF values for single document corpus", () => {
+        const docs = [["hello", "world", "test"]];
+        const idf = inverseDocumentFrequency(docs);
+        // With 1 doc, all terms have df=1, so log(1/1) = 0
+        // After fix, should use smoothing to produce non-zero values
+        for (const [, value] of idf) {
+          expect(value).not.toBe(0);
+        }
+      });
+
+      it("should find similar documents in single-doc index", () => {
+        const index = buildSearchIndex([
+          { id: "doc1", text: "hello world test data", keywords: ["hello", "world"] },
+        ]);
+        const results = searchIndex(index, "hello world");
+        expect(results.length).toBeGreaterThan(0);
+        expect(results[0].score).toBeGreaterThan(0);
+      });
+    });
+
+  // from tests/audit67.test.ts #10 — buildSearchIndex should validate doc fields
+  describe("#10 — buildSearchIndex should validate doc fields", () => {
+      it("should check doc.text is string and doc.keywords is array", () => {
+        const source = readFileSync("src/rag/similarity.ts", "utf-8");
+        const fnStart = source.indexOf("function buildSearchIndex(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 400);
+        expect(block).toMatch(/typeof.*text|Array\.isArray.*keywords|typeof.*id/i);
+      });
+    });
+
+  // from tests/audit68.test.ts #10 — searchIndex sort should use safe comparator
+  describe("#10 — searchIndex sort should use safe comparator", () => {
+      it("should not use raw subtraction for score sorting", () => {
+        const source = readFileSync("src/rag/similarity.ts", "utf-8");
+        const sortStart = source.indexOf("Sort by score");
+        expect(sortStart).toBeGreaterThan(-1);
+        const block = source.slice(sortStart, sortStart + 200);
+        // Should use comparison operators not subtraction
+        const hasRawSubtraction = /\.sort\(\(a,\s*b\)\s*=>\s*b\.score\s*-\s*a\.score\)/.test(block);
+        expect(hasRawSubtraction).toBe(false);
+      });
+    });
+
+  // from tests/audit73.test.ts #8 — similarity tokenize should cap token count
+  describe("#8 — similarity tokenize should cap token count", () => {
+      it("should limit number of tokens returned", () => {
+        const source = readFileSync("src/rag/similarity.ts", "utf-8");
+        const fnStart = source.indexOf("function tokenize(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 300);
+        expect(block).toMatch(/MAX_TOKENS|\.slice\(0/);
+      });
+    });
+
 });

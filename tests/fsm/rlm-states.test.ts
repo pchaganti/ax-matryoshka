@@ -3,6 +3,7 @@ import { FSMEngine } from "../../src/fsm/engine.js";
 import { buildRLMSpec, createInitialContext, type RLMContext } from "../../src/fsm/rlm-states.js";
 import type { ModelAdapter } from "../../src/adapters/types.js";
 import type { SolverTools } from "../../src/logic/lc-solver.js";
+import { readFileSync } from "fs";
 
 function makeMockAdapter(overrides?: Partial<ModelAdapter>): ModelAdapter {
   return {
@@ -393,4 +394,96 @@ describe("RLM FSM States", () => {
       expect(result.result).toContain("x=42");
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit13.test.ts Issue #8: History prune should remove pairs not singles
+  describe("Issue #8: History prune should remove pairs not singles", () => {
+    it("rlm.ts pruneHistory should splice(2,2) not splice(2,1)", async () => {
+      const fs = await import("node:fs/promises");
+      const source = await fs.readFile("src/fsm/rlm-states.ts", "utf-8");
+
+      // Find the pruneHistory function (moved to fsm/rlm-states.ts)
+      const pruneMatch = source.match(/function pruneHistory[\s\S]*?\}\s*\}/);
+      expect(pruneMatch).not.toBeNull();
+      const pruneBody = pruneMatch![0];
+
+      // It should splice 2 entries at a time (pair removal), not 1
+      // Fixed: splice(2, 2) removes a user+assistant pair after validating roles
+      // Fallback splice(2, 1) is acceptable as safety against infinite loop when roles are misaligned
+      expect(pruneBody).toContain("splice(2, 2)");
+      // Should validate role before splicing
+      expect(pruneBody).toMatch(/role.*assistant|assistant.*role/);
+    });
+  });
+
+  // from tests/audit32.test.ts #9 — auto-termination should not trigger on intermediate results
+  describe("#9 — auto-termination should not trigger on intermediate results", () => {
+        it("should require explicit done signal before auto-terminating", () => {
+          const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+          // Find the auto-termination logic
+          const autoTerm = source.match(/computedMatch[\s\S]*?Auto-terminating/);
+          expect(autoTerm).not.toBeNull();
+          // Should require the LLM to have signaled completion, not just matched a keyword
+          // Check for an additional condition beyond just the regex match
+          expect(autoTerm![0]).toMatch(/turn\s*>\s*[12]|turn\s*>=\s*[23]|codeExecuted|doneCount|hasExplored/i);
+        });
+      });
+
+  // from tests/audit32.test.ts #16 — history pruning should validate entry roles
+  describe("#16 — history pruning should validate entry roles", () => {
+        it("should ensure pruning maintains alternating roles", () => {
+          const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+          const pruneSection = source.match(/pruneHistory[\s\S]*?\}\s*\}/);
+          expect(pruneSection).not.toBeNull();
+          // Should check role before splicing, or splice in validated pairs
+          expect(pruneSection![0]).toMatch(/role|assistant|pair/i);
+        });
+      });
+
+  // from tests/audit34.test.ts #18 — auto-termination should be more conservative
+  describe("#18 — auto-termination should be more conservative", () => {
+        it("should require more than just keyword match", () => {
+          const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+          const autoTerm = source.match(/computedMatch[\s\S]*?Auto-terminating/);
+          expect(autoTerm).not.toBeNull();
+          // Should require additional evidence beyond a keyword match
+          // e.g., multiple confirmations, explicit done marker, or compute context
+          expect(autoTerm![0]).toMatch(/doneCount|codeExecuted|hasComputed|confirmCount|turn\s*>\s*[23]/);
+        });
+      });
+
+  // from tests/audit35.test.ts #7 — RLM should handle circular references in result
+  describe("#7 — RLM should handle circular references in result", () => {
+        it("should have try/catch around JSON.stringify of result", () => {
+          const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+          // Look for safe stringify pattern near result.value
+          const stringifyBlock = source.match(
+            /result\.value[\s\S]{0,200}JSON\.stringify/
+          );
+          expect(stringifyBlock).not.toBeNull();
+          // Should have try/catch or safe stringify
+          const surrounding = source.match(
+            /try\s*\{[\s\S]*?JSON\.stringify\(result\.value[\s\S]*?\}\s*catch/
+          );
+          expect(surrounding).not.toBeNull();
+        });
+      });
+
+  // from tests/audit74.test.ts #5 — rlm pruneHistory should always terminate
+  describe("#5 — rlm pruneHistory should always terminate", () => {
+      it("should have break or forced removal in else branch", () => {
+        const source = readFileSync("src/fsm/rlm-states.ts", "utf-8");
+        const pruneStart = source.indexOf("function pruneHistory");
+        expect(pruneStart).toBeGreaterThan(-1);
+        const block = source.slice(pruneStart, pruneStart + 900);
+        // The else branch must have a break to prevent infinite loop
+        expect(block).toMatch(/else\s*\{[\s\S]*?break/);
+
+      });
+    });
+
 });

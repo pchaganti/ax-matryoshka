@@ -14,6 +14,7 @@ import { createBaseAdapter } from "../src/adapters/base.js";
 import { createQwenAdapter } from "../src/adapters/qwen.js";
 import { createDeepSeekAdapter } from "../src/adapters/deepseek.js";
 import type { ModelAdapter } from "../src/adapters/types.js";
+import { readFileSync } from "fs";
 
 describe("Adapter Registry", () => {
   describe("getAvailableAdapters", () => {
@@ -271,4 +272,48 @@ describe("DeepSeek Adapter", () => {
       expect(adapter.extractCode(response)).toBe("grep('test');");
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit27.test.ts Audit27 #3: base adapter feedback parameters
+  describe("Audit27 #3: base adapter feedback parameters", () => {
+    it("should use error code in error feedback when provided", async () => {
+      const { createBaseAdapter } = await import("../src/adapters/base.js");
+      const adapter = createBaseAdapter();
+      const feedback = adapter.getErrorFeedback("Parse error", '(grep "test")');
+      expect(feedback).toContain("Parse error");
+    });
+
+    it("should use resultCount in success feedback when provided", async () => {
+      const { createBaseAdapter } = await import("../src/adapters/base.js");
+      const adapter = createBaseAdapter();
+      const feedback = adapter.getSuccessFeedback(5, 10, "find sales");
+      expect(typeof feedback).toBe("string");
+      expect(feedback.length).toBeGreaterThan(0);
+    });
+
+    it("should use resultCount in repeated code feedback when provided", async () => {
+      const { createBaseAdapter } = await import("../src/adapters/base.js");
+      const adapter = createBaseAdapter();
+      const feedback = adapter.getRepeatedCodeFeedback(10);
+      expect(typeof feedback).toBe("string");
+      expect(feedback.length).toBeGreaterThan(0);
+    });
+  });
+
+  // from tests/audit92.test.ts #2 — extractFinalAnswer should type-check parsed.notes
+  describe("#2 — extractFinalAnswer should type-check parsed.notes", () => {
+      it("should verify notes is a string before interpolation", () => {
+        const source = readFileSync("src/adapters/base.ts", "utf-8");
+        const notesLine = source.indexOf("parsed.notes");
+        expect(notesLine).toBeGreaterThan(-1);
+        const block = source.slice(notesLine - 100, notesLine + 200);
+        // Should check typeof parsed.notes === "string"
+        expect(block).toMatch(/typeof\s+parsed\.notes\s*===\s*["']string["']/);
+      });
+    });
+
 });

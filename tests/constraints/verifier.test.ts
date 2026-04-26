@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { verifyResult, verifyInvariant } from "../../src/constraints/verifier.js";
 import type { OutputConstraint, SynthesisConstraint } from "../../src/constraints/types.js";
+import { readFileSync } from "fs";
 
 describe("verifyResult", () => {
   describe("type checking", () => {
@@ -442,4 +443,280 @@ describe("verifyInvariant", () => {
     expect(verifyInvariant(42, "result >= 42")).toBe(true);
     expect(verifyInvariant(42, "result <= 42")).toBe(true);
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit15.test.ts Audit15 #13: verifier unicode escape bypass
+  describe("Audit15 #13: verifier unicode escape bypass", () => {
+    it("should reject unicode escape sequences in invariants", async () => {
+      const { verifyInvariant } = await import("../../src/constraints/verifier.js");
+      // Unicode escape for "eval" — \u0065val
+      const result = verifyInvariant(42, "\\u0065val('1+1')");
+      expect(result).toBe(false);
+    });
+  });
+
+  // from tests/audit18.test.ts Audit18 #10: verifier allows grouping parens
+  describe("Audit18 #10: verifier allows grouping parens", () => {
+    it("should allow simple grouping parentheses in invariants", async () => {
+      const mod = await import("../../src/constraints/verifier.js");
+      const isSafeExpression = (mod as any).isSafeExpression;
+      if (!isSafeExpression) return; // skip if not exported
+      // Grouping parens for logical operators should be allowed
+      expect(isSafeExpression("(result > 0 && result < 100)")).toBe(true);
+    });
+  });
+
+  // from tests/audit19.test.ts Audit19 #5: getValueType for non-standard types
+  describe("Audit19 #5: getValueType for non-standard types", () => {
+    it("should report 'function' type instead of 'undefined'", async () => {
+      const { verifyResult } = await import("../../src/constraints/verifier.js");
+      const result = verifyResult(() => {}, {
+        output: { type: "string" },
+      });
+      expect(result.valid).toBe(false);
+      // Error message should say "function", not "undefined"
+      expect(result.errors[0]).toContain("function");
+      expect(result.errors[0]).not.toContain("undefined");
+    });
+
+    it("should report 'bigint' type instead of 'undefined'", async () => {
+      const { verifyResult } = await import("../../src/constraints/verifier.js");
+      const result = verifyResult(BigInt(42), {
+        output: { type: "number" },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0]).toContain("bigint");
+      expect(result.errors[0]).not.toContain("undefined");
+    });
+  });
+
+  // from tests/audit21.test.ts Audit21 #5: verifier hasOwnProperty check
+  describe("Audit21 #5: verifier hasOwnProperty check", () => {
+    it("should not match prototype properties as present", async () => {
+      const { verifyResult } = await import("../../src/constraints/verifier.js");
+      // Object.create(null) has no prototype, but a normal {} has toString, constructor, etc.
+      const value = { name: "test" };
+      const constraints: any = {
+        output: {
+          type: "object",
+          required: ["toString"], // toString exists on prototype, not own property
+        },
+      };
+      const result = verifyResult(value, constraints);
+      // Should report missing because toString is not an own property
+      expect(result.valid).toBe(false);
+    });
+
+    it("should succeed when required property is an own property", async () => {
+      const { verifyResult } = await import("../../src/constraints/verifier.js");
+      const value = { name: "test" };
+      const constraints: any = {
+        output: {
+          type: "object",
+          required: ["name"],
+        },
+      };
+      const result = verifyResult(value, constraints);
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  // from tests/audit22.test.ts Audit22 #2: verifyArrayConstraint recursive verification
+  describe("Audit22 #2: verifyArrayConstraint recursive verification", () => {
+    it("should verify nested number constraints on array items", async () => {
+      const { verifyResult } = await import("../../src/constraints/verifier.js");
+      const value = [5, 150, 3]; // 150 exceeds max
+      const constraints: any = {
+        output: {
+          type: "array",
+          items: {
+            type: "number",
+            min: 0,
+            max: 100,
+          },
+        },
+      };
+      const result = verifyResult(value, constraints);
+      // Should fail because 150 exceeds the max constraint of 100
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e: string) => e.includes("150"))).toBe(true);
+    });
+
+    it("should verify nested object constraints on array items", async () => {
+      const { verifyResult } = await import("../../src/constraints/verifier.js");
+      const value = [
+        { name: "alice", age: 30 },
+        { age: 25 }, // missing required "name"
+      ];
+      const constraints: any = {
+        output: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["name"],
+          },
+        },
+      };
+      const result = verifyResult(value, constraints);
+      // Should fail because second item is missing "name"
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e: string) => e.includes("name"))).toBe(true);
+    });
+  });
+
+  // from tests/audit22.test.ts Audit22 #5: verifier bracket notation bypass
+  describe("Audit22 #5: verifier bracket notation bypass", () => {
+    it("should reject unquoted bracket notation access", async () => {
+      const { verifyInvariant } = await import("../../src/constraints/verifier.js");
+      // result[constructor] should be rejected
+      const result = verifyInvariant({ x: 1 }, "result[x] > 0");
+      // Should return false because bracket notation is rejected
+      expect(result).toBe(false);
+    });
+  });
+
+  // from tests/audit28.test.ts #3 — verifier min>max constraint
+  describe("#3 — verifier min>max constraint", () => {
+      it("should report error when min > max in constraint", () => {
+        const result = verifyResult(5, {
+          output: {
+            type: "number",
+            min: 10,
+            max: 3, // min > max — impossible constraint
+          },
+          examples: [],
+        });
+        // Should report that the constraint itself is invalid
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((e: string) => e.includes("min") && e.includes("max"))).toBe(true);
+      });
+    });
+
+  // from tests/audit30.test.ts #5 — verifier minItems > maxItems constraint
+  describe("#5 — verifier minItems > maxItems constraint", () => {
+      it("should report error when minItems > maxItems", () => {
+        const result = verifyResult([1, 2, 3], {
+          output: {
+            type: "array",
+            minItems: 10,
+            maxItems: 2, // minItems > maxItems — impossible
+          },
+          examples: [],
+        });
+        expect(result.valid).toBe(false);
+        expect(result.errors.some((e: string) => e.includes("minItems") && e.includes("maxItems"))).toBe(true);
+      });
+    });
+
+  // from tests/audit32.test.ts #6 — verifier should use allowlist, not deny-list for invariants
+  describe("#6 — verifier should use allowlist, not deny-list for invariants", () => {
+        it("should block string concatenation bypass of keyword deny-list", () => {
+          // 'con' + 'structor' bypasses \bconstructor\b check
+          // The isSafeInvariant function should reject this
+          const source = readFileSync("src/constraints/verifier.ts", "utf-8");
+          const safeCheck = source.match(/isSafeInvariant[\s\S]*?return true;\s*\}/);
+          expect(safeCheck).not.toBeNull();
+          // Should reject string concatenation with + (quotes + string building)
+          // Either by blocking quotes entirely or by a different mechanism
+          expect(safeCheck![0]).toMatch(/['"].*reject|disallow.*['"]|template|quote/i);
+        });
+      });
+
+  // from tests/audit62.test.ts #9 — isSafeInvariant should normalize or reject Unicode bypasses
+  describe("#9 — isSafeInvariant should normalize or reject Unicode bypasses", () => {
+      it("should normalize NFKC before keyword checks", () => {
+        const source = readFileSync("src/constraints/verifier.ts", "utf-8");
+        const fnStart = source.indexOf("function isSafeInvariant(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 800);
+        // Should normalize to NFKC form to catch Unicode confusables
+        expect(block).toMatch(/normalize.*NFKC|NFKC.*normalize/);
+      });
+    });
+
+  // from tests/audit63.test.ts #4 — verifyInvariant should validate invariant is string
+  describe("#4 — verifyInvariant should validate invariant is string", () => {
+      it("should check typeof invariant before processing", () => {
+        const source = readFileSync("src/constraints/verifier.ts", "utf-8");
+        const fnStart = source.indexOf("function verifyInvariant(");
+        if (fnStart === -1) {
+          // exported function
+          const altStart = source.indexOf("export function verifyInvariant(");
+          expect(altStart).toBeGreaterThan(-1);
+          const block = source.slice(altStart, altStart + 300);
+          expect(block).toMatch(/typeof invariant\s*!==?\s*"string"|typeof invariant\s*===?\s*"string"/);
+        } else {
+          const block = source.slice(fnStart, fnStart + 300);
+          expect(block).toMatch(/typeof invariant\s*!==?\s*"string"|typeof invariant\s*===?\s*"string"/);
+        }
+      });
+    });
+
+  // from tests/audit68.test.ts #2 — isSafeInvariant should block hex escape sequences
+  describe("#2 — isSafeInvariant should block hex escape sequences", () => {
+      it("should reject \\xHH patterns", () => {
+        const source2 = readFileSync("src/constraints/verifier.ts", "utf-8");
+        // The hex escape check is near the unicode escape check
+        const unicodeCheck = source2.indexOf("\\\\u[\\da-fA-F]");
+        expect(unicodeCheck).toBeGreaterThan(-1);
+        const block = source2.slice(unicodeCheck, unicodeCheck + 200);
+        expect(block).toMatch(/\\\\x/i);
+      });
+    });
+
+  // from tests/audit68.test.ts #9 — verifyStringConstraint should reject minLength > maxLength
+  describe("#9 — verifyStringConstraint should reject minLength > maxLength", () => {
+      it("should check minLength <= maxLength", () => {
+        const source = readFileSync("src/constraints/verifier.ts", "utf-8");
+        const strStart = source.indexOf("function verifyStringConstraint(");
+        if (strStart === -1) {
+          const altStart = source.indexOf("verifyStringConstraint(");
+          expect(altStart).toBeGreaterThan(-1);
+          const block = source.slice(altStart, altStart + 800);
+          expect(block).toMatch(/minLength.*maxLength|maxLength.*minLength/);
+        } else {
+          const block = source.slice(strStart, strStart + 800);
+          expect(block).toMatch(/minLength.*maxLength|maxLength.*minLength/);
+        }
+      });
+    });
+
+  // from tests/audit72.test.ts #8 — verifyObjectConstraint should cap properties entries
+  describe("#8 — verifyObjectConstraint should cap properties entries", () => {
+      it("should limit properties checked", () => {
+        const source = readFileSync("src/constraints/verifier.ts", "utf-8");
+        const fnStart = source.indexOf("function verifyObjectConstraint(");
+        expect(fnStart).toBeGreaterThan(-1);
+        const block = source.slice(fnStart, fnStart + 700);
+        expect(block).toMatch(/MAX_PROPERTIES|Object\.entries.*\.slice|entries\.length/);
+      });
+    });
+
+  // from tests/audit75.test.ts #10 — verifier isSafeInvariant should block octal escapes
+  describe("#10 — verifier isSafeInvariant should block octal escapes", () => {
+      it("should reject octal escape sequences", () => {
+        const source = readFileSync("src/constraints/verifier.ts", "utf-8");
+        const escCheck = source.indexOf("\\\\x[\\da-fA-F]{2}");
+        expect(escCheck).toBeGreaterThan(-1);
+        const block = source.slice(escCheck, escCheck + 200);
+        // Should have octal escape pattern like \[0-7] in the regex
+        expect(block).toMatch(/0-7/);
+      });
+    });
+
+  // from tests/audit88.test.ts #8 — isSafeInvariant should limit property access depth
+  describe("#8 — isSafeInvariant should limit property access depth", () => {
+      it("should reject deeply nested dot access", () => {
+        const source = readFileSync("src/constraints/verifier.ts", "utf-8");
+        const safePatternPos = source.indexOf("safePattern");
+        expect(safePatternPos).toBeGreaterThan(-1);
+        const block = source.slice(safePatternPos, safePatternPos + 400);
+        expect(block).toMatch(/\.\s*match\(.*\\\..*length|MAX_DOT_DEPTH|dotCount|propertyDepth/i);
+      });
+    });
+
 });

@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import { inferType, typeMatches, typeToString, inferExpectedType, verifyOutputType } from "../../src/logic/type-inference.js";
 import { parse } from "../../src/logic/lc-parser.js";
+import { readFileSync } from "fs";
 
 describe("Type Inference", () => {
   describe("inferType", () => {
@@ -161,4 +162,30 @@ describe("Type Inference", () => {
       expect(result.error).toContain("Type mismatch");
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit31.test.ts #4 — type inference match/split nullable
+  describe("#4 — type inference match/split nullable", () => {
+      it("match should not infer as plain string since it can return null", () => {
+        const source = readFileSync("src/logic/type-inference.ts", "utf-8");
+        // Find the match case
+        const matchCase = source.match(/case "match":[\s\S]*?return \{[^}]+\}/);
+        expect(matchCase).not.toBeNull();
+        // Should NOT return tag: "string" — should be "any" since match can return null
+        expect(matchCase![0]).not.toMatch(/tag:\s*"string"/);
+      });
+
+      it("split should not infer as plain string since it can return null", () => {
+        const source = readFileSync("src/logic/type-inference.ts", "utf-8");
+        const splitCase = source.match(/case "split":[\s\S]*?return \{[^}]+\}/);
+        expect(splitCase).not.toBeNull();
+        // split returns array of strings, not a single string
+        expect(splitCase![0]).not.toMatch(/tag:\s*"string"\s*\}/);
+      });
+    });
+
 });

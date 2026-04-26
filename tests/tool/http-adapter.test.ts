@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { HttpAdapter } from "../../src/tool/adapters/http.js";
+import { readFileSync } from "fs";
 
 describe("HttpAdapter", () => {
   let adapter: HttpAdapter;
@@ -277,4 +278,28 @@ describe("HttpAdapter", () => {
     });
 
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit26.test.ts Audit26 #9: HTTP content-type case insensitive
+  describe("Audit26 #9: HTTP content-type case insensitive", () => {
+    it("should be importable", async () => {
+      const mod = await import("../../src/tool/adapters/http.js");
+      expect(mod.HttpAdapter).toBeDefined();
+    });
+  });
+
+  // from tests/audit36.test.ts #11 — validateJsonContentType should check header length
+  describe("#11 — validateJsonContentType should check header length", () => {
+        it("should limit content-type header length", () => {
+          const source = readFileSync("src/tool/adapters/http.ts", "utf-8");
+          const validateFn = source.match(/validateJsonContentType[\s\S]*?return true;\s*\}/);
+          expect(validateFn).not.toBeNull();
+          expect(validateFn![0]).toMatch(/length|MAX_HEADER/i);
+        });
+      });
+
 });

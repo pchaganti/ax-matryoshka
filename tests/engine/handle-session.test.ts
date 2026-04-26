@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { HandleSession } from "../../src/engine/handle-session.js";
+import { readFileSync } from "fs";
+import { SessionDB } from "../../src/persistence/session-db.js";
 
 describe("HandleSession", () => {
   let session: HandleSession;
@@ -548,4 +550,201 @@ describe("HandleSession — llmQuery option (MCP sampling bridge)", () => {
       session.close();
     }
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit34.test.ts #27 — expand should use paginated data fetch
+  describe("#27 — expand should use paginated data fetch", () => {
+        it("should use getHandleDataSlice or similar for pagination", () => {
+          const source = readFileSync("src/engine/handle-session.ts", "utf-8");
+          const expandFn = source.match(/expand\(handle[\s\S]*?return \{[\s\S]*?data: sliced/);
+          expect(expandFn).not.toBeNull();
+          // Should use getHandleDataSlice at the database level instead of loading all data
+          expect(expandFn![0]).toMatch(/getHandleDataSlice|getHandleMetadata/i);
+        });
+      });
+
+  // from tests/audit36.test.ts #7 — expand should validate offset and limit
+  describe("#7 — expand should validate offset and limit", () => {
+        it("should clamp negative offset and limit to 0", () => {
+          const source = readFileSync("src/engine/handle-session.ts", "utf-8");
+          const expandFn = source.match(/expand\(handle[\s\S]*?getHandleDataSlice/);
+          expect(expandFn).not.toBeNull();
+          // Should have Math.max(0, ...) or validation
+          expect(expandFn![0]).toMatch(/Math\.max\(0|offset\s*<\s*0|clamp/);
+        });
+      });
+
+  // from tests/audit38.test.ts #5 — expand should have a default limit cap
+  describe("#5 — expand should have a default limit cap", () => {
+      it("should cap the default limit to a reasonable maximum", () => {
+        const source = readFileSync("src/engine/handle-session.ts", "utf-8");
+        // Should have MAX_DEFAULT_LIMIT or Math.min to cap default
+        const expandFn = source.match(/const limit = Math\.(max|min)\(.*?\);/);
+        expect(expandFn).not.toBeNull();
+        // Should cap the default: Math.min(total, MAX) or similar
+        expect(expandFn![0]).toMatch(/Math\.min|MAX_DEFAULT|MAX_EXPAND/);
+      });
+    });
+
+  // from tests/audit43.test.ts #7 — handle-session close should dispose engine
+  describe("#7 — handle-session close should dispose engine", () => {
+      it("should call engine.dispose() in close method", () => {
+        const source = readFileSync("src/engine/handle-session.ts", "utf-8");
+        const closeMethod = source.match(/close\(\)[\s\S]*?parserRegistry\.dispose/);
+        expect(closeMethod).not.toBeNull();
+        expect(closeMethod![0]).toMatch(/engine\.dispose/);
+      });
+    });
+
+  // from tests/audit48.test.ts #8 — handle-session expand should clamp limit
+  describe("#8 — handle-session expand should clamp limit", () => {
+      it("should clamp user-provided limit to MAX_DEFAULT_EXPAND_LIMIT", () => {
+        const source = readFileSync("src/engine/handle-session.ts", "utf-8");
+        const expandSection = source.match(/MAX_DEFAULT_EXPAND_LIMIT[\s\S]*?options\.limit[\s\S]*?getHandleDataSlice/);
+        expect(expandSection).not.toBeNull();
+        // Should clamp limit so it can't exceed MAX_DEFAULT_EXPAND_LIMIT
+        expect(expandSection![0]).toMatch(/Math\.min\([^)]*MAX_DEFAULT_EXPAND_LIMIT/);
+      });
+    });
+
+  // from tests/audit49.test.ts #9 — handle-session expand should validate offset as integer
+  describe("#9 — handle-session expand should validate offset as integer", () => {
+      it("should check Number.isFinite or Number.isInteger on offset", () => {
+        const source = readFileSync("src/engine/handle-session.ts", "utf-8");
+        const expandOffset = source.match(/options\.offset[\s\S]*?getHandleDataSlice/);
+        expect(expandOffset).not.toBeNull();
+        expect(expandOffset![0]).toMatch(/Number\.isFinite|Number\.isInteger|Math\.floor.*offset/);
+      });
+    });
+
+  // from tests/audit96.test.ts #4 — execute() uses DB-side byte size, not full JSON.stringify
+  describe("#4 — execute() uses DB-side byte size, not full JSON.stringify", () => {
+      it("SessionDB.getHandleDataByteSize returns the sum of stored data sizes", async () => {
+        const db = new SessionDB();
+        // createHandle stores each item as JSON via JSON.stringify
+        const handle = db.createHandle(["hello", "world", 42]);
+        // JSON-stringified rows: "\"hello\"" (7) + "\"world\"" (7) + "42" (2) = 16
+        const size = db.getHandleDataByteSize(handle);
+        expect(size).toBe(16);
+        db.close();
+      });
+
+      it("getHandleDataByteSize returns 0 for unknown handle", async () => {
+        const db = new SessionDB();
+        expect(db.getHandleDataByteSize("$res999")).toBe(0);
+        db.close();
+      });
+
+      it("execute() routes token-metadata sizing through SessionDB, not JSON.stringify", async () => {
+        const session = new HandleSession();
+        session.loadContent(
+          Array.from({ length: 500 }, (_, i) => `line ${i} some content`).join("\n"),
+        );
+
+        // Spy on the DB method we just added. If execute() still reaches for
+        // JSON.stringify(result.value), this spy will never fire. That pins
+        // the refactor: future edits that drop the DB path would fail here.
+        const dbSpy = vi.spyOn(SessionDB.prototype, "getHandleDataByteSize");
+
+        const result = await session.execute('(grep "line")');
+
+        expect(result.success).toBe(true);
+        expect(result.handle).toBeDefined();
+        expect(result.tokenMetadata).toBeDefined();
+        expect(result.tokenMetadata!.estimatedFullTokens).toBeGreaterThan(0);
+        expect(result.tokenMetadata!.stubTokens).toBeGreaterThan(0);
+        expect(result.tokenMetadata!.savingsPercent).toBeGreaterThanOrEqual(0);
+
+        // The fix must route through the DB — at least one call, with the
+        // freshly-created handle as the argument.
+        expect(dbSpy).toHaveBeenCalled();
+        const calledWithHandle = dbSpy.mock.calls.some(
+          (args) => args[0] === result.handle,
+        );
+        expect(calledWithHandle).toBe(true);
+
+        dbSpy.mockRestore();
+        session.close();
+      });
+
+      it("token metadata remains directionally correct (large result → high savings)", async () => {
+        const session = new HandleSession();
+        session.loadContent(
+          Array.from({ length: 200 }, (_, i) => `match ${i} some text`).join("\n"),
+        );
+        const result = await session.execute('(grep "match")');
+
+        expect(result.success).toBe(true);
+        expect(result.tokenMetadata).toBeDefined();
+        // Stub is small, full data is large → savings should be substantial
+        expect(result.tokenMetadata!.estimatedFullTokens).toBeGreaterThan(
+          result.tokenMetadata!.stubTokens,
+        );
+        expect(result.tokenMetadata!.savingsPercent).toBeGreaterThan(50);
+
+        session.close();
+      });
+    });
+
+  // from tests/audit96.test.ts #6 — expand() reports non-zero totalTokens when slice is empty
+  describe("#6 — expand() reports non-zero totalTokens when slice is empty", () => {
+      it("offset past end returns empty slice but still reports true total size", async () => {
+        const session = new HandleSession();
+        session.loadContent("alpha\nbeta\ngamma\ndelta\nepsilon");
+        const grep = await session.execute('(grep "a")');
+        expect(grep.success).toBe(true);
+        expect(grep.handle).toBeDefined();
+
+        // Grab the real total from metadata first
+        const fullExpand = session.expand(grep.handle!);
+        expect(fullExpand.success).toBe(true);
+        expect(fullExpand.total).toBeGreaterThan(0);
+        expect(fullExpand.tokenMetadata!.totalTokens).toBeGreaterThan(0);
+
+        // Now expand with offset past the end of the data
+        const beyond = session.expand(grep.handle!, {
+          offset: fullExpand.total! + 100,
+          limit: 10,
+        });
+        expect(beyond.success).toBe(true);
+        expect(beyond.data!.length).toBe(0);
+        // total should still reflect the handle's real count
+        expect(beyond.total).toBe(fullExpand.total);
+        // BUG: before the fix, totalTokens was 0 because the computation
+        // divided by sliced.length which was 0. The LLM would then conclude
+        // "the handle is empty" and make bad decisions.
+        expect(beyond.tokenMetadata!.totalTokens).toBeGreaterThan(0);
+        expect(beyond.tokenMetadata!.totalTokens).toBe(
+          fullExpand.tokenMetadata!.totalTokens,
+        );
+
+        session.close();
+      });
+
+      it("limit=0 returns empty slice but still reports true total size", async () => {
+        const session = new HandleSession();
+        session.loadContent("alpha\nbeta\ngamma");
+        const grep = await session.execute('(grep "a")');
+        expect(grep.success).toBe(true);
+
+        const full = session.expand(grep.handle!);
+        const empty = session.expand(grep.handle!, { limit: 0 });
+        expect(empty.success).toBe(true);
+        expect(empty.data!.length).toBe(0);
+        expect(empty.total).toBeGreaterThan(0);
+        // Before the fix: returnedTokens for JSON.stringify([]) = "[]" = 2
+        // chars ≈ 1 token. The empty-slice fallback clamped totalTokens to 1
+        // regardless of how much data was actually stored.
+        expect(empty.tokenMetadata!.totalTokens).toBe(
+          full.tokenMetadata!.totalTokens,
+        );
+
+        session.close();
+      });
+    });
+
 });

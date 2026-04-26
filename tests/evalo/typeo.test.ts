@@ -247,3 +247,41 @@ describe("canProduceType", () => {
     expect(canProduceType(e, "null")).toBe(true); // can also produce null
   });
 });
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit13.test.ts Issue #5: canProduceType should return true for null on parseInt/parseFloat/add
+  describe("Issue #5: canProduceType should return true for null on parseInt/parseFloat/add", () => {
+    it("canProduceType(parseInt, null) should be true", async () => {
+      const e: Extractor = { tag: "parseInt", str: { tag: "input" } };
+      expect(canProduceType(e, "null")).toBe(true);
+    });
+
+    it("canProduceType(parseFloat, null) should be true", async () => {
+      const e: Extractor = { tag: "parseFloat", str: { tag: "input" } };
+      expect(canProduceType(e, "null")).toBe(true);
+    });
+
+    it("canProduceType(add, null) should be true", async () => {
+      const e: Extractor = {
+        tag: "add",
+        left: { tag: "input" },
+        right: { tag: "lit", value: 1 },
+      };
+      expect(canProduceType(e, "null")).toBe(true);
+    });
+  });
+
+  // from tests/audit14.test.ts Issue #15: inferType should return unknown for unrecognized tags
+  describe("Issue #15: inferType should return unknown for unrecognized tags", () => {
+    it("should return 'unknown' for a made-up tag", async () => {
+      const e = { tag: "nonexistent" } as unknown as Extractor;
+      const result = inferType(e);
+      // Should return "unknown", not undefined
+      expect(result).toBe("unknown");
+    });
+  });
+
+});

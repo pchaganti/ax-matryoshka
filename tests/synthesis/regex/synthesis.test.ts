@@ -22,6 +22,7 @@ import {
   // Main synthesis function
   synthesizeRegex,
 } from "../../../src/synthesis/regex/synthesis.js";
+import { readFileSync } from "fs";
 
 describe("Regex Synthesis", () => {
   describe("AST Nodes", () => {
@@ -467,4 +468,159 @@ describe("Regex Synthesis", () => {
       expect(regex.test("AABBCC")).toBe(false);
     });
   });
+});
+
+// =====================================================================
+// Source-pattern checks (from audits)
+// =====================================================================
+describe("Source-pattern checks (from audits)", () => {
+  // from tests/audit23.test.ts Audit23 #7: regex synthesis null positives guard
+  describe("Audit23 #7: regex synthesis null positives guard", () => {
+    it("should handle undefined input gracefully", async () => {
+      const { synthesizeRegex } = await import(
+        "../../../src/synthesis/regex/synthesis.js"
+      );
+      // Undefined input should not crash
+      expect(() => {
+        synthesizeRegex(undefined as any);
+      }).not.toThrow();
+      const result = synthesizeRegex(undefined as any);
+      expect(result.success).toBe(false);
+    });
+
+    it("should handle null input gracefully", async () => {
+      const { synthesizeRegex } = await import(
+        "../../../src/synthesis/regex/synthesis.js"
+      );
+      expect(() => {
+        synthesizeRegex(null as any);
+      }).not.toThrow();
+      const result = synthesizeRegex(null as any);
+      expect(result.success).toBe(false);
+    });
+  });
+
+  // from tests/audit27.test.ts Audit27 #10: regex synthesis position bounds
+  describe("Audit27 #10: regex synthesis position bounds", () => {
+    it("should handle variable-length examples gracefully", async () => {
+      const mod = await import("../../../src/synthesis/regex/synthesis.js");
+      expect(mod.synthesizeRegex).toBeDefined();
+      // Variable-length examples should not crash
+      const result = mod.synthesizeRegex({
+        positives: ["ab", "abcd", "a"],
+        negatives: ["xyz"],
+      });
+      // Should return a result (or null) without crashing
+      expect(result === null || typeof result === "object").toBe(true);
+    });
+  });
+
+  // from tests/audit34.test.ts #12 — regex synthesis should handle character class chars correctly
+  describe("#12 — regex synthesis should handle character class chars correctly", () => {
+        it("should not escape hyphens used as ranges in character classes", () => {
+          const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
+          // The custom char class case should not use escapeRegex
+          // or should use a char-class-specific escape function
+          const customCase = source.match(/case "custom"[\s\S]*?return/);
+          expect(customCase).not.toBeNull();
+          // Should NOT use the general escapeRegex which breaks ranges
+          expect(customCase![0]).not.toMatch(/escapeRegex\(node\.chars/);
+        });
+      });
+
+  // from tests/audit36.test.ts #9 — regex synthesis should wrap nested repeats
+  describe("#9 — regex synthesis should wrap nested repeats", () => {
+        it("should also wrap repeat children in non-capturing groups", () => {
+          const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
+          const repeatCase = source.match(/case "repeat"[\s\S]*?needsGroup/);
+          expect(repeatCase).not.toBeNull();
+          // Should include "repeat" in the needsGroup check
+          expect(repeatCase![0]).toMatch(/repeat/);
+        });
+      });
+
+  // from tests/audit43.test.ts #9 — escapeForCharClass should escape dash character
+  describe("#9 — escapeForCharClass should escape dash character", () => {
+      it("should include dash in the escape regex", () => {
+        const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
+        const escapeFn = source.match(/function escapeForCharClass[\s\S]*?\n\}/);
+        expect(escapeFn).not.toBeNull();
+        // Should escape - (dash) inside character classes
+        expect(escapeFn![0]).toMatch(/\\-|dash/i);
+      });
+    });
+
+  // from tests/audit55.test.ts #9 — synthesizeRegex should limit example count
+  describe("#9 — synthesizeRegex should limit example count", () => {
+      it("should enforce max number of examples", () => {
+        const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
+        const fnStart = source.indexOf("export function synthesizeRegex");
+        expect(fnStart).toBeGreaterThan(-1);
+        const fnBlock = source.slice(fnStart, fnStart + 400);
+        // Should clamp or reject if too many positives
+        expect(fnBlock).toMatch(/MAX_EXAMPLES|positives\s*=\s*positives\.slice|positives\.length\s*>\s*\d/);
+      });
+    });
+
+  // from tests/audit55.test.ts #10 — matchTemplate should limit example string length
+  describe("#10 — matchTemplate should limit example string length", () => {
+      it("should check example string lengths", () => {
+        const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
+        const fnStart = source.indexOf("export function matchTemplate");
+        expect(fnStart).toBeGreaterThan(-1);
+        const fnBlock = source.slice(fnStart, fnStart + 300);
+        // Should check individual example string length
+        expect(fnBlock).toMatch(/MAX_EXAMPLE_LENGTH|\.length\s*>\s*\d|every.*\.length/);
+      });
+    });
+
+  // from tests/audit60.test.ts #6 — nodeToRegex should validate quantifier bounds
+  describe("#6 — nodeToRegex should validate quantifier bounds", () => {
+      it("should cap min/max quantifier values", () => {
+        const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
+        const quantStart = source.indexOf("node.min === node.max");
+        expect(quantStart).toBeGreaterThan(-1);
+        // Check the region around quantifier handling for a bounds cap
+        const quantBlock = source.slice(quantStart - 300, quantStart + 200);
+        expect(quantBlock).toMatch(/node\.min\s*>\s*\d+|node\.max\s*>\s*\d+|MAX_QUANTIFIER/i);
+      });
+    });
+
+  // from tests/audit63.test.ts #8 — analyzeCharacters should avoid spread on large arrays
+  describe("#8 — analyzeCharacters should avoid spread on large arrays", () => {
+      it("should use reduce or guard array size before Math.min/max spread", () => {
+        const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
+        const fnStart = source.indexOf("function analyzeCharacters(");
+        if (fnStart === -1) {
+          const altStart = source.indexOf("export function analyzeCharacters(");
+          expect(altStart).toBeGreaterThan(-1);
+          const block = source.slice(altStart, altStart + 400);
+          // Should NOT use Math.min(...lengths) or Math.max(...lengths) unguarded
+          // Instead should use reduce or have a length cap
+          expect(block).toMatch(/examples\.length\s*>|MAX_EXAMPLES|reduce/i);
+        } else {
+          const block = source.slice(fnStart, fnStart + 400);
+          expect(block).toMatch(/examples\.length\s*>|MAX_EXAMPLES|reduce/i);
+        }
+      });
+    });
+
+  // from tests/audit64.test.ts #6 — conflict detection should use Set for O(1) lookup
+  describe("#6 — conflict detection should use Set for O(1) lookup", () => {
+      it("should use Set instead of Array.includes for negatives", () => {
+        const source = readFileSync("src/synthesis/regex/synthesis.ts", "utf-8");
+        const conflictStart = source.indexOf("Check for conflicts");
+        if (conflictStart === -1) {
+          // Try alternate text
+          const altStart = source.indexOf("conflicts");
+          expect(altStart).toBeGreaterThan(-1);
+          const block = source.slice(Math.max(0, altStart - 100), altStart + 300);
+          expect(block).toMatch(/new Set\(negatives\)|negSet|negativeSet/i);
+        } else {
+          const block = source.slice(conflictStart, conflictStart + 300);
+          expect(block).toMatch(/new Set\(negatives\)|negSet|negativeSet/i);
+        }
+      });
+    });
+
 });
