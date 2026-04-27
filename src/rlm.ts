@@ -451,6 +451,15 @@ export interface RLMOptions {
    */
   fsmTimeoutMs?: number;
   /**
+   * Optional callback fired at every FSM turn boundary. Used by the MCP
+   * server to emit `notifications/progress` to the client so its request
+   * timer resets while synthesis is still making progress (without this
+   * the MCP client's ~10min cap fires before long runs complete and the
+   * result is discarded with -32001 RequestTimeout). Errors thrown by
+   * the callback are swallowed inside the FSM.
+   */
+  onProgress?: (info: import("./fsm/rlm-states.js").ProgressInfo) => void;
+  /**
    * Internal — current sub-RLM depth. Automatically incremented by
    * the sub-RLM spawner each time a `(llm_query …)` call recurses.
    * Never set this manually from user code; it's a private parameter
@@ -525,6 +534,7 @@ export async function runRLMFromContent(
     maxTokens,
     maxErrors,
     compactionThresholdChars: rawCompactionThresholdChars,
+    onProgress,
     _subRLMDepth = 0,
   } = options;
 
@@ -688,6 +698,13 @@ export async function runRLMFromContent(
             maxTimeoutMs: remainingTimeoutMs(),
             maxTokens,
             maxErrors,
+            // Thread progress through nested runs — without this, while
+            // a child's FSM is blocking the parent's `handleQueryLLM`,
+            // no notifications fire and the client times out mid-recur.
+            // Monotonicity of the wire `progress` field is enforced at
+            // the MCP-server seam (separate counter), so passing the
+            // raw callback here is safe.
+            onProgress,
           }
         );
         // runRLMFromContent normally returns a string (the final answer
@@ -743,6 +760,8 @@ export async function runRLMFromContent(
           maxTimeoutMs: remainingTimeoutMs(),
           maxTokens,
           maxErrors,
+          // See subRLMSpawner above — same rationale for nested runs.
+          onProgress,
         });
         if (typeof childResult === "string") return childResult;
         if (childResult === null || childResult === undefined) return "";
@@ -881,6 +900,8 @@ export async function runRLMFromContent(
       maxTokens,
       maxErrors,
       compactionThresholdChars,
+      onProgress,
+      subRLMDepth: _subRLMDepth,
     });
 
     const engine = new FSMEngine<RLMContext>();

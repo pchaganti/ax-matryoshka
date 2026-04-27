@@ -64,10 +64,38 @@ function validateFilePath(filePath: string): string | null {
   return null;
 }
 
+/**
+ * Hook the MCP request handler can pass into `callTool` so long-running
+ * tools (analyze_document) can emit `notifications/progress` to the
+ * client. Without this, the MCP client's per-request timeout (~10min in
+ * Claude Code) fires while the server's FSM is still working, and the
+ * result is lost as -32001 RequestTimeout. Sending progress between
+ * turns keeps the client's timer alive.
+ *
+ * `progressToken` comes from `request.params._meta.progressToken`. When
+ * absent, no notifications should be sent (client didn't opt in).
+ */
+export interface ProgressSink {
+  progressToken: string | number;
+  sendNotification: (notification: {
+    method: "notifications/progress";
+    params: {
+      progressToken: string | number;
+      progress: number;
+      total?: number;
+      message?: string;
+    };
+  }) => Promise<void>;
+}
+
 export interface MCPServerInstance {
   name: string;
   getTools(): MCPTool[];
-  callTool(name: string, args: Record<string, unknown>): Promise<MCPToolResult>;
+  callTool(
+    name: string,
+    args: Record<string, unknown>,
+    progressSink?: ProgressSink
+  ): Promise<MCPToolResult>;
   start(): Promise<void>;
 }
 
@@ -248,7 +276,8 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
 
     async callTool(
       name: string,
-      args: Record<string, unknown>
+      args: Record<string, unknown>,
+      progressSink?: ProgressSink
     ): Promise<MCPToolResult> {
       // Handle nucleus_commands (no args needed)
       if (name === "nucleus_commands") {
@@ -346,12 +375,65 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
           options.onRunRLM({ maxTurns });
         }
 
+        // Bridge FSM progress → MCP `notifications/progress`. A single
+        // monotonic counter tracks every notification (turn pings AND
+        // heartbeat ticks AND nested sub-RLM turns), so the wire-level
+        // `progress` field is strictly increasing per MCP spec — turn
+        // numbers from a child sub-RLM would otherwise rewind below the
+        // parent's. `total` is intentionally omitted: with sub-RLMs,
+        // the cumulative turn budget across nested children isn't
+        // knowable up front, and a stale `total` would confuse clients
+        // that render percentages.
+        let progressCounter = 0;
+        const fireProgress = progressSink
+          ? (message: string) => {
+              progressCounter++;
+              // Fire-and-forget. The FSM swallows synchronous throws,
+              // and we don't want to await an unbounded transport
+              // write inside the turn loop.
+              void progressSink
+                .sendNotification({
+                  method: "notifications/progress",
+                  params: {
+                    progressToken: progressSink.progressToken,
+                    progress: progressCounter,
+                    message,
+                  },
+                })
+                .catch(() => {
+                  // Transport closed or client gone — best-effort.
+                });
+            }
+          : undefined;
+
+        // Out-of-band heartbeat: a single LLM call that exceeds the
+        // client's request cap would block the FSM's turn-boundary
+        // pings entirely. A 30s interval keeps the timer alive even
+        // mid-call. Cleared in `finally` so a hung process doesn't
+        // leak the timer.
+        const HEARTBEAT_INTERVAL_MS = 30_000;
+        const heartbeatStart = Date.now();
+        const heartbeatTimer = fireProgress
+          ? setInterval(() => {
+              const elapsedSec = Math.round((Date.now() - heartbeatStart) / 1000);
+              fireProgress(`Working… (${elapsedSec}s elapsed)`);
+            }, HEARTBEAT_INTERVAL_MS)
+          : undefined;
+
         try {
           const client = await ensureLLMClient();
           const result = await runRLM(query, filePath, {
             llmClient: client,
             maxTurns: maxTurns || 10,
             fsmTimeoutMs: typeof timeoutMs === "number" && timeoutMs > 0 ? timeoutMs : undefined,
+            onProgress: fireProgress
+              ? (info) => {
+                  const depthSuffix = info.depth > 0 ? ` (sub-RLM depth ${info.depth})` : "";
+                  fireProgress(
+                    `Turn ${info.turn}/${info.maxTurns}${depthSuffix} (${Math.round(info.elapsedMs / 1000)}s elapsed)`
+                  );
+                }
+              : undefined,
           });
 
           const text = typeof result === "string" ? result : JSON.stringify(result, null, 2);
@@ -364,6 +446,10 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
           return {
             content: [{ type: "text", text: `Error: ${errorMessage}` }],
           };
+        } finally {
+          if (heartbeatTimer !== undefined) {
+            clearInterval(heartbeatTimer);
+          }
         }
       }
 
@@ -385,9 +471,20 @@ export function createMCPServer(options: MCPServerOptions = {}): MCPServerInstan
       }));
 
       // Call tool handler
-      server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
         const { name, arguments: args } = request.params;
-        const result = await this.callTool(name, args || {});
+        // The MCP client opts in to progress by attaching a progressToken
+        // to _meta. When present, build a sink that bridges the FSM's
+        // onProgress callback to `notifications/progress` on the wire.
+        const progressToken = request.params._meta?.progressToken;
+        const sink: ProgressSink | undefined =
+          progressToken !== undefined
+            ? {
+                progressToken,
+                sendNotification: (n) => extra.sendNotification(n),
+              }
+            : undefined;
+        const result = await this.callTool(name, args || {}, sink);
         return result;
       });
 
