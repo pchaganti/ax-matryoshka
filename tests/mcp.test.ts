@@ -160,6 +160,119 @@ describe("MCP Server", () => {
 
       expect(capturedMaxTurns).toBe(5);
     });
+
+    it("should emit notifications/progress for each FSM turn when a progressSink is supplied", async () => {
+      const { createMCPServer } = await import("../src/mcp-server.js");
+
+      // Mock LLM that takes 3 turns: grep, then more code, then final.
+      // Each LLM round-trip corresponds to one handleQueryLLM turn, so we
+      // expect 3 progress notifications.
+      const mockLLMClient = vi
+        .fn()
+        .mockResolvedValueOnce('(grep "test")')
+        .mockResolvedValueOnce('(count RESULTS)')
+        .mockResolvedValueOnce("<<<FINAL>>>\ndone\n<<<END>>>");
+
+      const server = createMCPServer({ llmClient: mockLLMClient });
+
+      const notifications: Array<{
+        method: string;
+        params: { progressToken: string | number; progress: number; total?: number; message?: string };
+      }> = [];
+
+      const result = await server.callTool(
+        "analyze_document",
+        {
+          query: "test",
+          filePath: "./test-fixtures/small.txt",
+          maxTurns: 5,
+        },
+        {
+          progressToken: "test-token-123",
+          sendNotification: async (n) => {
+            notifications.push(n);
+          },
+        }
+      );
+
+      expect(result.content[0].text).toContain("done");
+      // Heartbeat timer fires every 30s; the test runs in <1s so only
+      // the per-turn pings should appear. Allow >=3 to keep the test
+      // resilient if heartbeats land later.
+      const turnPings = notifications.filter((n) =>
+        (n.params.message ?? "").startsWith("Turn ")
+      );
+      expect(turnPings.length).toBe(3);
+      // Wire-format checks across every notification.
+      for (const n of notifications) {
+        expect(n.method).toBe("notifications/progress");
+        expect(n.params.progressToken).toBe("test-token-123");
+        expect(typeof n.params.message).toBe("string");
+        // `total` intentionally omitted — sub-RLMs make a useful
+        // total unknowable, and stale totals confuse percent renderers.
+        expect(n.params.total).toBeUndefined();
+      }
+      // Monotonic, strictly increasing progress counter — the
+      // top-level run cannot rewind below 1, and a sub-RLM (if added)
+      // would continue counting forward from wherever the parent left.
+      expect(turnPings[0].params.progress).toBe(1);
+      expect(turnPings[1].params.progress).toBe(2);
+      expect(turnPings[2].params.progress).toBe(3);
+      // Top-level run has depth 0, so the message must NOT mention
+      // sub-RLM depth.
+      for (const n of turnPings) {
+        expect(n.params.message).not.toContain("sub-RLM");
+      }
+    });
+
+    it("should not call sendNotification when no progressSink is supplied", async () => {
+      const { createMCPServer } = await import("../src/mcp-server.js");
+
+      const mockLLMClient = vi
+        .fn()
+        .mockResolvedValueOnce('(grep "test")')
+        .mockResolvedValueOnce("<<<FINAL>>>\ndone\n<<<END>>>");
+
+      const server = createMCPServer({ llmClient: mockLLMClient });
+
+      // No progressSink — runRLM should run cleanly without trying to
+      // call any notification path.
+      const result = await server.callTool("analyze_document", {
+        query: "test",
+        filePath: "./test-fixtures/small.txt",
+      });
+
+      expect(result.content[0].text).toContain("done");
+    });
+
+    it("should swallow sendNotification errors without breaking the FSM", async () => {
+      const { createMCPServer } = await import("../src/mcp-server.js");
+
+      const mockLLMClient = vi
+        .fn()
+        .mockResolvedValueOnce('(grep "test")')
+        .mockResolvedValueOnce("<<<FINAL>>>\ndone\n<<<END>>>");
+
+      const server = createMCPServer({ llmClient: mockLLMClient });
+
+      // sendNotification rejects every time — simulating a closed
+      // transport. The FSM must still complete and return the result.
+      const result = await server.callTool(
+        "analyze_document",
+        {
+          query: "test",
+          filePath: "./test-fixtures/small.txt",
+        },
+        {
+          progressToken: 7,
+          sendNotification: async () => {
+            throw new Error("transport closed");
+          },
+        }
+      );
+
+      expect(result.content[0].text).toContain("done");
+    });
   });
 
   describe("nucleus_execute tool", () => {
