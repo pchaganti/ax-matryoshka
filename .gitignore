@@ -18,6 +18,7 @@ coverage/
 demos/**/after.json
 demos/**/after-b.json
 demos/**/baseline.json
+demos/**/baseline-b.json
 
 # Environment
 .env
